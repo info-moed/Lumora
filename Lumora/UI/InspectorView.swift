@@ -17,7 +17,9 @@ enum InspectorTab: String, CaseIterable, Identifiable {
 
 struct InspectorView: View {
     @Environment(AppModel.self) private var model
-    @State private var tab: InspectorTab = .source
+    /// The tab a new inspector opens on (documentation screenshots set it; the app always starts on Source).
+    static var defaultTab: InspectorTab = .source
+    @State private var tab: InspectorTab = InspectorView.defaultTab
 
     var body: some View {
         HStack(spacing: 0) {

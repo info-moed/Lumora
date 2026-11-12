@@ -5,6 +5,9 @@ import MetalKit
 /// so the MacBook Pro XDR screen (or any HDR display) shows the actual PQ / HLG output.
 struct EDRViewer: NSViewRepresentable {
     @Environment(AppModel.self) private var model
+    /// Documentation screenshots are captured offscreen, where a CAMetalLayer draws nothing. In snapshot mode the
+    /// graded frame (SDR) is also shown as an ordinary image layer on top, which offscreen capture can see.
+    static var snapshotMode = false
 
     func makeCoordinator() -> Coordinator { Coordinator(model: model) }
 
@@ -26,6 +29,7 @@ struct EDRViewer: NSViewRepresentable {
         _ = model.splitCompare
         _ = model.falseColor
         v.needsDisplay = true
+        if Self.snapshotMode { context.coordinator.updateSnapshot(in: v) }
     }
 
     @MainActor
@@ -35,6 +39,31 @@ struct EDRViewer: NSViewRepresentable {
         init(model: AppModel) { self.model = model }
 
         func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) { view.needsDisplay = true }
+
+        private var snapshotView: NSImageView?
+
+        func updateSnapshot(in view: MTKView) {
+            guard let frame = model.previewFrame else { return }
+            let preset = model.selectedPreset ?? model.presets.first
+            guard let color = model.selectedColor ?? preset?.color else { return }
+            let u = UniformBuilder.make(source: color, params: model.params, target: .sdr,
+                                        sceneExposureStops: preset.map { model.sceneExposure(for: $0) } ?? 0,
+                                        viewport: .zero, sourcePeakNits: model.report?.p999Nits ?? 1000,
+                                        crop: model.descriptor?.crop ?? UniformBuilder.fullFrame)
+            guard let image = renderer.thumbnail(frame.texture, uniforms: u, width: 1920) else { return }
+            let iv = snapshotView ?? {
+                let iv = NSImageView(frame: view.bounds)
+                iv.autoresizingMask = [.width, .height]
+                iv.imageScaling = .scaleProportionallyUpOrDown
+                iv.wantsLayer = true
+                iv.layer?.backgroundColor = NSColor.black.cgColor
+                view.addSubview(iv)
+                snapshotView = iv
+                return iv
+            }()
+            iv.frame = view.bounds
+            iv.image = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+        }
 
         func draw(in view: MTKView) {
             guard let layer = view.layer as? CAMetalLayer else { return }
