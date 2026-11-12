@@ -195,12 +195,12 @@ final class ArtifactScorer {
     /// ceiling, big margin, small budget); 1 = strict. `refine` (exhaustive intelligence) also takes any tile where
     /// an alternative is better with high confidence, broken or not. Tiles the blatant-damage classifier flags are
     /// replaced at every sensitivity by the alternative with the best predicted gain.
-    func decide(_ m: Measurement, sensitivity: Float, refine: Bool = false) -> Decision {
+    func decide(_ m: Measurement, sensitivity: Float, refine: Bool = false, detectShotChange: Bool = true) -> Decision {
         var choices = [UInt8](repeating: Choice.primary.rawValue, count: m.count)
         guard let model, let set = model.set(alternative: m.hasAlternative), !set.options.isEmpty else {
             return Decision(choices: choices, shotChange: false)
         }
-        if set.isShotChange(m.frame) {
+        if detectShotChange && set.isShotChange(m.frame) {
             return Decision(choices: [UInt8](repeating: Choice.nearest.rawValue, count: m.count), shotChange: true)
         }
         let p = set.policy.at(min(1, max(0, sensitivity)))
@@ -248,6 +248,9 @@ final class ArtifactScorer {
         for i in 0..<m.count where blatant[i] >= 0 { choices[i] = set.options[blatant[i]].choice.rawValue }
         return Decision(choices: choices, shotChange: false)
     }
+
+    /// Whether the frame pair behind this measurement looks like a shot change the analyzer missed.
+    func isShotChange(_ m: Measurement) -> Bool { model?.set(alternative: m.hasAlternative)?.isShotChange(m.frame) ?? false }
 
     /// Writes the per-tile composite of the chosen candidates into `dst` (a, b: the generation's inputs).
     func compose(primary p: MTLTexture, alternative q: MTLTexture?, a: MTLTexture, b: MTLTexture, t: Float,
@@ -324,8 +327,17 @@ struct ScorerSet {
     var policy: ScorerPolicy
     var cutWeights: [Float]      // logistic regression on frameFeatureNames, then bias
     var cutThreshold: Float
+    /// Model-independent evidence a shot change needs before the regression is asked: the picture layout at tile
+    /// scale must change. Tile-mean luma of A and B must be poorly correlated (a fade keeps the layout and only scales
+    /// it: correlation near 1) and the mean tile brightness change must be real (a fine texture or grating moving
+    /// in place keeps every tile mean: change near 0). Both limits sit well outside the training shot changes (train
+    /// correlation at most 0.62, tile change at least 0.09 including HDR); without them, rotating stripes, fine
+    /// gratings and fade-ins from black were held as shot changes (up to 17.6 dB worse than the model).
+    static let maxLayoutCorrelation: Float = 0.8
+    static let minTileChange: Float = 0.05
     func isShotChange(_ f: [Float]) -> Bool {
         guard cutWeights.count == f.count + 1 else { return false }
+        guard f[0] < Self.maxLayoutCorrelation, f[2] > Self.minTileChange else { return false }
         var z = cutWeights[f.count]
         for (w, v) in zip(cutWeights, f) { z += w * v }
         return z > cutThreshold

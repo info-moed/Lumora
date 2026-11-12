@@ -127,6 +127,7 @@ typedef struct {
 #define QC_MAXES 4            // per-tile feature maxima
 #define QC_FEATS (QC_SUMS + QC_MAXES)
 #define QC_FLOW 8             // per-tile flow statistics slots (see qcFlowStatsKernel)
+#define QC_FEATHER 8          // qcComposeKernel: analysis pixels feathered on each side of an edge between candidates
 
 typedef struct {
     int   scale;           // full-resolution pixels per analysis pixel (1, 2, ...)

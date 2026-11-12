@@ -125,6 +125,12 @@ final class QCScorerTests: XCTestCase {
         XCTAssertTrue(set.isShotChange([0.0, 0.25, 0.2, 0.8, 0.5, 0.2]))
         // A still frame pair is never a shot change.
         XCTAssertFalse(set.isShotChange([1.0, 0.002, 0.001, 0.0, 0.05, 0.002]))
+        // Measured false holds of the regression alone: a fine grating panning in place (every tile mean unchanged,
+        // models disagree) and a fade-in from black (same layout, only brighter). Neither changes the shot.
+        XCTAssertFalse(set.isShotChange([-0.84, 0.305, 0.0003, 0.004, 0.071, 0.203]))
+        XCTAssertFalse(set.isShotChange([1.0, 0.400, 0.400, 0.942, 0.883, 0.030]))
+        // A real missed cut from the cut split (cut-000-like statistics) is still held.
+        XCTAssertTrue(set.isShotChange([0.05, 0.28, 0.21, 0.40, 0.60, 0.05]))
     }
 
     // MARK: - Planted artifacts through the real GPU path

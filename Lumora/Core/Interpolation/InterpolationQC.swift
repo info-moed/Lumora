@@ -289,22 +289,36 @@ final class FrameStream {
         // the flicker check) were measured against ground truth and removed: each one lowered quality.
         var finals: [(tex: MTLTexture, fraction: Float, action: QCEvent.Action)] = []
         let primaryIsFlow = (engine as? CoreMLInterpolator)?.spec.isFlow ?? false
+        let repair = settings.artifactRepair && engine != nil && scorer.model != nil
+        var measured: [(q: MTLTexture?, m: ArtifactScorer.Measurement)] = []
+        if repair {
+            for (k, item) in batch.enumerated() {
+                var q: MTLTexture?
+                let alt = alternative(forWidth: ga.width)
+                if let alt {
+                    let o = scratch(like: ga)
+                    _ = try alt.interpolate(ga, gb, times: [item.t], into: [o], qcTiles: (1, 1))
+                    q = o
+                }
+                measured.append((q, scorer.measure(a: ga, b: gb, primary: results[k].texture, alternative: q, alternativeEngine: alt,
+                                                   t: item.t, primaryIsFlow: primaryIsFlow)))
+            }
+        }
+        // A pair either crosses a shot change or it doesn't: hold the nearest originals only when every generated
+        // frame of the pair looks like one. Deciding per frame held some frames of a fast real shot and interpolated
+        // the others (judder, and up to 2.7 dB lost on each held frame).
+        let hold = !measured.isEmpty && measured.allSatisfy { scorer.isShotChange($0.m) }
         for (k, item) in batch.enumerated() {
             let result = results[k].texture
-            guard settings.artifactRepair, engine != nil, scorer.model != nil else { finals.append((result, 0, .accepted)); continue }
-            var q: MTLTexture?
-            let alt = alternative(forWidth: ga.width)
-            if let alt {
-                let o = scratch(like: ga)
-                _ = try alt.interpolate(ga, gb, times: [item.t], into: [o], qcTiles: (1, 1))
-                q = o
-            }
-            let m = scorer.measure(a: ga, b: gb, primary: result, alternative: q, alternativeEngine: alt, t: item.t,
-                                   primaryIsFlow: primaryIsFlow)
-            let d = scorer.decide(m, sensitivity: settings.sensitivity, refine: settings.intelligence == .exhaustive)
-            if d.shotChange {
+            guard repair else { finals.append((result, 0, .accepted)); continue }
+            let (q, m) = measured[k]
+            if hold {
                 finals.append((item.t < 0.5 ? ga : gb, 1, .replaced))
-            } else if d.switched > 0 {
+                continue
+            }
+            let d = scorer.decide(m, sensitivity: settings.sensitivity, refine: settings.intelligence == .exhaustive,
+                                  detectShotChange: false)
+            if d.switched > 0 {
                 let out = scratch(like: ga)
                 scorer.compose(primary: result, alternative: q, a: ga, b: gb, t: item.t, decision: d, into: out)
                 finals.append((out, d.fraction, .patched))

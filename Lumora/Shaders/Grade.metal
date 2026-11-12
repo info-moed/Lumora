@@ -762,8 +762,22 @@ kernel void qcFlowStatsKernel(device const half* flow      [[buffer(0)]],
     atomic_fetch_max_explicit(&omax[t], as_type<uint>(max(length(f0), length(f1)) * toRef), memory_order_relaxed);
 }
 
-// Per-tile switch between candidates (hard tile edges, so each tile is exactly the candidate that was scored).
-// choice: 0 primary, 1 alternative model, 2 cross-fade, 3 nearest original, 4 average of primary and alternative.
+// Per-tile switch between candidates. choice: 0 primary, 1 alternative model, 2 cross-fade, 3 nearest original,
+// 4 average of primary and alternative. Where two neighboring tiles use different candidates, the edge is feathered
+// over QC_FEATHER analysis pixels on each side (50/50 on the edge itself), because a hard switch leaves a visible
+// step along the tile edge (measured: about 1 in 4 such edges, up to 40 code values). Tiles whose neighbors all use
+// the same candidate are copied exactly.
+inline float4 qcCandidate(uchar c, uint2 gid, texture2d<float, access::read> p, texture2d<float, access::read> q,
+                          texture2d<float, access::read> a, texture2d<float, access::read> b, float t) {
+    switch (c) {
+        case 1: return q.read(gid);
+        case 2: return mix(a.read(gid), b.read(gid), t);
+        case 3: return t < 0.5f ? a.read(gid) : b.read(gid);
+        case 4: return 0.5f * (p.read(gid) + q.read(gid));
+        default: return p.read(gid);
+    }
+}
+
 kernel void qcComposeKernel(texture2d<float, access::read>  p   [[texture(0)]],
                             texture2d<float, access::read>  q   [[texture(1)]],
                             texture2d<float, access::read>  a   [[texture(2)]],
@@ -773,16 +787,27 @@ kernel void qcComposeKernel(texture2d<float, access::read>  p   [[texture(0)]],
                             constant QCScoreUniforms& u         [[buffer(1)]],
                             uint2 gid                           [[thread_position_in_grid]]) {
     if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) return;
-    uint full = uint(QC_TILE * u.scale);
-    uint tx = min(gid.x / full, uint(u.tilesX - 1)), ty = min(gid.y / full, uint(u.tilesY - 1));
-    uchar c = choice[ty * uint(u.tilesX) + tx];
-    float4 v;
-    switch (c) {
-        case 1: v = q.read(gid); break;
-        case 2: v = mix(a.read(gid), b.read(gid), u.t); break;
-        case 3: v = u.t < 0.5f ? a.read(gid) : b.read(gid); break;
-        case 4: v = 0.5f * (p.read(gid) + q.read(gid)); break;
-        default: v = p.read(gid); break;
+    int full = QC_TILE * u.scale;
+    int tx = min(int(gid.x) / full, u.tilesX - 1), ty = min(int(gid.y) / full, u.tilesY - 1);
+    uchar own = choice[ty * u.tilesX + tx];
+    // Tent weights of the left / own / right column and the upper / own / lower row of tiles.
+    float band = float(QC_FEATHER * u.scale);
+    float fx = float(int(gid.x) - tx * full) + 0.5f, fy = float(int(gid.y) - ty * full) + 0.5f;
+    float3 hx = float3(tx > 0 ? 0.5f * max(0.0f, 1.0f - fx / band) : 0.0f, 0.0f,
+                       tx < u.tilesX - 1 ? 0.5f * max(0.0f, 1.0f - (float(full) - fx) / band) : 0.0f);
+    float3 hy = float3(ty > 0 ? 0.5f * max(0.0f, 1.0f - fy / band) : 0.0f, 0.0f,
+                       ty < u.tilesY - 1 ? 0.5f * max(0.0f, 1.0f - (float(full) - fy) / band) : 0.0f);
+    hx.y = 1.0f - hx.x - hx.z;
+    hy.y = 1.0f - hy.x - hy.z;
+    bool mixed = false;
+    for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) {
+        if (hx[dx + 1] * hy[dy + 1] > 0.0f && choice[(ty + dy) * u.tilesX + tx + dx] != own) mixed = true;
+    }
+    if (!mixed) { dst.write(qcCandidate(own, gid, p, q, a, b, u.t), gid); return; }
+    float4 v = 0.0f;
+    for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) {
+        float w = hx[dx + 1] * hy[dy + 1];
+        if (w > 0.0f) v += w * qcCandidate(choice[(ty + dy) * u.tilesX + tx + dx], gid, p, q, a, b, u.t);
     }
     dst.write(v, gid);
 }

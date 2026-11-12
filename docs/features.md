@@ -356,8 +356,11 @@ replacements must stay within a small budget, so wrong calls can't cost a frame 
 all of these thresholds together (0 = only obvious problems, 1 = strict). A separate classifier, trained on copies of
 the training frames with planted artifacts (holes, checkerboards, noise, tears, misplaced content, color shifts),
 recognizes blatant damage; those tiles are replaced at every strictness. A frame pair that straddles a shot change the
-analyzer missed is detected from frame statistics and held on the nearest original. *Exhaustive* intelligence also
-replaces tiles where an alternative is better with high confidence, broken or not.
+analyzer missed is detected from frame statistics and held on the nearest original; the hold needs a real change of
+the picture layout (fades and fine textures moving in place never qualify), and it is decided for the whole pair, so
+all in-between frames of one pair are either held or generated. Where neighboring tiles use different candidates the
+edge is feathered over a few pixels, so no step shows along tile edges. *Exhaustive* intelligence also replaces tiles
+where an alternative is better with high confidence, broken or not.
 
 The second opinion costs about half of the primary model's time at 1080p and much less at UHD; the features and the
 trees add a few milliseconds per frame. With **Find and fix artifacts** off, neither runs.

@@ -4,6 +4,7 @@ import AVFoundation
 import CoreVideo
 import CoreText
 import ImageIO
+import MetalPerformanceShaders
 import UniformTypeIdentifiers
 import XCTest
 @testable import Lumora
@@ -782,6 +783,13 @@ final class FrameProvider {
                 b = gpu.rgb(g, conv)
             }
             return gpu.blend(a, b, t: min(1, max(0, a0 + st * Float(n - w.center))))
+        case "s720":
+            // 1280x720 SDR (Lanczos from the 1080p render), so a tile covers a bigger share of the picture.
+            guard let f = FrameCache.load(w.source, "\(n)") else { throw LumoraError.decodeFailed("\(w.source) frame \(n)") }
+            let full = gpu.rgb(f, conv)
+            let small = gpu.texture(1280, 720, full.pixelFormat)
+            gpu.run { cb in MPSImageLanczosScale(device: gpu.ctx.device).encode(commandBuffer: cb, sourceTexture: full, destinationTexture: small) }
+            return small
         default:
             guard let f = FrameCache.load(w.source, "\(n)") else { throw LumoraError.decodeFailed("\(w.source) frame \(n)") }
             return gpu.rgb(f, conv)
