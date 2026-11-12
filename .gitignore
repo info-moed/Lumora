@@ -4,3 +4,4 @@ DerivedData/
 .DS_Store
 Lumora/Info.plist
 .claude/
+__pycache__/
