@@ -353,9 +353,14 @@ predicted gain, plus a pessimistic gain, for each alternative: a second opinion 
 wide, the average of the two models, a cross-fade, and the nearest original. A tile is replaced only when it is
 predicted to be poor and an alternative is predicted to gain more than a margin; per frame, the pessimistic total of all
 replacements must stay within a small budget, so wrong calls can't cost a frame much. **Artifact strictness** moves
-all of these thresholds together (0 = only obvious problems, 1 = strict). A frame pair that straddles a shot change the
+all of these thresholds together (0 = only obvious problems, 1 = strict). A separate classifier, trained on copies of
+the training frames with planted artifacts (holes, checkerboards, noise, tears, misplaced content, color shifts),
+recognizes blatant damage; those tiles are replaced at every strictness. A frame pair that straddles a shot change the
 analyzer missed is detected from frame statistics and held on the nearest original. *Exhaustive* intelligence also
 replaces tiles where an alternative is better with high confidence, broken or not.
+
+The second opinion costs about half of the primary model's time at 1080p and much less at UHD; the features and the
+trees add a few milliseconds per frame. With **Find and fix artifacts** off, neither runs.
 
 The earlier rules (cross-fade patches, replacing a frame when more than 35% of it was flagged, and the flicker check)
 were measured against the same ground truth and removed: each lowered quality, and the flicker check never fired.
