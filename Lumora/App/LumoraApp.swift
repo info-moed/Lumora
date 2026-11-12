@@ -1,6 +1,21 @@
 import SwiftUI
+import AppKit
 
+/// Entry point. Under XCTest the app is only a test host: it runs headless (no windows, no Dock icon,
+/// no focus change) so `xcodebuild test` never disturbs whoever is using the Mac.
 @main
+enum LumoraMain {
+    static func main() {
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            let app = NSApplication.shared
+            app.setActivationPolicy(.prohibited)
+            app.run()
+        } else {
+            LumoraApp.main()
+        }
+    }
+}
+
 struct LumoraApp: App {
     @State private var model = AppModel()
 
