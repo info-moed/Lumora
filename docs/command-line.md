@@ -239,6 +239,7 @@ Placeholders filled at run time:
 |---|---|
 | `{in}` `{out}` | input (stdin/pipe) and output path |
 | `{w}` `{h}` `{fps_num}` `{fps_den}` `{bits}` `{threads}` | frame geometry, rate, bit depth, threads per segment |
+| `{svt_lp}` | SVT-AV1 parallelism level (0-6) for the cores one segment fills; `--lp` is a level, not a thread count |
 | `{preset}` `{quality}` | speed preset; quality mapped into `qualityBest…qualityWorst` |
 | `{cp}` `{tc}` `{mc}` | numeric color primaries / transfer / matrix (9/16/9 for PQ, 9/18/9 for HLG, 1/1/1 for SDR) |
 | `{cp_name}` `{tc_name}` `{mc_name}` `{vvenc_hdr}` | named equivalents from `colorNames` |

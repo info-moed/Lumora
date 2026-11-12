@@ -19,7 +19,12 @@ struct EncoderSpec: Codable {
     }
 
     func render(_ values: [String: String], hdr: Bool, tune: String = "default") -> [String] {
-        (args + (hdr ? hdrArgs : []) + (tunes?[tune] ?? [])).map { arg in
+        var values = values
+        // SVT-AV1's --lp is a parallelism level (0-6), not a thread count: derived from the cores this instance fills.
+        if values["svt_lp"] == nil, let cores = values["threads"].flatMap(Int.init) {
+            values["svt_lp"] = String(EncodeRecipes.svtParallelism(cores: cores))
+        }
+        return (args + (hdr ? hdrArgs : []) + (tunes?[tune] ?? [])).map { arg in
             var a = arg
             for (k, v) in values { a = a.replacingOccurrences(of: "{\(k)}", with: v) }
             return a

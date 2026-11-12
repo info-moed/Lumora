@@ -113,17 +113,19 @@ enum EncodePlanner {
         }
 
         let offered = recipe.options.filter { EncodeRecipes.available($0, codec: codec) }
-        func baseSet(_ enc: String?) -> [EncodeOption] {
-            offered.filter { $0.encoderKey == enc }.filter { o in
+        // Options can be limited to some rungs and can cost a different amount of time on each.
+        func baseSet(_ enc: String?, _ rung: String) -> [EncodeOption] {
+            offered.filter { $0.encoderKey == enc && $0.offered(onRung: rung) }.filter { o in
                 if let forced = overrides[o.id] { return forced }
                 if o.conflictsWithVMAF && vmafMode { return false }
                 guard o.recommendedFor.contains(kind) else { return false }
-                return o.speedCost <= 1.05          // cheap extras are always worth it
+                return o.speedCost(onRung: rung) <= 1.05          // cheap extras are always worth it
             }
         }
-        func expensive(_ enc: String?) -> [EncodeOption] {
+        func expensive(_ enc: String?, _ rung: String) -> [EncodeOption] {
             offered.filter { o in
-                o.encoderKey == enc && o.speedCost > 1.05 && overrides[o.id] == nil && o.recommendedFor.contains(kind) && !(o.conflictsWithVMAF && vmafMode)
+                o.encoderKey == enc && o.offered(onRung: rung) && o.speedCost(onRung: rung) > 1.05 && overrides[o.id] == nil
+                    && o.recommendedFor.contains(kind) && !(o.conflictsWithVMAF && vmafMode)
             }
         }
 
@@ -131,12 +133,13 @@ enum EncodePlanner {
         var all: [Candidate] = []
         for i in recipe.rungs.indices where EncodeRecipes.available(recipe.rungs[i], codec: codec) {
             let enc = recipe.rungs[i].encoderKey
-            let exp = expensive(enc)
+            let rungID = recipe.rungs[i].id
+            let exp = expensive(enc, rungID)
             let subsets = (0..<(1 << exp.count)).map { mask in exp.enumerated().filter { mask & (1 << $0.offset) != 0 }.map(\.element) }
             let (fps0, s0) = rungStats(i)
             for sub in subsets {
-                let opts = baseSet(enc) + sub
-                let cost = opts.reduce(1.0) { $0 * $1.speedCost }
+                let opts = baseSet(enc, rungID) + sub
+                let cost = opts.reduce(1.0) { $0 * $1.speedCost(onRung: rungID) }
                 let fps = fps0 * pixelScale / cost
                 let saving = 1 - (1 - s0) * opts.reduce(1.0) { $0 * (1 - $1.vmafSaving) }
                 let encode = Double(frames) * trials / max(0.01, fps)
@@ -188,6 +191,10 @@ enum EncodePlanner {
         }
         if offered.contains(where: \.visualOnly) {
             notes.append("Extras marked “for the eye” improve fidelity that VMAF doesn't measure; the VMAF target may spend a few more bits to keep its score.")
+        }
+        let pickedRung = recipe.rungs[pick.rung]
+        for o in offered where overrides[o.id] == true && o.encoderKey == pickedRung.encoderKey && !o.offered(onRung: pickedRung.id) {
+            notes.append("\(o.title) isn't used at \(pickedRung.label): it would cost more time than the faster setting saves.")
         }
         let pickedEncoder = recipe.rungs[pick.rung].encoderKey
         if pickedEncoder == "aomenc" { notes.append("This setting uses libaom: marginally smaller files than SVT-AV1's slowest presets, for a very long encode.") }

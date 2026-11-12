@@ -28,7 +28,7 @@
       "--color-range",
       "0",
       "--lp",
-      "{threads}"
+      "{svt_lp}"
     ],
     "hdrArgs": [
       "--mastering-display",
@@ -41,9 +41,9 @@
       "default": [],
       "grain": [
         "--film-grain",
-        "10",
+        "{svt_grain}",
         "--film-grain-denoise",
-        "0"
+        "1"
       ],
       "anime": [
         "--tune",

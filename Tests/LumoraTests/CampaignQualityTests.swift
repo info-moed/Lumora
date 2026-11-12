@@ -780,7 +780,7 @@ final class CampaignQualityTests: XCTestCase {
             XCTAssertLessThanOrEqual(fastest.seconds, best.seconds)
             XCTAssertLessThanOrEqual(best.seconds, maximum.seconds)
             XCTAssertLessThan(fastest.saving, maximum.saving)
-            XCTAssertEqual(fastest.choice.rungID, "p10")
+            XCTAssertEqual(fastest.choice.rungID, "p9")
             XCTAssertFalse(fastest.measured)
             XCTAssertTrue(fastest.notes.contains { $0.contains("Measure on this Mac") })
             for b: Double in [600, 3600, 21_600, 172_800] {
