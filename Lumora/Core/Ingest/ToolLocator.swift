@@ -90,6 +90,12 @@ extension Process {
             await Task.detached { self.waitUntilExit() }.value
         }
     }
+
+    /// `trackExit()` + `run()` in one call, for processes awaited with `exited()`.
+    func runWatched() throws {
+        trackExit()
+        try run()
+    }
 }
 
 private let processExitKey = UnsafeRawPointer(UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1))
@@ -116,8 +122,6 @@ private final class ProcessExitWaiter: @unchecked Sendable {
     }
 }
 
-/// Tool capability checks run external processes. Do them once, off the main thread, at launch, so views
-/// that show "installed / not installed" only ever read cached answers.
 /// Inputs are only ever local files or pipes. Restricting FFmpeg's protocols stops a hostile playlist-style
 /// file (HLS, concat, ffconcat…) from making it fetch other local or remote resources.
 enum FFHarden {
@@ -139,6 +143,8 @@ enum FFConcat {
     static func line(_ url: URL) -> String { "file '" + url.path.replacingOccurrences(of: "'", with: "'\\''") + "'" }
 }
 
+/// Tool capability checks run external processes. Do them once, off the main thread, at launch, so views
+/// that show "installed / not installed" only ever read cached answers.
 enum ToolProbe {
     static func warmUp() {
         DispatchQueue.global(qos: .utility).async {
