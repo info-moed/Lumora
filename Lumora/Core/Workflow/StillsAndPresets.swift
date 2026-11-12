@@ -3,9 +3,17 @@ import CoreImage
 import Metal
 import UniformTypeIdentifiers
 
-/// Exports the current frame as true HDR stills: 10-bit HEIC (native), HDR AVIF (via FFmpeg/libaom),
-/// plus a matching SDR JPEG for places that can't show HDR.
+/// Exports the current frame as true HDR stills: 10-bit HEIC (native), HDR AVIF (via FFmpeg: libaom 4:4:4, or
+/// SVT-AV1 4:2:0 when the FFmpeg build has no libaom), plus a matching SDR JPEG for places that can't show HDR.
 enum StillExporter {
+    /// The AV1 encoder this FFmpeg build offers for AVIF stills (nil: no FFmpeg, or no AV1 encoder in it).
+    static let avifEncoder: String? = {
+        guard ToolLocator.isAvailable("ffmpeg"),
+              let data = try? ToolLocator.run("ffmpeg", ["-hide_banner", "-encoders"]) else { return nil }
+        let list = String(decoding: data, as: UTF8.self)
+        return ["libaom-av1", "libsvtav1"].first { list.contains(" \($0) ") }
+    }()
+
     static func export(frame: MTLTexture, preset: PresetCandidate, params: GradeParams, sceneExposure: Float,
                        crop: SIMD4<Float>, target: OutputTarget, to base: URL) throws -> [URL] {
         let ctx = MetalContext.shared
@@ -29,15 +37,21 @@ enum StillExporter {
             let heic = base.appendingPathExtension("heic")
             try ctx.ciContext.writeHEIF10Representation(of: hdr, to: heic, colorSpace: hdrSpace, options: [:])
             out.append(heic)
-            if ToolLocator.isAvailable("ffmpeg") {
+            if let encoder = avifEncoder {
                 let png = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".png")
+                defer { try? FileManager.default.removeItem(at: png) }
                 try ctx.ciContext.writePNGRepresentation(of: hdr, to: png, format: .RGBA16, colorSpace: hdrSpace, options: [:])
                 let avif = base.appendingPathExtension("avif")
                 let trc = hdrTarget.kind == .hlg ? "arib-std-b67" : "smpte2084"
-                try ToolLocator.run("ffmpeg", ["-y", "-v", "error", "-i", png.path, "-c:v", "libaom-av1", "-still-picture", "1",
-                                               "-crf", "18", "-pix_fmt", "yuv444p10le", "-color_primaries", "bt2020",
-                                               "-color_trc", trc, "-colorspace", "bt2020nc", avif.path])
-                try? FileManager.default.removeItem(at: png)
+                let aom = encoder == "libaom-av1"
+                // setparams tags the frames themselves, so the AVIF's colour box carries BT.2020 + PQ/HLG
+                // (output options alone leave it "unknown" with some encoders).
+                var args = ["-y", "-v", "error", "-i", png.path,
+                            "-vf", "setparams=color_primaries=bt2020:color_trc=\(trc):colorspace=bt2020nc,format=\(aom ? "yuv444p10le" : "yuv420p10le")",
+                            "-c:v", encoder, "-crf", "18"]
+                args += aom ? ["-still-picture", "1"] : ["-svtav1-params", "avif=1"]
+                args += ["-color_primaries", "bt2020", "-color_trc", trc, "-colorspace", "bt2020nc", avif.path]
+                try ToolLocator.run("ffmpeg", args)
                 out.append(avif)
             }
         }

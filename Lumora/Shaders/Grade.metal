@@ -247,8 +247,11 @@ inline bool displayNits(float3 enc, constant GradeUniforms& u, thread float3& ou
     float3 o = u.workingToOutput * (u.inputToWorking * n);
     if (u.gamutCompress != 0) o = softGamut(o, u.outputLuma.rgb);
     // Soft knee above 75% of the target peak, so a 4000-nit master fits a 1000-nit target without hard clipping.
-    float k = 0.75f * u.peakNits, r = u.peakNits - k;
-    o = select(o, k + r * tanh((o - k) / r), o > k);
+    // SDR masters never exceed the target (100 nits in SDR, 203 inside HDR), so they pass through untouched.
+    if (u.inputTransfer == TF_PQ || u.inputTransfer == TF_HLG) {
+        float k = 0.75f * u.peakNits, r = u.peakNits - k;
+        o = select(o, k + r * tanh((o - k) / r), o > k);
+    }
     out = clamp(o, 0.0f, u.peakNits);
     return true;
 }
