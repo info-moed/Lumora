@@ -229,6 +229,7 @@ All paths are listed in the [Command-line guide](command-line.md#files-and-folde
 | UI | `UISmokeTests` build every window offscreen with a video loaded and draw it to PNG |
 | Hardware gating | `TestHardware` skips GPU/media-engine tests on machines without them (CI VMs) |
 | Dependencies | `scripts/deps.sh verify` (flags + build + tests), weekly in CI and optionally on your Mac |
+| Interpolation QC | `QCBenchmarkTests` (opt-in, `scripts/qc-bench.sh`): ground truth from a native 60 fps film (frames removed and rebuilt), every run-time candidate and feature per 64-px tile, the current checker against raw model output and a per-tile oracle, and `scripts/qc-bench.sh score <label>` to score a new checker through the real `FrameStream`. Sampled frames are listed in `Tests/LumoraTests/Resources/qc-bench-manifest.json`; the film and caches stay outside the repository |
 
 Test runs are headless: under XCTest, `LumoraMain` starts the app with no windows, no Dock icon and no focus change.
 

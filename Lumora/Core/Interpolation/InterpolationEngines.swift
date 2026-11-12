@@ -84,9 +84,10 @@ final class CoreMLInterpolator: InterpolationEngine {
     var proxyUniforms: GradeUniforms
     private let model: MLModel
     private let ctx = MetalContext.shared
-    private var dims = (tw: 0, th: 0, cw: 0, ch: 0)
-    private var bufA: MTLBuffer?, bufB: MTLBuffer?, bufOut: MTLBuffer?, bufFlow: MTLBuffer?, bufMask: MTLBuffer?
-    private var tileBuffer: MTLBuffer?
+    // Read-only from outside so the QC benchmark can measure the last prediction's motion, mask and tile counts.
+    private(set) var dims = (tw: 0, th: 0, cw: 0, ch: 0)
+    private(set) var bufA: MTLBuffer?, bufB: MTLBuffer?, bufOut: MTLBuffer?, bufFlow: MTLBuffer?, bufMask: MTLBuffer?
+    private(set) var tileBuffer: MTLBuffer?
 
     init(spec: InterpolationModelSpec, proxyUniforms: GradeUniforms, computeUnits: MLComputeUnits? = nil) throws {
         self.spec = spec
