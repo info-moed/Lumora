@@ -993,18 +993,24 @@ final class ExportEngine {
             }
         } catch {
             producer.cancel(); grader.cancel()
-            process.terminate()
+            // If the encoder quit on its own, its log says why; that beats a broken-pipe or cancellation error.
+            let exitedByItself = !process.isRunning
+            if process.isRunning { process.terminate() }
+            try? await Task.detached { process.waitUntilExit() }.value
+            if exitedByItself, process.terminationStatus != 0 { throw Self.encoderFailure(spec.binary, log: log) }
             throw error
         }
         _ = await grader.value
         let events = try await producer.value
         try handle.close()
         try await Task.detached { process.waitUntilExit() }.value
-        guard process.terminationStatus == 0 else {
-            let tail = (try? String(contentsOf: log, encoding: .utf8))?.suffix(1500) ?? ""
-            throw LumoraError.toolFailed(spec.binary, String(tail))
-        }
+        guard process.terminationStatus == 0 else { throw Self.encoderFailure(spec.binary, log: log) }
         return events
+    }
+
+    private static func encoderFailure(_ binary: String, log: URL) -> LumoraError {
+        let tail = (try? String(contentsOf: log, encoding: .utf8))?.suffix(1500) ?? ""
+        return LumoraError.toolFailed(binary, String(tail))
     }
 
     // MARK: - Join segments, carry audio + subtitles

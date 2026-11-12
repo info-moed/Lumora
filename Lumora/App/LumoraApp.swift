@@ -6,6 +6,8 @@ import AppKit
 @main
 enum LumoraMain {
     static func main() {
+        // An encoder that exits early must not take the app down with SIGPIPE; writes throw instead.
+        signal(SIGPIPE, SIG_IGN)
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
             let app = NSApplication.shared
             app.setActivationPolicy(.prohibited)
@@ -20,8 +22,6 @@ struct LumoraApp: App {
     @State private var model = AppModel()
 
     init() {
-        // An encoder that exits early must not take the app down with SIGPIPE; writes throw instead.
-        signal(SIGPIPE, SIG_IGN)
         Log.notice(.app, "Lumora started on \(ChipProfile.current.description), macOS \(ProcessInfo.processInfo.operatingSystemVersionString)")
         try? FileManager.default.createDirectory(at: InterpolationModelSpec.modelsFolder, withIntermediateDirectories: true)
     }
