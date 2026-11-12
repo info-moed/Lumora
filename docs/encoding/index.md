@@ -15,7 +15,7 @@ has_children: true
 
 A cross-encoder guide for SVT-AV1, x265, VVenC, libaom (aomenc), AVM (AV2) and Apple VideoToolbox, plus the HDR metadata tools around them (dovi_tool, hdr10plus_tool, MP4Box, mkvmerge, FFmpeg).
 
-**Versions this guide was written against:** SVT-AV1 v4.3.0, x265 4.3+1, VVenC (vvencapp) 1.14.0, aomenc 3.15.3, AVM v1.0.0, FFmpeg 9.0.2, dovi_tool 2.3.4, hdr10plus_tool 1.7.2, MP4Box (GPAC 26.07), mkvmerge v103.0. Encoder options and defaults change between releases, and many published guides describe forks or older versions. Check `--help` on your own build before trusting any flag here.
+**Versions this guide was written against:** SVT-AV1 v4.3.0, x265 4.3+1, VVenC (vvencapp) 1.14.0, aomenc 3.15.3, AVM v1.0.0 (installed and checked as GitLab tag research-v15.0.0), FFmpeg 9.0.2, dovi_tool 2.3.4, hdr10plus_tool 1.7.2, MP4Box (GPAC 26.07), mkvmerge v103.0. Encoder options and defaults change between releases, and many published guides describe forks or older versions. Check `--help` on your own build before trusting any flag here.
 
 **How to read the citations.** Each claim links to the source it came from. Links are reference-style, for example [svt-faq], and the full list is at the end. Statements about Lumora's own behavior cite the Lumora file they come from (paths are relative to the repository root). Where the sources disagree, both views are given. Where a statement is my inference rather than something a source states, it says so.
 
@@ -397,10 +397,11 @@ How the encoders relate to each other cannot be read from this table, because no
 ## Appendix: where Lumora's current settings differ from this guide
 
 These come from reading Lumora's code against the references above. None was confirmed by running the app.
+(Two earlier rows are fixed: aomenc and AVM now get HLG as `hlg`, and AVM gets grain as `--film-grain-table` with a
+`filmgrn2` table. The AVM side was verified by real AV2 exports; see [Features → AV2](../features.md#av2-avm).)
 
 | Area | What Lumora does | What the references say | Source |
 |---|---|---|---|
-| aomenc and AVM HLG | `encoders.json` maps HLG transfer to `arib-std-b67` for both | both encoders spell it `hlg` and reject `arib-std-b67` | [aom-argdefs], [avm-argdefs]; `Lumora/Resources/encoders.json` |
 | SVT-AV1 `--lp` | passes the core count (or cores per instance) | `--lp` is a 0-6 level; anything above 6 is clamped, so every instance runs at maximum parallelism and memory | [svt-handle]; `Lumora/Resources/encoders.json` |
 | SVT-AV1 luminance bias | `--luminance-qp-bias 25` offered for real life, heavy grain, low light and old anime regardless of output transfer | not for PQ (HDR10) | [cw-svt-p2]; `Lumora/Core/Quality/EncodeRecipes.swift` |
 | SVT-AV1 grain | the `grain` tune uses `--film-grain 10 --film-grain-denoise 0`; the recipe option uses 12/8/4 with denoise 1 | the two paths behave differently; the FAQ suggests up to about 10 for grainy animation, Lumora uses 4 for old anime | [svt-faq]; both Lumora files |
@@ -411,7 +412,6 @@ These come from reading Lumora's code against the references above. None was con
 | x265 flag probing | `supportedFlags()` runs `x265 --help` | `--help` omits about 50 flags that `--fullhelp` lists (compared on 4.3+1) | [x265-cli]; `EncodeRecipes.swift` |
 | VVenC HLG and metadata | `hdrArgs` are appended only for HDR10; no `MasteringDisplayColourVolume` or `MaxContentLightLevel` | HLG needs `--hdr hlg_2020`; HDR10 static metadata needs `--additional` | [vvenc-usage], [vvenc-cfg]; `encoders.json` |
 | VVenC SDR | no `--sdr` flag, so SDR encodes carry no color description and no brightness-dependent QPA | `--sdr sdr_709` gives explicit signaling | [vvenc-usage], [vvenc-bitalloc]; `encoders.json` |
-| AVM grain | passes `--fgs-table` | avmenc uses `--film-grain-table` with a `filmgrn2` table | [avm-argdefs], [avm-grain] |
 | FFmpeg MP4 fallback remux | passes neither `-tag:v hvc1` nor `-strict unofficial` | HEVC may be tagged `hev1`, and Dolby Vision loses `dvcC` | [ff-movenc], [apple-hls] |
 | MKV color | no mkvmerge color or mastering flags | mkvmerge leaves Matroska `Colour` empty for raw HEVC | [mkvmerge] |
 

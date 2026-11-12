@@ -90,7 +90,8 @@ Lumora looks for each helper tool in this order:
 2. `Lumora.app/Contents/Resources/bin/<name>`
 3. `/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin`, `~/bin`
 
-Tool names: `ffmpeg`, `ffprobe`, `SvtAv1EncApp`, `aomenc`, `x265`, `vvencapp`, `avmenc`, `MP4Box`, `mkvmerge`,
+Tool names: `ffmpeg`, `ffprobe`, `SvtAv1EncApp`, `aomenc`, `x265`, `vvencapp`, `avmenc` (and `avmdec`, used only by
+the tests), `MP4Box`, `mkvmerge`,
 `dovi_tool`, `hdr10plus_tool`, `vmaf`, `ssimulacra2_rs`, `AVQT`.
 
 Use a custom FFmpeg build:
@@ -374,6 +375,25 @@ Dolby Vision: extract the RPU and summarize it:
 
 ```bash
 ffmpeg -v error -i output.mkv -map 0:v:0 -c:v copy -bsf:v hevc_mp4toannexb -f hevc - | dovi_tool extract-rpu - -o rpu.bin && dovi_tool info -i rpu.bin --summary
+```
+
+AV2 (`.obu`): FFmpeg can't read AV2, so decode with `avmdec` (built next to `avmenc` by
+`scripts/install-encoders.sh`). The Y4M header gives the size, chroma format and bit depth, and counting `FRAME`
+markers gives the frame count:
+
+```bash
+avmdec output.obu -o decoded.y4m && head -c 80 decoded.y4m | head -1 && grep -c FRAME decoded.y4m
+avmdec --skip-film-grain output.obu -o clean.y4m      # the picture without synthesized film grain
+```
+
+`avmdec` writes no frame rate into the Y4M (`F0:0`), so compare decoded frames by index: FFmpeg's `psnr` filter pairs
+frames by time and would compare the wrong ones. The color description isn't in the Y4M either; Lumora checks it in
+the stream after every AV2 export and fails the export if it is wrong.
+
+To rebuild AVM at a newer release tag:
+
+```bash
+AVM_TAG=research-v15.0.0 AVM_REBUILD=1 bash scripts/install-encoders.sh
 ```
 
 HDR10+: extract dynamic metadata:

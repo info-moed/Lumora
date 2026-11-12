@@ -849,13 +849,15 @@ final class CampaignIngestTests: XCTestCase {
             XCTAssertEqual(ext, "braw")
             XCTAssertTrue(e.localizedDescription.contains("plug-in"), e.localizedDescription)
         }
-        // AV2's reference encoder is not installed on this Mac: absence must read as "not installed", not a crash.
-        XCTAssertFalse(ToolLocator.isAvailable("avmenc"))
-        XCTAssertNil(ToolLocator.url(for: "avmenc"))
-        XCTAssertThrowsError(try ToolLocator.run("avmenc", ["--help"])) { e in
-            guard case LumoraError.missingTool(let t)? = e as? LumoraError else { return XCTFail("wrong error \(e)") }
-            XCTAssertEqual(t, "avmenc")
-            XCTAssertTrue(e.localizedDescription.contains("isn't installed"))
+        // Without AV2's reference encoder, absence must read as "not installed", not a crash (skipped where
+        // avmenc is installed; AV2ExportTests covers it then).
+        if !ToolLocator.isAvailable("avmenc") {
+            XCTAssertNil(ToolLocator.url(for: "avmenc"))
+            XCTAssertThrowsError(try ToolLocator.run("avmenc", ["--help"])) { e in
+                guard case LumoraError.missingTool(let t)? = e as? LumoraError else { return XCTFail("wrong error \(e)") }
+                XCTAssertEqual(t, "avmenc")
+                XCTAssertTrue(e.localizedDescription.contains("isn't installed"))
+            }
         }
         // A file that isn't video at all.
         let junk = Self.work.appendingPathComponent("junk.mp4")

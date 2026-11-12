@@ -989,7 +989,7 @@ final class CampaignAppFlowTests: XCTestCase {
     }
 
     func testAV2AbsenceIsReportedCleanly() async throws {
-        XCTAssertFalse(ToolLocator.isAvailable("avmenc"), "avmenc is installed here; this test expects it absent")
+        try XCTSkipIf(ToolLocator.isAvailable("avmenc"), "avmenc is installed here; this test covers its absence")
         XCTAssertFalse(Codec.av2.available)
         let m = try await opened(try Self.clip("sdr"))
         m.codec = .av2; m.bitDepth = 10; m.chroma = .c420; m.delivery = .hdr10

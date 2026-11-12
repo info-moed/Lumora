@@ -150,8 +150,10 @@ brew install svt-av1
 ```
 
 > **Notes**
-> - The script also tries to build **AV2 (AVM)** from source. That's slow and only needed for the experimental AV2
->   export. If it fails, everything else still works.
+> - The script also builds **AV2 (AVM)**, the `avmenc` encoder and `avmdec` decoder, from the official AVM repository
+>   (release tag `research-v15.0.0`) into `~/.local/bin`. It needs `cmake` (installed with Homebrew if missing) and
+>   takes about 10 minutes. It's only needed for the experimental AV2 export, which runs at minutes per frame. If it
+>   fails, everything else still works.
 > - Homebrew formula names change occasionally. If one isn't found, try `brew search <name>`.
 > - You can install encoders any time later; Lumora detects them when it starts.
 

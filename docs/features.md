@@ -88,7 +88,7 @@ The preview writes PQ or HLG straight into an EDR `CAMetalLayer` with `CAEDRMeta
 | AV1 | SVT-AV1 | 10 | 4:2:0 | HDR10, HLG |
 | AV1 Pro | libaom | 10/12 (12-bit: 4:2:0 only) | 4:2:0/4:2:2/4:4:4 | HDR10, HLG |
 | H.266 / VVC | VVenC | 10 | 4:2:0 | HDR10, HLG |
-| AV2 (experimental) | AVM reference | 10 (12 experimental) | 4:2:0 | HDR10, HLG |
+| AV2 (experimental) | AVM reference | 10 | 4:2:0/4:2:2/4:4:4 | HDR10, HLG |
 | HEVC Main 12 | x265 | 10/12 | 4:2:0/4:2:2/4:4:4 | HDR10, HLG, HDR10+ |
 
 H.264 was dropped because Apple's hardware encoder for it is 8-bit only.
@@ -102,10 +102,65 @@ Notes from the codec test matrix (`CampaignCodecTests`):
 - x265 and VVenC write raw streams without timestamps; Lumora wraps them with MP4Box (or mkvmerge for HEVC) before muxing.
 - ProRes 4444 XQ is always coded at 12 bits; choosing 10-bit only lowers the grading precision.
 
-AV2 is an experimental, raw `.obu` export only, for two reasons:
+### AV2 (AVM)
+
+AV2 is an experimental, raw `.obu` export (video only, no audio), for two reasons:
 
 - The AV2 specification was finalized in mid-2026, but only the slow reference encoder exists.
-- There is no MP4 binding for AV2 yet.
+- There is no MP4 or Matroska binding for AV2 yet, and FFmpeg can't read it.
+
+Lumora drives `avmenc` from AVM `research-v15.0.0` (the AV2 v1.0 reference), which
+`scripts/install-encoders.sh` builds from the official repository into `~/.local/bin` together with the `avmdec`
+decoder. What an AV2 export does, and how it was checked (`AV2ExportTests`, every export decoded with `avmdec`):
+
+- **Color signaling.** SDR is written as BT.709, HDR10 as BT.2020 + PQ and HLG as BT.2020 + HLG (`hlg`; AVM rejects
+  FFmpeg's `arib-std-b67` name), limited range, chroma siting "center" (how Lumora averages chroma). After each export
+  Lumora reads the stream's content interpretation OBU back (`AV2Stream`) and fails the export if the signaling is
+  wrong. avmenc can't write HDR10 mastering-display or MaxCLL metadata, so PQ files carry the color description only.
+- **Bit depth and chroma.** 10-bit only, in 4:2:0, 4:2:2 and 4:4:4 (AVM picks profile 0, 3 or 4 from the input).
+  AV2 v1.0 has no 12-bit profile: AVM's 12-bit mode is a test-only build option that no conforming decoder plays, so
+  Lumora doesn't offer it.
+- **One pass.** AVM has no two-pass mode; Lumora passes `--passes=1` explicitly (libaom's two-pass default writes an
+  empty file when fed through a pipe, and Lumora always pipes frames in).
+- **Film grain.** Film texture and the measured-grain option work on AV2. AVM reads its own `filmgrn2` table format,
+  which differs from AV1's `filmgrn1` (13 parameters, with a grain block size), so Lumora writes `filmgrn2` for AV2.
+  An AV1 table is silently ignored by AVM: it encodes with no grain at all. Measured: a table asking for σ 4.06 code
+  values decodes to σ 4.12, and `avmdec --skip-film-grain` returns the clean picture.
+- **Long exports** run as several segments in parallel and are joined by concatenating their OBU streams (each starts
+  with its own sequence header and key frame); `avmdec` plays the joined stream through.
+
+Measured results (256×144 test clips, speed 6, quality slider at the middle, `--qp 140`), decoded and compared frame
+by frame with the same render exported as ProRes 4444 XQ:
+
+| Export | Frames | Luma PSNR vs ProRes (mean / worst) | Signaling read back |
+|---|---|---|---|
+| SDR 4:2:0 | 12 of 12 | 49.1 / 39.3 dB | BT.709 (description 1) |
+| HDR10 4:2:0 | 12 of 12 | 48.0 / 39.3 dB | BT.2020 PQ (description 2) |
+| HLG 4:2:0 | 12 of 12 | 49.3 / 38.8 dB | BT.2020 HLG (description 3) |
+| SDR 4:2:2 | 12 of 12 | 49.0 / 39.5 dB | BT.709 |
+| HDR10 4:4:4 | 12 of 12 | 48.1 / 39.5 dB | BT.2020 PQ |
+
+**Speed: plan on minutes per frame.** AVM is a reference encoder, built to show what the codec can do, not to be
+fast. Measured on a shared M-series Mac (other jobs running, AVM at low priority):
+
+| Clip | Setting | Speed |
+|---|---|---|
+| 1280×534 live action, 12 frames | speed 5, 4 threads | 0.0066 fps (1,808 s; about 2.5 min per frame), 39.6 dB PSNR at `--qp 135` |
+| 320×136 live action, 24 frames | speed 6, 2 threads | 0.036 fps (664 s) |
+| 256×144 test pattern, 12 frames | speed 6, whole export | 0.25–0.40 fps (30–48 s) |
+| 320×136 live action, 12 frames, one thread | speed 6 / 5 / 4 | 37.5 / 39.2 / 51.1 CPU-seconds per frame |
+
+Speed 5 and 4 buy little: at equal PSNR (two-point BD-rate over `--qp` 120 and 160 on that clip), speed 5 files are
+0.4% smaller for 4% more time and speed 4 files 4% smaller for 36% more time.
+
+At those rates one minute of 24 fps 720p video takes roughly two to three days on one encoder instance, and 1080p
+about twice that. Lumora runs several instances in parallel on long exports (one per two cores), which helps, but
+AV2 stays practical only for short clips and experiments. Speed 6 is the default because it is AVM's fastest
+distinct setting (7 to 9 behave like 6); the planner moves to speed 5 or 4 only when the export still fits its time
+limit.
+
+Not available with AV2: quality targets (VMAF scoring needs a decoder Lumora can read frames from), slow motion, and
+audio (there is no container to put it in).
 
 ---
 

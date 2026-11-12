@@ -230,7 +230,7 @@ struct DeliverPanel: View {
         TimeQualitySection()
         DisplayTargetSection()
         PackageSection()
-        if model.codec == .av1 || model.codec == .av1Pro {
+        if [.av1, .av1Pro, .av2].contains(model.codec) {
             InspectorSection(title: "Film texture") {
                 Picker("Restore film texture", selection: $model.filmTexture) {
                     ForEach(FilmTexture.allCases) { Text($0.rawValue).tag($0) }
@@ -238,7 +238,7 @@ struct DeliverPanel: View {
                 if model.filmTexture != .off {
                     ParamSlider(label: "Strength", value: $model.filmTextureStrength, range: 0.3...2, defaultValue: 1)
                 }
-                Text("Adds organic grain to over-processed or grain-scrubbed transfers. Stored as a few bytes of AV1 grain data and re-created by the player, so it costs no bitrate. Quality checks score the picture without it.")
+                Text("Adds organic grain to over-processed or grain-scrubbed transfers. Stored as a few bytes of AV1 or AV2 grain data and re-created by the player, so it costs no bitrate. Quality checks score the picture without it.")
                     .font(Theme.note).foregroundStyle(.secondary)
             }
         }

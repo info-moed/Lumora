@@ -43,7 +43,9 @@ enum Codec: String, CaseIterable, Identifiable, Codable, Hashable {
     var bitDepths: [Int] {
         switch self {
         case .prores4444XQ, .av1Pro, .hevc12: return [12, 10]
-        case .av2: return [10, 12]   // 12-bit: experimental in the AVM reference encoder
+        // AV2 v1.0 defines 10-bit profiles only. AVM's 12-bit mode is a test-only fake profile behind a build switch
+        // (CONFIG_TESTONLY_12BIT_SUPPORT, off by default), so no conforming decoder would play it.
+        case .av2: return [10]
         default: return [10]
         }
     }
@@ -53,6 +55,7 @@ enum Codec: String, CaseIterable, Identifiable, Codable, Hashable {
         case .prores4444XQ: return [.c444]
         case .av1Pro: return [.c420, .c422, .c444]
         case .hevc12: return [.c420, .c422, .c444]
+        case .av2: return [.c420, .c422, .c444]     // AVM picks the 4:2:2 (3) or 4:4:4 (4) profile from the input
         default: return [.c420]
         }
     }
