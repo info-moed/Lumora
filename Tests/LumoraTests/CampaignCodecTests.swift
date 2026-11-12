@@ -400,10 +400,10 @@ final class CampaignCodecTests: XCTestCase {
         XCTAssertTrue(msg(.hevc, 10, .c422, .sdr).contains("4:2:0"))
         XCTAssertTrue(msg(.av1, 12, .c420, .sdr).contains("can't do 12-bit"))
         XCTAssertTrue(msg(.av1Pro, 8, .c420, .sdr).contains("can't do 8-bit"))
-        // aomenc refuses 12-bit 4:2:2 / 4:4:4; 12-bit 4:2:0 and 10-bit 4:4:4 stay available.
-        XCTAssertTrue(msg(.av1Pro, 12, .c444, .hdr10).contains("can't encode 12-bit 4:4:4"))
-        XCTAssertTrue(msg(.av1Pro, 12, .c422, .sdr).contains("can't encode 12-bit 4:2:2"))
-        XCTAssertFalse(Codec.av1Pro.supports(bitDepth: 12, chroma: .c444))
+        // libaom encodes 12-bit 4:2:2 / 4:4:4 once Lumora stops forcing --profile=2 (tuning-aomenc.md).
+        XCTAssertEqual(msg(.av1Pro, 12, .c444, .hdr10), "<accepted>")
+        XCTAssertEqual(msg(.av1Pro, 12, .c422, .sdr), "<accepted>")
+        XCTAssertTrue(Codec.av1Pro.supports(bitDepth: 12, chroma: .c444))
         XCTAssertTrue(Codec.av1Pro.supports(bitDepth: 12, chroma: .c420))
         XCTAssertTrue(Codec.av1Pro.supports(bitDepth: 10, chroma: .c444))
         XCTAssertTrue(Codec.hevc12.supports(bitDepth: 12, chroma: .c444))

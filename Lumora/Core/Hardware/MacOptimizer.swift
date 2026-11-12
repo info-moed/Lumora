@@ -255,15 +255,23 @@ final class MacOptimizer {
         return findings.isEmpty ? "no software encoders installed" : findings.joined(separator: "; ")
     }
 
+    /// Placeholder values for a benchmark encode. Every placeholder in encoders.json needs one: an unfilled
+    /// `{vvenc_sdr}` reached vvencapp verbatim, which refused it, so VVenC was never measured.
+    nonisolated static func benchmarkValues(spec: EncoderSpec, inArg: String, out: String, preset: String, threads: Int) -> [String: String] {
+        ["in": inArg, "out": out, "w": "1920", "h": "1080", "fps_num": "24", "fps_den": "1", "bits": "10",
+         "preset": preset, "quality": spec.qualityValue(0.8), "threads": "\(threads)", "cp": "9", "tc": "16", "mc": "9",
+         "cp_name": "bt2020", "tc_name": "smpte2084", "mc_name": "bt2020ncl", "vvenc_hdr": "off", "vvenc_sdr": "sdr_709",
+         "vvenc_additional": "", "vvenc_qpa": "1", "maxcll": "1000",
+         "maxfall": "400", "svt_mastering": "", "x265_mastering": "", "aom_profile": "0", "x265_profile": "main10", "grain_table": "",
+         "svt_grain": "8"]
+    }
+
     nonisolated private static func cliEncode(spec: EncoderSpec, preset: String, threads: Int, frames: Int, tag: String) async throws {
         let dir = try ScratchManager.jobDirectory("cpu")
         defer { try? FileManager.default.removeItem(at: dir) }
         let out = dir.appendingPathComponent("o.\(spec.ext)")
         let inArg = spec.inputArg.replacingOccurrences(of: "{fifo}", with: dir.appendingPathComponent("in").path)
-        let values = ["in": inArg, "out": out.path, "w": "1920", "h": "1080", "fps_num": "24", "fps_den": "1", "bits": "10",
-                      "preset": preset, "quality": spec.qualityValue(0.8), "threads": "\(threads)", "cp": "9", "tc": "16", "mc": "9",
-                      "cp_name": "bt2020", "tc_name": "smpte2084", "mc_name": "bt2020ncl", "vvenc_hdr": "off", "maxcll": "1000",
-                      "maxfall": "400", "svt_mastering": "", "x265_mastering": "", "aom_profile": "0", "x265_profile": "main10", "grain_table": ""]
+        let values = benchmarkValues(spec: spec, inArg: inArg, out: out.path, preset: preset, threads: threads)
         let proc = Process()
         proc.executableURL = ToolLocator.url(for: spec.binary)
         proc.arguments = spec.render(values, hdr: false)

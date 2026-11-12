@@ -252,7 +252,7 @@
           "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
         }
       ],
-      "lumora": null,
+      "lumora": "Passed as '--additional {vvenc_additional}': for HDR10 'MasteringDisplayColourVolume=<x265-style integers> MaxContentLightLevel=<cll>,<fall>' (space-separated; both reach the stream as SEI, checked with ffprobe), for HLG 'TransferCharacteristics=18', otherwise empty.",
       "notes": "Pairs can be separated with ':' or with spaces; the v1.14.0 parser treats both as separators (VVEncAppCfg.h, and a space-separated test worked). The Usage wiki writes examples such as 'hdr=pq:Name=value'. Any long option of vvencFFapp can be used here; this entry only documents the ones the help lists. The help claims that setting ColourPrimaries/TransferCharacteristics/MatrixCoefficients this way corresponds to '--hdr pq_2020', but a local test shows the encoder stays in SDR mode (only the VUI fields change)."
     },
     {
@@ -280,7 +280,7 @@
           "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
         }
       ],
-      "lumora": "Passed as '-i {in}', where {in} is a FIFO named '<fifo>.y4m', so Y4M is detected from the extension.",
+      "lumora": "Passed as '-i {in}' with {in} = '-': Lumora pipes Y4M into vvencapp on stdin (encoders.json vvenc.input 'stdin').",
       "notes": "Y4M is detected only by the .y4m extension: a Y4M file renamed to .yuv was read as raw 1920x1080 video and encoded 0 frames (local test). Piping Y4M through '-i -' without --y4m likewise encodes zero frames (codecs.wiki, confirmed locally). Two-pass rate control in one call cannot read from stdin; vvencapp exits with an error, so use -p 1 or a file (VVEncAppCfg.h, confirmed locally)."
     },
     {
@@ -501,7 +501,7 @@
           "source": "https://codecs.wiki/docs/encoders/VVenC"
         }
       ],
-      "lumora": "Not passed; Lumora names its FIFO with a .y4m extension, so detection by extension applies.",
+      "lumora": "Always passed: piped Y4M is only recognized with --y4m, otherwise vvencapp encodes zero frames.",
       "notes": ""
     },
     {
@@ -585,7 +585,7 @@
           "source": "https://arxiv.org/abs/2206.13483"
         }
       ],
-      "lumora": "Passed as '--preset {preset}'. EncodeRecipes offers rungs faster/fast/medium/slow/slower (summary: 'slow is the efficient choice'); encoders.json default is medium.",
+      "lumora": "Passed as '--preset {preset}'. encoders.json default medium; the planner ladder offers faster, fast, medium, slow, slower. Seeds measured on an M3 Max (CPU time per frame relative to faster / size saved against faster at equal VMAF and XPSNR): fast 0.40 / 10%, medium 0.118 / 17%, slow 0.037 / 20%, slower 0.0085 / 23%. medium stays the default: slow costs 3.2x its time for about 4% more (docs/encoding/tuning-vvenc.md).",
       "notes": "The source also accepts 0-4 for faster..slower, 'medium_lowdecenergy' in lower case, and the internal values 'none', 'firstpass' and 'tooltest', which are not meant for normal use (VVEncAppCfg.h). The Presets wiki notes LMCS (reshaper) is deprecated and off in 1.14.0."
     },
     {
@@ -785,7 +785,7 @@
           "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Encoder-Performance"
         }
       ],
-      "lumora": "Not passed; Lumora relies on the vvencapp default (on). Its target metric is VMAF, which differs from XPSNR, so measured scores may not reflect what QPA optimizes for.",
+      "lumora": "Passed as '--qpa {vvenc_qpa}' from EncodeRecipes.vvencQPA: off (0) for HDR10 (PQ) exports and for the low-light content type, on (1, the vvencapp default) everywhere else. Off was smaller at equal VMAF and at equal XPSNR on low light and on live action graded to PQ, and costs about 25% less CPU time; on other content QPA's XPSNR gain outweighs the VMAF loss (docs/encoding/tuning-vvenc.md).",
       "notes": "On by default in vvencapp. vvencFFapp defaults to off (Usage wiki), and in the library vvenc_config_default leaves it off while vvenc_init_default turns it on. Required for capped CQF (-q with -m). Set the true frame rate when it is on. In the v1.14.0 source the brightness offset runs for any --hdr or --sdr mode, not only HDR (BitAllocation.cpp)."
     },
     {
@@ -813,7 +813,7 @@
           "source": "https://raw.githubusercontent.com/fraunhoferhhi/vvenc/v1.14.0/source/Lib/vvenc/vvencCfg.cpp"
         }
       ],
-      "lumora": "Passed as '--threads {threads}'. For clips over 480 frames ChipProfile runs about cpuCores/4 VVenC instances side by side (unless a measured profile overrides it), and each gets cpuCores divided by the instance count, about 4 threads.",
+      "lumora": "Passed as '--threads {threads}'. For clips over 480 frames ChipProfile runs cpuCores/4 instances of about 4 threads each; up to the resolution default (8 at 720p and above) the output is bit-identical to any lower thread count. A single instance with more threads than that switches on tiles and IFP through --mtprofile, which made the stream about 3% larger for 1.95x the speed on 1920x800 (docs/encoding/tuning-vvenc.md).",
       "notes": "0 turns worker threads off; the allowed range is -1 to 256 (vvencCfg.cpp). The 12-thread step for 5K and up was added in v1.11.0."
     },
     {
@@ -839,7 +839,7 @@
           "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
         }
       ],
-      "lumora": null,
+      "lumora": "Not passed (auto) (docs/encoding/tuning-vvenc.md).",
       "notes": "Added in v1.12.0. Explicit --tiles or --ifp values override what the profile would choose."
     },
     {
@@ -901,7 +901,7 @@
           "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
         }
       ],
-      "lumora": null,
+      "lumora": "Passed as '--refreshsec 5' (the default is 1 s). On a 20 s live-action clip with two cuts, a 5 s intra period was 21% smaller (VMAF and XPSNR BD-rate) than 1 s, and 2 s was 13% smaller; 5 s matches SVT-AV1's default keyframe spacing (docs/encoding/tuning-vvenc.md).",
       "notes": "Sources disagree on scene cuts. codecs.wiki says VVenC does not detect them. The 1.14.0 source enables slice type adaptation (STA) by default for GOP 32, which turns a temporal-layer-0 B picture into an I picture after a scene cut; in that default mode the intra period is not restarted (STA=2 through --additional restarts it)."
     },
     {
@@ -993,7 +993,7 @@
           "source": "https://raw.githubusercontent.com/fraunhoferhhi/vvenc/v1.14.0/source/Lib/vvenc/vvencCfg.cpp"
         }
       ],
-      "lumora": null,
+      "lumora": "Not passed. Explicit 2x2 tiles at 4 threads were 2% larger for 10% less wall time (docs/encoding/tuning-vvenc.md).",
       "notes": "The Usage wiki's option-mapping table still lists --tiles with a default of 1x1; since v1.12.0 the default is -1x-1 (auto, decided by --mtprofile), as the installed help shows. The option itself was added in v1.3.0."
     },
     {
@@ -1167,7 +1167,7 @@
           "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
         }
       ],
-      "lumora": "Not passed. Lumora appends its hdrArgs only for HDR10 targets, so SDR encodes get neither --sdr nor --hdr and carry no color description.",
+      "lumora": "Passed as '--sdr {vvenc_sdr}': sdr_709 for SDR exports (BT.709 primaries, transfer and matrix in the VUI, checked with ffprobe), off for HDR. Note that an --sdr mode also turns on the brightness-dependent QPA offset.",
       "notes": "Added in v1.7.0. Cannot be combined with --hdr (the app rejects it). sdr_2020 also switches to top-left chroma siting. In the v1.14.0 source an --sdr mode also enables the brightness-dependent QPA offset used for HDR (BitAllocation.cpp, source reading)."
     },
     {
@@ -1199,7 +1199,7 @@
           "source": "https://raw.githubusercontent.com/fraunhoferhhi/vvenc/v1.14.0/source/Lib/vvenc/vvencCfg.cpp"
         }
       ],
-      "lumora": "Lumora's encoders.json maps PQ to 'pq_2020' and HLG to 'hlg_2020', but ExportEngine appends hdrArgs only when the target is HDR10. HLG exports therefore get no --hdr flag and no HLG signaling, and Lumora adds no MasteringDisplayColourVolume or MaxContentLightLevel, so its HDR10 output has no static metadata SEI.",
+      "lumora": "Passed as '--hdr {vvenc_hdr}': pq_2020 for HDR10 and hlg_2020 for HLG (encoders.json colorNames), off for SDR. Checked with ffprobe: PQ streams are tagged bt2020 / smpte2084 / bt2020nc, HLG streams bt2020 / arib-std-b67 / bt2020nc.",
       "notes": "Fixed color fields only fill values left at 'unknown', so explicit ColourPrimaries/MatrixCoefficients given in --additional take priority (PQ always forces smpte2084). Requires 10-bit internal and 4:2:0. The source also has a 'user defined' HDR mode that is not reachable through this flag."
     },
     {
@@ -1417,7 +1417,7 @@
           "source": "https://raw.githubusercontent.com/fraunhoferhhi/vvenc/v1.14.0/source/Lib/vvenc/vvencCfg.cpp"
         }
       ],
-      "lumora": null,
+      "lumora": "Set to 18 through --additional on HLG exports, so the VUI says HLG; with --hdr hlg_2020 alone it says BT.2020 10-bit and only an SEI names HLG (checked with ffprobe).",
       "notes": "PQ modes always force smpte2084, whatever is given here. Setting this alone does not enable the encoder's HDR mode."
     },
     {
@@ -1533,7 +1533,7 @@
           "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
         }
       ],
-      "lumora": null,
+      "lumora": "Set through --additional on HDR10 exports from HDRMetadata.vvencMastering (measured or target metadata).",
       "notes": "Written in every access unit when set (EncGOP.cpp). With --hdr off it switches the library to PQ mode, BT.709 unless ColourPrimaries=bt2020."
     },
     {
@@ -1559,7 +1559,7 @@
           "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
         }
       ],
-      "lumora": null,
+      "lumora": "Set through --additional on HDR10 exports; each value is at least 1, since VVenC skips the SEI when either is zero.",
       "notes": "Both values must be non-zero or the SEI is skipped (EncGOP.cpp). The help says up to 65535, but the 1.14.0 source rejects values above 10000 (confirmed locally)."
     },
     {

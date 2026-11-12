@@ -50,7 +50,6 @@ enum EncodeRecipes {
         let grainy = [.realLifeHeavyGrain, .oldAnime, .lowLightNoisy].contains(kind)
         switch codec {
         case .av1:
-            let grainLevel = kind == .realLifeHeavyGrain ? 12 : (anime ? 4 : 8)     // libaom --denoise-noise-level
             let svtGrain = svtGrainLevel(kind)
             var opts: [EncodeOption] = [
                 EncodeOption(id: "varboost", title: "Protect flat and dark areas",
@@ -102,12 +101,11 @@ enum EncodeRecipes {
             ]
             // libaom options (used only on the libaom rungs of this ladder).
             opts += [
-                EncodeOption(id: "aomqm10", title: "Quantization matrices (libaom)", detail: "Small efficiency gain.",
-                             args: ["--enable-qm=1"], probeFlag: "--enable-qm", vmafSaving: 0.015, encoderKey: "aomenc"),
-                EncodeOption(id: "aomgrain10", title: "Film grain synthesis (libaom)",
-                             detail: "libaom's noise model removes the grain and re-creates it on playback; scored with the synthetic grain stripped.",
-                             args: ["--denoise-noise-level=\(grainLevel)"], probeFlag: "--denoise-noise-level", speedCost: 1.05,
-                             vmafSaving: grainy ? 0.13 : 0.04, recommendedFor: [.realLifeHeavyGrain, .oldAnime, .lowLightNoisy], encoderKey: "aomenc"),
+                EncodeOption(id: "aomqm10", title: "Quantization matrices (libaom)", detail: EncodeRecipes.aomQMDetail,
+                             args: ["--enable-qm=1"], probeFlag: "--enable-qm", speedCost: 1.07, recommendedFor: [], encoderKey: "aomenc"),
+                EncodeOption(id: "aomgrain10", title: "Film grain synthesis (libaom)", detail: EncodeRecipes.aomGrainDetail,
+                             args: ["--denoise-noise-level=\(EncodeRecipes.aomGrainLevel)"], probeFlag: "--denoise-noise-level",
+                             speedCost: EncodeRecipes.aomGrainSpeedCost, recommendedFor: [], encoderKey: "aomenc"),
                 EncodeOption(id: "aomtable10", title: "Grain measured from this film (libaom)",
                              detail: "A grain table measured by Lumora instead of libaom's own estimate.",
                              args: ["--film-grain-table={grain_table}"], probeFlag: "--film-grain-table", visualOnly: true,
@@ -119,7 +117,7 @@ enum EncodeRecipes {
             }
             return EncodeRecipe(codec: codec, kind: kind,
                                 title: "AV1 archival · \(kind.displayName.lowercased())",
-                                summary: "SVT-AV1 for nearly everything (preset 4 is the balance point, 2 the efficient high end). For archival runs with days to spare, the ladder continues into libaom, which is marginally smaller at its slowest settings.",
+                                summary: "SVT-AV1 for nearly everything (preset 4 is the balance point, 2 the efficient high end). For archival runs with days to spare, the ladder continues into libaom: cpu-used 4 is about as small as preset 1, and 3 and 2 go a little further.",
                                 rungs: [
                                     // SVT-AV1 speeds: CPU time per frame relative to preset 10, measured on an M3 Max over
                                     // four clips (tuning-svtav1.md). Preset 10 itself is no longer offered: SVT-AV1 warns that
@@ -136,12 +134,16 @@ enum EncodeRecipes {
                                     EncodeRung(id: "p2", label: "Preset 2", presetValue: "2", seedSpeed: 0.049, seedSaving: 0.222),
                                     EncodeRung(id: "p1", label: "Preset 1", presetValue: "1", seedSpeed: 0.026, seedSaving: 0.226),
                                     EncodeRung(id: "p0", label: "Preset 0", presetValue: "0", seedSpeed: 0.010, seedSaving: 0.229),
-                                    // libaom: marginally smaller at its slowest settings, for a very large time cost.
-                                    EncodeRung(id: "aom4", label: "libaom cpu-used 4", presetValue: "4", seedSpeed: 0.020, seedSaving: 0.214, encoderKey: "aomenc"),
-                                    EncodeRung(id: "aom3", label: "libaom cpu-used 3", presetValue: "3", seedSpeed: 0.011, seedSaving: 0.224, encoderKey: "aomenc"),
-                                    EncodeRung(id: "aom2", label: "libaom cpu-used 2", presetValue: "2", seedSpeed: 0.005, seedSaving: 0.231, encoderKey: "aomenc"),
-                                    EncodeRung(id: "aom1", label: "libaom cpu-used 1", presetValue: "1", seedSpeed: 0.0025, seedSaving: 0.236, encoderKey: "aomenc"),
-                                    EncodeRung(id: "aom0", label: "libaom cpu-used 0", presetValue: "0", seedSpeed: 0.0010, seedSaving: 0.240, encoderKey: "aomenc")
+                                    // libaom, measured against SVT-AV1 presets 10 and 4 on the same four clips (tuning-aomenc.md):
+                                    // CPU time per frame relative to preset 10, and the saving placed on the SVT-AV1 seed scale
+                                    // above through SVT-AV1's own measured-to-seed mapping. cpu-used 4 is about as small as
+                                    // preset 1 at a similar speed; 3 and 2 go further. cpu-used 1 and 0 were not measured:
+                                    // their speeds keep the old step from cpu-used 2, their savings the old seeds.
+                                    EncodeRung(id: "aom4", label: "libaom cpu-used 4", presetValue: "4", seedSpeed: 0.033, seedSaving: 0.227, encoderKey: "aomenc"),
+                                    EncodeRung(id: "aom3", label: "libaom cpu-used 3", presetValue: "3", seedSpeed: 0.021, seedSaving: 0.229, encoderKey: "aomenc"),
+                                    EncodeRung(id: "aom2", label: "libaom cpu-used 2", presetValue: "2", seedSpeed: 0.008, seedSaving: 0.233, encoderKey: "aomenc"),
+                                    EncodeRung(id: "aom1", label: "libaom cpu-used 1", presetValue: "1", seedSpeed: 0.004, seedSaving: 0.236, encoderKey: "aomenc"),
+                                    EncodeRung(id: "aom0", label: "libaom cpu-used 0", presetValue: "0", seedSpeed: 0.0016, seedSaving: 0.240, encoderKey: "aomenc")
                                 ],
                                 options: opts, baseFps1080: 55)
         case .hevc12:
@@ -186,29 +188,35 @@ enum EncodeRecipes {
         case .av1Pro:
             return EncodeRecipe(codec: codec, kind: kind, title: "AV1 12-bit / 4:4:4 (libaom)",
                                 summary: "libaom: slower than SVT-AV1 but supports 12-bit and full color.",
+                                // CPU time per frame relative to cpu-used 6 and the size saved against it at equal quality (mean
+                                // of the VMAF and XPSNR BD-rates), measured on an M3 Max over four clips at --threads=4
+                                // (tuning-aomenc.md). cpu-used 5 buys little over 6; 4 is where libaom's search opens up.
                                 rungs: [
                                     EncodeRung(id: "c6", label: "cpu-used 6", presetValue: "6", seedSpeed: 1.0, seedSaving: 0),
-                                    EncodeRung(id: "c5", label: "cpu-used 5", presetValue: "5", seedSpeed: 0.5, seedSaving: 0.03),
-                                    EncodeRung(id: "c4", label: "cpu-used 4", presetValue: "4", seedSpeed: 0.25, seedSaving: 0.06),
-                                    EncodeRung(id: "c3", label: "cpu-used 3", presetValue: "3", seedSpeed: 0.12, seedSaving: 0.09),
-                                    EncodeRung(id: "c2", label: "cpu-used 2", presetValue: "2", seedSpeed: 0.05, seedSaving: 0.11)
+                                    EncodeRung(id: "c5", label: "cpu-used 5", presetValue: "5", seedSpeed: 0.82, seedSaving: 0.029),
+                                    EncodeRung(id: "c4", label: "cpu-used 4", presetValue: "4", seedSpeed: 0.40, seedSaving: 0.151),
+                                    EncodeRung(id: "c3", label: "cpu-used 3", presetValue: "3", seedSpeed: 0.26, seedSaving: 0.174),
+                                    EncodeRung(id: "c2", label: "cpu-used 2", presetValue: "2", seedSpeed: 0.099, seedSaving: 0.216)
                                 ],
                                 options: [
-                                    EncodeOption(id: "aomqm", title: "Quantization matrices", detail: "Small efficiency gain.",
-                                                 args: ["--enable-qm=1"], probeFlag: "--enable-qm", vmafSaving: 0.015),
-                                    EncodeOption(id: "aomgrain", title: "Film grain synthesis", detail: "Removes grain before encoding and re-creates it on playback; scored with the synthetic grain stripped.",
-                                                 args: ["--denoise-noise-level=10"], probeFlag: "--denoise-noise-level", speedCost: 1.05,
-                                                 vmafSaving: grainy ? 0.12 : 0.04,
-                                                 recommendedFor: [.realLifeHeavyGrain, .oldAnime, .lowLightNoisy])
+                                    EncodeOption(id: "aomqm", title: "Quantization matrices", detail: EncodeRecipes.aomQMDetail,
+                                                 args: ["--enable-qm=1"], probeFlag: "--enable-qm", speedCost: 1.07, recommendedFor: []),
+                                    EncodeOption(id: "aomgrain", title: "Film grain synthesis", detail: EncodeRecipes.aomGrainDetail,
+                                                 args: ["--denoise-noise-level=\(EncodeRecipes.aomGrainLevel)"], probeFlag: "--denoise-noise-level",
+                                                 speedCost: EncodeRecipes.aomGrainSpeedCost, recommendedFor: [])
                                 ], baseFps1080: 8)
         case .vvc:
-            return EncodeRecipe(codec: codec, kind: kind, title: "H.266 / VVC (VVenC)", summary: "VVenC presets; slow is the efficient choice.",
+            // CPU time per frame relative to faster and the size saved against faster at equal quality (mean of the VMAF
+            // and XPSNR BD-rates), measured on an M3 Max over four clips at --threads 4; slower on one clip, scaled from
+            // slow (tuning-vvenc.md). medium stays the default: slow costs 3.2x its time for about 4% more.
+            return EncodeRecipe(codec: codec, kind: kind, title: "H.266 / VVC (VVenC)",
+                                summary: "VVenC presets. medium is the balance point, slow the efficient archival choice; slower adds about 3% for 4x the time.",
                                 rungs: [
                                     EncodeRung(id: "faster", label: "faster", presetValue: "faster", seedSpeed: 1.0, seedSaving: 0),
-                                    EncodeRung(id: "fast", label: "fast", presetValue: "fast", seedSpeed: 0.45, seedSaving: 0.06),
-                                    EncodeRung(id: "medium", label: "medium", presetValue: "medium", seedSpeed: 0.18, seedSaving: 0.11),
-                                    EncodeRung(id: "slow", label: "slow", presetValue: "slow", seedSpeed: 0.07, seedSaving: 0.14),
-                                    EncodeRung(id: "slower", label: "slower", presetValue: "slower", seedSpeed: 0.03, seedSaving: 0.15)
+                                    EncodeRung(id: "fast", label: "fast", presetValue: "fast", seedSpeed: 0.40, seedSaving: 0.102),
+                                    EncodeRung(id: "medium", label: "medium", presetValue: "medium", seedSpeed: 0.118, seedSaving: 0.168),
+                                    EncodeRung(id: "slow", label: "slow", presetValue: "slow", seedSpeed: 0.037, seedSaving: 0.204),
+                                    EncodeRung(id: "slower", label: "slower", presetValue: "slower", seedSpeed: 0.0085, seedSaving: 0.232)
                                 ], options: [], baseFps1080: 14)
         case .hevc:
             return EncodeRecipe(codec: codec, kind: kind, title: "HEVC on the media engine",
@@ -284,6 +292,53 @@ enum EncodeRecipes {
             i += 1
         }
         return out
+    }
+
+    /// Whether these AV1 encoder arguments make the encoder synthesize film grain: SVT-AV1 `--film-grain N` or libaom
+    /// `--denoise-noise-level=N` with N > 0. Lumora then scores against a de-grained master with the grain stripped.
+    static func synthesizesGrain(_ args: [String]) -> Bool {
+        for (i, a) in args.enumerated() {
+            if a == "--film-grain", i + 1 < args.count, (Int(args[i + 1]) ?? 1) > 0 { return true }   // a {placeholder} counts
+            if a.hasPrefix("--denoise-noise-level="), (Int(a.dropFirst("--denoise-noise-level=".count)) ?? 1) > 0 { return true }
+        }
+        return false
+    }
+
+    // MARK: - VVenC rules (docs/encoding/tuning-vvenc.md)
+
+    /// Whether VVenC keeps its perceptual QP adaptation (`--qpa 1`, the vvencapp default). Turning it off was smaller at
+    /// equal VMAF *and* at equal XPSNR (the metric QPA is built on) on low-light footage and on live action graded to
+    /// PQ, and costs about 25% less CPU time. Everywhere else QPA's XPSNR gain outweighs what VMAF says, so it stays on.
+    static func vvencQPA(kind: ContentKind, pq: Bool) -> Bool {
+        !(pq || kind == .lowLightNoisy)
+    }
+
+    // MARK: - libaom rules (docs/encoding/tuning-aomenc.md)
+
+    /// libaom's own grain synthesis (`--denoise-noise-level`) was larger at equal VMAF and XPSNR than coding the grain, on
+    /// heavy grain, low light and old animation, against both Lumora's de-grained master and the noise-free original, at
+    /// every level from 4 to 16 (+3% to +26%, more the higher the level), and 15-35% slower: its denoiser removed so
+    /// little that the bitrate hardly fell, and the synthetic grain lands on top of the coded grain. It is no longer
+    /// recommended; when turned on it uses the least harmful level measured.
+    static let aomGrainLevel = 4
+    static let aomGrainSpeedCost = 1.3
+    static let aomGrainDetail = "libaom's noise model denoises lightly and re-creates grain on playback. Measured larger than coding the grain on every grainy test clip, so it is off unless you turn it on; SVT-AV1's grain synthesis is the one that saves space."
+
+    /// libaom's default quantization matrices (qm-min 5 to qm-max 9) were larger at equal XPSNR on every tuning clip
+    /// (+0.8% to +5.8%) for at most 1.6% at equal VMAF and 4-16% more CPU time, so the planner no longer turns them on.
+    static let aomQMDetail = "Frequency-shaped quantization. Measured larger at equal XPSNR on every test clip and slower, so it is off unless you turn it on."
+
+    /// `--profile` for aomenc. AV1 puts 10-bit 4:4:4 in the High profile (1) and 4:2:2 or any 12-bit stream in the
+    /// Professional profile (2). aomenc 3.15.3 stops with "Failed to set chroma subsampling x" when `--profile=2` is
+    /// passed with 12-bit 4:2:2 or 4:4:4 input, but raises profile 0 to 2 itself for that input (checked: the streams
+    /// are Professional profile, 12-bit, and decode to the same quality as 12-bit 4:2:0 at the same cq-level).
+    static func aomProfile(bitDepth: Int, chroma: ChromaFormat) -> String {
+        if bitDepth >= 12 { return chroma == .c420 ? "2" : "0" }   // 0: aomenc raises it to 2 (an explicit 2 is refused)
+        switch chroma {
+        case .c420: return "0"
+        case .c422: return "2"
+        case .c444: return "1"
+        }
     }
 
     /// Flags the installed encoder actually understands (parsed once from its --help), so options from

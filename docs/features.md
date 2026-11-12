@@ -86,7 +86,7 @@ The preview writes PQ or HLG straight into an EDR `CAMetalLayer` with `CAEDRMeta
 | ProRes 422 HQ | VideoToolbox (hardware) | 10 | 4:2:2 | HDR10, HLG |
 | ProRes 4444 XQ | VideoToolbox (hardware) | 12 | 4:4:4 | HDR10, HLG |
 | AV1 | SVT-AV1 | 10 | 4:2:0 | HDR10, HLG |
-| AV1 Pro | libaom | 10/12 (12-bit: 4:2:0 only) | 4:2:0/4:2:2/4:4:4 | HDR10, HLG |
+| AV1 Pro | libaom | 10/12 | 4:2:0/4:2:2/4:4:4 | HDR10, HLG |
 | H.266 / VVC | VVenC | 10 | 4:2:0 | HDR10, HLG |
 | AV2 (experimental) | AVM reference | 10 (12 experimental) | 4:2:0 | HDR10, HLG |
 | HEVC Main 12 | x265 | 10/12 | 4:2:0/4:2:2/4:4:4 | HDR10, HLG, HDR10+ |
@@ -97,7 +97,7 @@ AV1, VVC and AV2 are always software encodes: the M5 media engine decodes AV1 bu
 
 Notes from the codec test matrix (`CampaignCodecTests`):
 
-- aomenc (libaom 3.15) refuses 12-bit 4:2:2 and 4:4:4, so Lumora offers 12-bit AV1 in 4:2:0 only; use 10-bit for 4:2:2/4:4:4.
+- aomenc (libaom 3.15) refuses 12-bit 4:2:2 and 4:4:4 when `--profile=2` is given explicitly, so for those Lumora passes profile 0 and aomenc raises it to the Professional profile itself ([libaom tuning](encoding/tuning-aomenc.md)).
 - aomenc can't write HDR10 static metadata into the stream, so for `.mkv` output Lumora adds MaxCLL/MaxFALL and the mastering display to the Matroska colour metadata with mkvmerge.
 - x265 and VVenC write raw streams without timestamps; Lumora wraps them with MP4Box (or mkvmerge for HEVC) before muxing.
 - ProRes 4444 XQ is always coded at 12 bits; choosing 10-bit only lowers the grading precision.

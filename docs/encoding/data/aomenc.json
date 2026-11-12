@@ -263,7 +263,7 @@
           "source": "https://codecs.wiki/docs/encoders/aomenc"
         }
       ],
-      "lumora": "Not set. Lumora pipes Y4M on stdin (inputArg '-') and so gets aomenc's default of 2 passes in good mode, which leaves the output empty. Add --passes=1, or write a temporary Y4M file.",
+      "lumora": "Always --passes=1 (once): Lumora pipes Y4M on stdin, and aomenc's default of two passes in good mode would reopen the input.",
       "notes": "Listed twice in the help text (global and AV1 sections); it is one option. In aomenc.c the default is 2 for AV1 in good-quality mode. Realtime and all-intra modes force 1."
     },
     {
@@ -762,7 +762,7 @@
           "source": "https://codecs.wiki/docs/encoders/aomenc"
         }
       ],
-      "lumora": "Passed as --threads={threads} (the chip's core count).",
+      "lumora": "Passed as --threads={threads}: the cores one instance fills (cpuCores / instances for segments, cpuCores for a single encode). Measured at 1920x800, cpu-used 4: 2 threads kept 1.75 cores busy, 4 threads 2.36 and 8 threads 2.55, with the same output; more instances of fewer threads would use the CPU better, which 'Measure on this Mac' can find (docs/encoding/tuning-aomenc.md).",
       "notes": "Codec Wiki warns that above about 12 threads, still-image (AVIF) encodes can get slower."
     },
     {
@@ -800,7 +800,7 @@
           "source": "https://aomedia.googlesource.com/aom/+/refs/tags/v3.15.3/apps/aomenc.c"
         }
       ],
-      "lumora": "Passed as --profile={aom_profile}. ExportEngine maps 12-bit or 4:2:2 to 2, 4:4:4 to 1, and everything else to 0. BUG: for 12-bit 4:2:2 or 4:4:4, the explicit --profile=2 makes aomenc 3.15.3 exit with 'Failed to set chroma subsampling x' (checked locally), so those exports fail. Pass 0 (or omit the flag) for 12-bit jobs and let aomenc raise it.",
+      "lumora": "Passed as --profile={aom_profile} from EncodeRecipes.aomProfile: 0 for 10-bit 4:2:0, 1 for 10-bit 4:4:4, 2 for 10-bit 4:2:2 and 12-bit 4:2:0, and 0 for 12-bit 4:2:2 and 4:4:4, which aomenc raises to 2 itself (an explicit 2 makes aomenc 3.15.3 exit with 'Failed to set chroma subsampling x'). Lumora therefore exports 12-bit 4:2:2 and 4:4:4 (docs/encoding/tuning-aomenc.md).",
       "notes": "aomenc adjusts the profile to fit the input format and bit depth and prints a warning (hidden by --quiet). It can lower it too: --profile=2 with 10-bit 4:2:0 input becomes 0, and with 10-bit 4:4:4 becomes 1. Library default is 0."
     },
     {
@@ -1727,7 +1727,7 @@
           "source": "https://aomedia.googlesource.com/aom/+/refs/tags/v3.15.3/av1/encoder/speed_features.c"
         }
       ],
-      "lumora": "Passed as --cpu-used={preset}. The AV1 Pro ladder runs 6, 5, 4, 3, 2 and the archival AV1 ladder adds libaom rungs 4, 3, 2, 1, 0. The encoders.json default is 4.",
+      "lumora": "Passed as --cpu-used={preset}. The AV1 Pro ladder runs 6, 5, 4, 3, 2 (measured on an M3 Max, CPU time per frame relative to 6 / size saved against 6: 5 0.82 / 3%, 4 0.40 / 15%, 3 0.26 / 17%, 2 0.099 / 22%); the archival AV1 ladder adds libaom rungs 4, 3, 2, 1, 0 measured against SVT-AV1 (cpu-used 4 at 0.033 of preset 10's speed, about as small as preset 1). The encoders.json default is 4 (docs/encoding/tuning-aomenc.md).",
       "notes": "Library default is 0 in good mode, which is extremely slow, so always set it."
     },
     {
@@ -1983,7 +1983,7 @@
           "source": "https://codecs.wiki/docs/encoders/aomenc"
         }
       ],
-      "lumora": null,
+      "lumora": "Not set (library default 5). 1 saved under 1% on CG and anime* and cost faces 3.4%; 3 saved under 0.7% (docs/encoding/tuning-aomenc.md).",
       "notes": "Library default is 5 (av1_cx_iface.c). Codec Wiki describes 4 as the default, which does not match the 3.15.3 source."
     },
     {
@@ -2027,7 +2027,7 @@
           "source": "https://aomedia.googlesource.com/aom/+/refs/tags/v3.15.3/av1/av1_cx_iface.c"
         }
       ],
-      "lumora": null,
+      "lumora": "Not set (psnr). tune=ssim was 5-24% larger at equal VMAF though 1-10% smaller at equal XPSNR; tune=iq was 33-62% larger (docs/encoding/tuning-aomenc.md).",
       "notes": "Lumora never sets --tune for aomenc, so it runs at psnr. vmaf* modes look for the model at /usr/local/share/model/vmaf_v0.6.1.json by default, which does not exist with Homebrew on Apple silicon; pass --vmaf-model-path. ssimulacra2 uses hand-made heuristics and does not call the metric itself."
     },
     {
@@ -2307,7 +2307,7 @@
           "source": "https://codecs.wiki/docs/encoders/aomenc"
         }
       ],
-      "lumora": null,
+      "lumora": "Not set. It moved BD-rate by under 0.3% for 3-18% more time (docs/encoding/tuning-aomenc.md).",
       "notes": ""
     },
     {
@@ -2846,7 +2846,7 @@
           "source": "https://codecs.wiki/docs/encoders/aomenc"
         }
       ],
-      "lumora": "Offered as the optional 'Quantization matrices' option (--enable-qm=1) on the AV1 Pro and archival libaom rungs, scored with an expected 1.5% saving.",
+      "lumora": "Offered as the optional 'Quantization matrices' option (--enable-qm=1) on the AV1 Pro and archival libaom rungs, but no longer recommended for any content type: it was larger at equal XPSNR on every tuning clip (+0.8% to +5.8%) and 4-16% slower (docs/encoding/tuning-aomenc.md).",
       "notes": ""
     },
     {
@@ -3138,7 +3138,7 @@
           "source": "https://aomedia.googlesource.com/aom/+/refs/heads/main/CHANGELOG"
         }
       ],
-      "lumora": null,
+      "lumora": "Not set (default 1). 0, 5 (HDR, on PQ clips) and 6 (variance boost) were all larger, by 1-18% (docs/encoding/tuning-aomenc.md).",
       "notes": "Modes 1-5 are silently ignored in non-RD mode (cpu-used 8 and up in all-intra, 7 and up in realtime). Mode 1 requires --enable-tpl-model=1."
     },
     {
@@ -3246,7 +3246,7 @@
           "source": "https://aomedia.googlesource.com/aom/+/refs/tags/v3.15.3/av1/encoder/encoder.c"
         }
       ],
-      "lumora": "The screen tune adds --tune-content=screen.",
+      "lumora": "The screen tune adds --tune-content=screen. On Lumora's screen clip it produced the same stream as automatic screen detection (docs/encoding/tuning-aomenc.md).",
       "notes": "There is no 'animation' value in libaom. Library default is default."
     },
     {
@@ -3323,7 +3323,7 @@
           "source": "https://aomedia.googlesource.com/aom/+/refs/tags/v3.15.3/av1/arg_defs.c"
         }
       ],
-      "lumora": "Passed as --transfer-characteristics={tc_name}. BUG: encoders.json maps hlg to 'arib-std-b67', which aomenc 3.15.3 rejects, so every HLG export through aomenc fails. It should be 'hlg'. pq maps to smpte2084 and sdr to bt709, both valid.",
+      "lumora": "Passed as --transfer-characteristics={tc_name}: smpte2084 for HDR10, hlg for HLG (checked: tagged arib-std-b67 in the stream), bt709 for SDR.",
       "notes": "Library default is unspecified. Integer CICP codes are also accepted (16 = PQ, 18 = HLG)."
     },
     {
@@ -3610,7 +3610,7 @@
           "source": "https://forum.doom9.org/archive/index.php/t-184143.html"
         }
       ],
-      "lumora": "The grain tune adds --denoise-noise-level=10. The libaom grain options use 10 (AV1 Pro) or {grainLevel} (archival). Recommended for real-life heavy grain, old anime and low-light noisy content.",
+      "lumora": "Offered as 'Film grain synthesis' on both libaom ladders at level 4, but no longer recommended, and the encoders.json grain tune no longer adds it: on heavy grain, low light and old anime* it was 3-26% larger at equal VMAF and XPSNR than coding the grain, against both the de-grained master and the noise-free original, at every level from 4 to 16, and 15-35% slower. When used, ExportEngine now scores it with the synthetic grain stripped (docs/encoding/tuning-aomenc.md).",
       "notes": "Library default is 0 (off). Lumora's 10 is inside Codec Wiki's limit of 12 but above its suggested 8."
     },
     {
@@ -3661,7 +3661,7 @@
           "source": "https://codecs.wiki/docs/encoders/aomenc"
         }
       ],
-      "lumora": null,
+      "lumora": "Not set (default 1).",
       "notes": "Lumora leaves it at the default (1), so its denoise-noise-level option both denoises and synthesizes."
     },
     {

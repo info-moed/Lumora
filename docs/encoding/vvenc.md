@@ -210,7 +210,7 @@ Sources: [source](https://codecs.wiki/docs/encoders/VVenC), [source](https://git
 |---|---|---|---|---|---|
 | [`--segment`](#segment) | off, first, mid, last | off | Tells the encoder where a chunk sits when a long video is encoded in separate parts that will be joined, so the chunk boundaries can be concatenated cleanly. |  |  |
 | [`--refreshtype`](#refreshtype) | idr, cra, cra_cre (CRA, constrained RASL picture encoding), none, rpsei (Recovery Point SEI), idr_no_radl (IDR without leading pictures, for DASH) | cra | Type of random-access picture inserted at each intra period. |  |  |
-| [`--refreshsec`](#refreshsec) | seconds | 1 | Intra period in seconds; used when `--intraperiod` is 0. |  |  |
+| [`--refreshsec`](#refreshsec) | seconds | 1 | Intra period in seconds; used when `--intraperiod` is 0. |  | ✓ |
 | [`--intraperiod`](#intraperiod) | frames; 0 = use --refreshsec | 0 | Intra period as a frame count, overriding the seconds-based setting. |  |  |
 | [`PicReordering`](#picreordering) | 0: off, 1: on | 1 | Set through `--additional`. |  |  |
 
@@ -239,13 +239,13 @@ Sources: [source](https://codecs.wiki/docs/encoders/VVenC), [source](https://git
 | [`Sar`](#sar) | WidthxHeight | 0x0 | Set through `--additional`. |  |  |
 | [`ColourDescriptionPresent`](#colourdescriptionpresent) | 0/1 | 0 | Set through `--additional`. | ✓ |  |
 | [`ColourPrimaries`](#colourprimaries) | 0-13: reserved, bt709, unknown, empty, bt470m, bt470bg, smpte170m, smpte240m, film, bt2020, smpte428, smpte431, smpte432 | unknown | Set through `--additional`. | ✓ |  |
-| [`TransferCharacteristics`](#transfercharacteristics) | 0-18: reserved, bt709, unknown, empty, bt470m, bt470bg, smpte170m, smpte240m, linear, log100, log316, iec61966-2-4, bt1361e, iec61966-2-1, bt2020-10, bt2020-12, smpte2084, smpte428, arib-std-b67 | unknown | Set through `--additional`. | ✓ |  |
+| [`TransferCharacteristics`](#transfercharacteristics) | 0-18: reserved, bt709, unknown, empty, bt470m, bt470bg, smpte170m, smpte240m, linear, log100, log316, iec61966-2-4, bt1361e, iec61966-2-1, bt2020-10, bt2020-12, smpte2084, smpte428, arib-std-b67 | unknown | Set through `--additional`. | ✓ | ✓ |
 | [`MatrixCoefficients`](#matrixcoefficients) | 0-14: gbr, bt709, unknown, empty, fcc, bt470bg, smpte170m, smpte240m, ycgco, bt2020nc, bt2020c, smpte2085, chroma-derived-nc, chroma-derived-c, ictcp | unknown | Set through `--additional`. | ✓ |  |
 | [`ChromaLocInfoPresent`](#chromalocinfopresent) | -1: auto, 0: off, 1: on | auto | Set through `--additional`. | ✓ |  |
 | [`ChromaSampleLocType`](#chromasampleloctype) | -1 auto, 0-5 (Chroma420LocType) | -1 | Set through `--additional`. | ✓ |  |
 | [`OverscanAppropriate`](#overscanappropriate) | 0/1 | 0 | Set through `--additional`. |  |  |
-| [`MasteringDisplayColourVolume`](#masteringdisplaycolourvolume) | 10 unsigned ints: G(x,y),B(x,y),R(x,y),WP(x,y),L(max,min); 0 <= GBR,WP <= 50000 (1/50000 units); luminance in 1/10000 cd/m2 | [] | Set through `--additional`. | ✓ |  |
-| [`MaxContentLightLevel`](#maxcontentlightlevel) | "cll,fall", 1 <= cll,fall <= 65535 | [] | Set through `--additional`. | ✓ |  |
+| [`MasteringDisplayColourVolume`](#masteringdisplaycolourvolume) | 10 unsigned ints: G(x,y),B(x,y),R(x,y),WP(x,y),L(max,min); 0 <= GBR,WP <= 50000 (1/50000 units); luminance in 1/10000 cd/m2 | [] | Set through `--additional`. | ✓ | ✓ |
+| [`MaxContentLightLevel`](#maxcontentlightlevel) | "cll,fall", 1 <= cll,fall <= 65535 | [] | Set through `--additional`. | ✓ | ✓ |
 | [`PreferredTransferCharacteristics`](#preferredtransfercharacteristics) | 0-18: reserved, bt709, unknown, empty, bt470m, bt470bg, smpte170m, smpte240m, linear, log100, log316, iec61966-2-4, bt1361e, iec61966-2-1, bt2020-10, bt2020-12, smpte2084, smpte428, arib-std-b67 | auto | Set through `--additional`. | ✓ |  |
 
 ### Threading and performance
@@ -253,9 +253,9 @@ Sources: [source](https://codecs.wiki/docs/encoders/VVenC), [source](https://git
 | Flag | Values | Default | What it does | HDR | Lumora |
 |---|---|---|---|---|---|
 | [`--threads`](#threads) | -1: resolution < 720p: 4, < 5K 2880p: 8, >= 5K 2880p: 12 threads | -1 | Number of worker threads. |  | ✓ |
-| [`--mtprofile`](#mtprofile) | -1: auto, 0: off, 1, 2, 3: on (enables tiles, IFP and WPP automatically depending on the number of threads) | auto | Decides how hard to push parallelism. |  |  |
+| [`--mtprofile`](#mtprofile) | -1: auto, 0: off, 1, 2, 3: on (enables tiles, IFP and WPP automatically depending on the number of threads) | auto | Decides how hard to push parallelism. |  | ✓ |
 | [`--ifp`](#ifp) | -1: auto, 0: off, 1: on, with sync. offset of two CTU lines | auto | Inter-frame parallelism: lets a frame start encoding while its reference frame is still a couple of CTU rows ahead. |  |  |
-| [`--tiles`](#tiles) | number of tile columns and rows, ColumnsxRows (e.g. 2x2); -1x-1 = auto | -1x-1 | Number of tile columns and rows. |  |  |
+| [`--tiles`](#tiles) | number of tile columns and rows, ColumnsxRows (e.g. 2x2); -1x-1 = auto | -1x-1 | Number of tile columns and rows. |  | ✓ |
 
 ### Logging and statistics
 
@@ -275,7 +275,7 @@ Sources: [source](https://codecs.wiki/docs/encoders/VVenC), [source](https://git
 | [`--help`](#help) | 0/1 | 0 | Prints the standard option list and exits. |  |  |
 | [`--fullhelp`](#fullhelp) | 0/1 | 0 | Prints the full option list. |  |  |
 | [`--version`](#version) | 0/1 | 0 | Prints the encoder version and exits. |  | ✓ |
-| [`--additional`](#additional) | '(long)optionname=value' pairs concatenated with ':' (e.g. "bitrate=1000000 passes=1") |  | Passes extra options, including any expert option of the full library, as one string. | ✓ |  |
+| [`--additional`](#additional) | '(long)optionname=value' pairs concatenated with ':' (e.g. "bitrate=1000000 passes=1") |  | Passes extra options, including any expert option of the full library, as one string. | ✓ | ✓ |
 | [`--logofile`](#logofile) | JSON logo descriptor file |  | Burns a logo overlay, described in a JSON file, into the encoded pictures. |  |  |
 | [`--profile`](#profile) | auto, main_10, main_10_still_picture | auto | VVC profile written in the stream. |  |  |
 | [`--level`](#level) | auto, 1.0, 2.0, 2.1, 3.0, 3.1, 4.0, 4.1, 5.0, 5.1, 5.2, 6.0, 6.1, 6.2, 6.3, 15.5 | auto | Level limit written in the stream, which tells decoders the maximum resolution, frame rate and bitrate to expect. |  |  |
@@ -297,7 +297,7 @@ Source video: raw YUV, or Y4M when the file name ends in .y4m. '-' reads from st
 |---|---|---|---|
 | HDR | `a 10-bit .y4m file` | Y4M carries resolution, frame rate and bit depth, so `-s`, `--fps` and `-c` are not needed and cannot be set wrong. | [source](https://github.com/fraunhoferhhi/vvenc/wiki/Usage) |
 
-**In Lumora:** Passed as '`-i` {in}', where {in} is a FIFO named '<fifo>.y4m', so Y4M is detected from the extension.
+**In Lumora:** Passed as '`-i` {in}' with {in} = '-': Lumora pipes Y4M into vvencapp on stdin (encoders.json vvenc.input 'stdin').
 
 **Notes:** Y4M is detected only by the .y4m extension: a Y4M file renamed to .yuv was read as raw 1920x1080 video and encoded 0 frames (local test). Piping Y4M through '`-i` -' without `--y4m` likewise encodes zero frames (codecs.wiki, confirmed locally). Two-pass rate control in one call cannot read from stdin; vvencapp exits with an error, so use `-p` 1 or a file (VVEncAppCfg.h, confirmed locally).
 
@@ -401,7 +401,7 @@ Forces Y4M parsing. Needed when Y4M arrives on a pipe; files are recognized only
 |---|---|---|---|
 | speed | `1 when piping from ffmpeg with -i -` | Without it, piped Y4M is not recognized and nothing is encoded. | [source](https://codecs.wiki/docs/encoders/VVenC) |
 
-**In Lumora:** Not passed; Lumora names its FIFO with a .y4m extension, so detection by extension applies.
+**In Lumora:** Always passed: piped Y4M is only recognized with `--y4m`, otherwise vvencapp encodes zero frames.
 
 <a id="output"></a>
 
@@ -550,7 +550,7 @@ Chooses the whole tool and search configuration. Slower presets enable more VVC 
 | speed | `faster` | About 7x faster than medium in the v1.14.0 performance table; the Presets wiki shows most coding tools off and a shallow partition search. | [source](https://github.com/fraunhoferhhi/vvenc/wiki/Encoder-Performance) |
 | low-power playback | `medium_lowDecEnergy` | Cuts decoder energy by avoiding expensive tools, for a few percent more bitrate. | [source](https://arxiv.org/abs/2206.13483) |
 
-**In Lumora:** Passed as '`--preset` {preset}'. EncodeRecipes offers rungs faster/fast/medium/slow/slower (summary: 'slow is the efficient choice'); encoders.json default is medium.
+**In Lumora:** Passed as '`--preset` {preset}'. encoders.json default medium; the planner ladder offers faster, fast, medium, slow, slower. Seeds measured on an M3 Max (CPU time per frame relative to faster / size saved against faster at equal VMAF and XPSNR): fast 0.40 / 10%, medium 0.118 / 17%, slow 0.037 / 20%, slower 0.0085 / 23%. medium stays the default: slow costs 3.2x its time for about 4% more (docs/encoding/tuning-vvenc.md).
 
 **Notes:** The source also accepts 0-4 for faster..slower, 'medium_lowdecenergy' in lower case, and the internal values 'none', 'firstpass' and 'tooltest', which are not meant for normal use (VVEncAppCfg.h). The Presets wiki notes LMCS (reshaper) is deprecated and off in 1.14.0.
 
@@ -598,6 +598,8 @@ Intra period in seconds; used when `--intraperiod` is 0.
 | For | Value | Why | Source |
 |---|---|---|---|
 | streaming/small size | `4` | The DASH examples use 4-second segments. | [source](https://github.com/fraunhoferhhi/vvenc/wiki/Usage) |
+
+**In Lumora:** Passed as '`--refreshsec` 5' (the default is 1 s). On a 20 s live-action clip with two cuts, a 5 s intra period was 21% smaller (VMAF and XPSNR BD-rate) than 1 s, and 2 s was 13% smaller; 5 s matches SVT-AV1's default keyframe spacing (docs/encoding/tuning-vvenc.md).
 
 **Notes:** Sources disagree on scene cuts. codecs.wiki says VVenC does not detect them. The 1.14.0 source enables slice type adaptation (STA) by default for GOP 32, which turns a temporal-layer-0 B picture into an I picture after a scene cut; in that default mode the intra period is not restarted (STA=2 through `--additional` restarts it).
 
@@ -647,7 +649,7 @@ Perceptual QP adaptation: raises the QP where the XPSNR visual model says errors
 | HDR | `1` | With `--hdr` set, QPA adds a brightness-dependent QP offset that suits PQ/HLG signals; turning it off loses that adaptation (source reading). | [source](https://raw.githubusercontent.com/fraunhoferhhi/vvenc/v1.14.0/source/Lib/EncoderLib/BitAllocation.cpp) |
 | benchmarking (PSNR) | `0` | The project's own PSNR results are measured without QPA, and QPA results are reported in MS-SSIM instead, because QPA targets perceived quality rather than PSNR. | [source](https://github.com/fraunhoferhhi/vvenc/wiki/Encoder-Performance) |
 
-**In Lumora:** Not passed; Lumora relies on the vvencapp default (on). Its target metric is VMAF, which differs from XPSNR, so measured scores may not reflect what QPA optimizes for.
+**In Lumora:** Passed as '`--qpa` {vvenc_qpa}' from EncodeRecipes.vvencQPA: off (0) for HDR10 (PQ) exports and for the low-light content type, on (1, the vvencapp default) everywhere else. Off was smaller at equal VMAF and at equal XPSNR on low light and on live action graded to PQ, and costs about 25% less CPU time; on other content QPA's XPSNR gain outweighs the VMAF loss (docs/encoding/tuning-vvenc.md).
 
 **Notes:** On by default in vvencapp. vvencFFapp defaults to off (Usage wiki), and in the library vvenc_config_default leaves it off while vvenc_init_default turns it on. Required for capped CQF (`-q` with `-m`). Set the true frame rate when it is on. In the v1.14.0 source the brightness offset runs for any `--hdr` or `--sdr` mode, not only HDR (BitAllocation.cpp).
 
@@ -713,7 +715,7 @@ Writes SDR color signaling in one step: BT.709, BT.2020 (with bt2020-10 transfer
 |---|---|---|---|
 | live action | `sdr_709` | Most SDR sources are BT.709; explicit signaling keeps players from guessing. | [source](https://github.com/fraunhoferhhi/vvenc/wiki/Usage) |
 
-**In Lumora:** Not passed. Lumora appends its hdrArgs only for HDR10 targets, so SDR encodes get neither `--sdr` nor `--hdr` and carry no color description.
+**In Lumora:** Passed as '`--sdr` {vvenc_sdr}': sdr_709 for SDR exports (BT.709 primaries, transfer and matrix in the VUI, checked with ffprobe), off for HDR. Note that an `--sdr` mode also turns on the brightness-dependent QPA offset.
 
 **Notes:** Added in v1.7.0. Cannot be combined with `--hdr` (the app rejects it). sdr_2020 also switches to top-left chroma siting. In the v1.14.0 source an `--sdr` mode also enables the brightness-dependent QPA offset used for HDR (BitAllocation.cpp, source reading).
 
@@ -732,7 +734,7 @@ Switches the encoder into HDR mode. It writes VUI color signaling and tunes codi
 | HDR | `pq_2020` | HDR10 means PQ with BT.2020 primaries; plain 'pq' signals BT.709. | [source](https://github.com/fraunhoferhhi/vvenc/wiki/Usage) |
 | HDR | `hlg_2020` | Broadcast HLG uses BT.2020. This mode adds the HLG transfer SEI for backward-compatible signaling. | [source](https://raw.githubusercontent.com/fraunhoferhhi/vvenc/v1.14.0/source/Lib/vvenc/vvencCfg.cpp) |
 
-**In Lumora:** Lumora's encoders.json maps PQ to 'pq_2020' and HLG to 'hlg_2020', but ExportEngine appends hdrArgs only when the target is HDR10. HLG exports therefore get no `--hdr` flag and no HLG signaling, and Lumora adds no MasteringDisplayColourVolume or MaxContentLightLevel, so its HDR10 output has no static metadata SEI.
+**In Lumora:** Passed as '`--hdr` {vvenc_hdr}': pq_2020 for HDR10 and hlg_2020 for HLG (encoders.json colorNames), off for SDR. Checked with ffprobe: PQ streams are tagged bt2020 / smpte2084 / bt2020nc, HLG streams bt2020 / arib-std-b67 / bt2020nc.
 
 **Notes:** Fixed color fields only fill values left at 'unknown', so explicit ColourPrimaries/MatrixCoefficients given in `--additional` take priority (PQ always forces smpte2084). Requires 10-bit internal and 4:2:0. The source also has a 'user defined' HDR mode that is not reachable through this flag.
 
@@ -806,6 +808,8 @@ Set through `--additional`. Transfer function code in the VUI: smpte2084 is PQ, 
 |---|---|---|---|
 | HDR | `arib-std-b67 (with --hdr hlg_2020)` | Puts HLG directly in the VUI for players that ignore the alternative transfer SEI; hlg modes only fill this field when it is left unknown (source reading). | [source](https://raw.githubusercontent.com/fraunhoferhhi/vvenc/v1.14.0/source/Lib/vvenc/vvencCfg.cpp) |
 
+**In Lumora:** Set to 18 through `--additional` on HLG exports, so the VUI says HLG; with `--hdr` hlg_2020 alone it says BT.2020 10-bit and only an SEI names HLG (checked with ffprobe).
+
 **Notes:** PQ modes always force smpte2084, whatever is given here. Setting this alone does not enable the encoder's HDR mode.
 
 <a id="matrixcoefficients"></a>
@@ -870,6 +874,8 @@ Set through `--additional`. Writes the SMPTE ST 2086 mastering display SEI (prim
 |---|---|---|---|
 | HDR | `13250,34500,7500,3000,34000,16000,15635,16450,10000000,1` | The help/wiki example for a P3-D65 1000-nit mastering monitor. Copy the source master's real values when known. | [source](https://github.com/fraunhoferhhi/vvenc/wiki/Usage) |
 
+**In Lumora:** Set through `--additional` on HDR10 exports from HDRMetadata.vvencMastering (measured or target metadata).
+
 **Notes:** Written in every access unit when set (EncGOP.cpp). With `--hdr` off it switches the library to PQ mode, BT.709 unless ColourPrimaries=bt2020.
 
 <a id="maxcontentlightlevel"></a>
@@ -885,6 +891,8 @@ Set through `--additional`. Writes the content light level SEI: brightest pixel 
 | For | Value | Why | Source |
 |---|---|---|---|
 | HDR | `the source's measured values, e.g. 1000,400` | Players use these to tone-map. The wiki example is 1000,400; real values come from the master or a measurement pass. | [source](https://github.com/fraunhoferhhi/vvenc/wiki/Usage) |
+
+**In Lumora:** Set through `--additional` on HDR10 exports; each value is at least 1, since VVenC skips the SEI when either is zero.
 
 **Notes:** Both values must be non-zero or the SEI is skipped (EncGOP.cpp). The help says up to 65535, but the 1.14.0 source rejects values above 10000 (confirmed locally).
 
@@ -920,7 +928,7 @@ Number of worker threads. Auto uses 4 below 720p, 8 from 720p and 12 from 2880p 
 |---|---|---|---|
 | speed | `-1 (auto) or a bit above it` | Raising threads above the auto default makes mtprofile turn on extra parallel tools (WPP, tiles, IFP) automatically. | [source](https://raw.githubusercontent.com/fraunhoferhhi/vvenc/v1.14.0/source/Lib/vvenc/vvencCfg.cpp) |
 
-**In Lumora:** Passed as '`--threads` {threads}'. For clips over 480 frames ChipProfile runs about cpuCores/4 VVenC instances side by side (unless a measured profile overrides it), and each gets cpuCores divided by the instance count, about 4 threads.
+**In Lumora:** Passed as '`--threads` {threads}'. For clips over 480 frames ChipProfile runs cpuCores/4 instances of about 4 threads each; up to the resolution default (8 at 720p and above) the output is bit-identical to any lower thread count. A single instance with more threads than that switches on tiles and IFP through `--mtprofile`, which made the stream about 3% larger for 1.95x the speed on 1920x800 (docs/encoding/tuning-vvenc.md).
 
 **Notes:** 0 turns worker threads off; the allowed range is -1 to 256 (vvencCfg.cpp). The 12-thread step for 5K and up was added in v1.11.0.
 
@@ -937,6 +945,8 @@ Decides how hard to push parallelism. Auto compares `--threads` with the resolut
 | For | Value | Why | Source |
 |---|---|---|---|
 | speed | `auto` | Picks a profile from the thread count so you do not have to tune tiles, WPP and IFP by hand. | [source](https://github.com/fraunhoferhhi/vvenc/wiki/Usage) |
+
+**In Lumora:** Not passed (auto) (docs/encoding/tuning-vvenc.md).
 
 **Notes:** Added in v1.12.0. Explicit `--tiles` or `--ifp` values override what the profile would choose.
 
@@ -965,6 +975,8 @@ Number of tile columns and rows. Tiles split the picture into independent region
 | For | Value | Why | Source |
 |---|---|---|---|
 | speed | `-1x-1 (auto)` | When mtprofile is on at 720p and above, auto picks 2x2 tiles (2x1 with IFP), which is enough for most machines. | [source](https://raw.githubusercontent.com/fraunhoferhhi/vvenc/v1.14.0/source/Lib/vvenc/vvencCfg.cpp) |
+
+**In Lumora:** Not passed. Explicit 2x2 tiles at 4 threads were 2% larger for 10% less wall time (docs/encoding/tuning-vvenc.md).
 
 **Notes:** The Usage wiki's option-mapping table still lists `--tiles` with a default of 1x1; since v1.12.0 the default is -1x-1 (auto, decided by `--mtprofile`), as the installed help shows. The option itself was added in v1.3.0.
 
@@ -1080,6 +1092,8 @@ Passes extra options, including any expert option of the full library, as one st
 |---|---|---|---|
 | HDR | `MasteringDisplayColourVolume=G(x,y),B(x,y),R(x,y),WP(x,y),Lmax,Lmin:MaxContentLightLevel=cll,fall` | This is how vvencapp gets HDR10 static metadata; `--hdr` itself does not add it. | [source](https://github.com/fraunhoferhhi/vvenc/wiki/Usage) |
 | streaming/small size | `MaxPicSize=3840x2160` | The DASH examples set the largest picture size so every rendition can switch resolution (RPR) at segment borders. | [source](https://github.com/fraunhoferhhi/vvenc/wiki/Usage) |
+
+**In Lumora:** Passed as '`--additional` {vvenc_additional}': for HDR10 'MasteringDisplayColourVolume=<x265-style integers> MaxContentLightLevel=<cll>,<fall>' (space-separated; both reach the stream as SEI, checked with ffprobe), for HLG 'TransferCharacteristics=18', otherwise empty.
 
 **Notes:** Pairs can be separated with ':' or with spaces; the v1.14.0 parser treats both as separators (VVEncAppCfg.h, and a space-separated test worked). The Usage wiki writes examples such as 'hdr=pq:Name=value'. Any long option of vvencFFapp can be used here; this entry only documents the ones the help lists. The help claims that setting ColourPrimaries/TransferCharacteristics/MatrixCoefficients this way corresponds to '`--hdr` pq_2020', but a local test shows the encoder stays in SDR mode (only the VUI fields change).
 

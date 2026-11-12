@@ -56,12 +56,11 @@ enum Codec: String, CaseIterable, Identifiable, Codable, Hashable {
         default: return [.c420]
         }
     }
-    /// Bit depth × chroma pairs the encoder really accepts. aomenc (libaom 3.15) refuses 12-bit 4:2:2 and 4:4:4
-    /// ("Failed to set chroma subsampling x") although AV1's Professional profile allows them.
+    /// Bit depth × chroma pairs the encoder really accepts. libaom's 12-bit 4:2:2 and 4:4:4 work as long as
+    /// `--profile=2` is not passed explicitly (aomenc 3.15.3 refuses that with "Failed to set chroma subsampling x");
+    /// `EncodeRecipes.aomProfile` lets aomenc raise the profile itself (docs/encoding/tuning-aomenc.md).
     func supports(bitDepth: Int, chroma: ChromaFormat) -> Bool {
-        guard bitDepths.contains(bitDepth), chromaFormats.contains(chroma) else { return false }
-        if self == .av1Pro, bitDepth == 12, chroma != .c420 { return false }
-        return true
+        bitDepths.contains(bitDepth) && chromaFormats.contains(chroma)
     }
     /// Key into encoders.json for the software encoders.
     var cliKey: String? {
