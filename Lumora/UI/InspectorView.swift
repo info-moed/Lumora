@@ -318,7 +318,6 @@ struct InterpolationSection: View {
                 if let map = model.motionMap { MotionMapSummary(map: map) }
             }
             Toggle("Grain-aware (de-grain, interpolate, re-grain)", isOn: $model.interpolation.grainAware)
-            Toggle("Check for flicker between generated frames", isOn: $model.interpolation.flickerCheck)
             Toggle("Find and fix artifacts", isOn: $model.interpolation.artifactRepair)
             Toggle("Smooth repeated frames (animation)", isOn: $model.interpolation.smoothDuplicates)
             if model.interpolation.artifactRepair {

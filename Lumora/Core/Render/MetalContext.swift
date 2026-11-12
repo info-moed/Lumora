@@ -40,7 +40,8 @@ final class MetalContext {
                      "temporalBlendKernel", "scopeKernel", "probeKernel", "rowColMaxKernel", "nitsHistogramKernel", "cropCopyKernel",
                      "flowProxyKernel", "flowWarpBlendKernel", "flowConsistencyKernel", "compareKernel",
                      "blendErrorKernel", "pqLumaHistKernel", "toneMatchKernel", "contentStatsKernel",
-                     "bilateralKernel", "grainStatsKernel", "regrainKernel"] {
+                     "bilateralKernel", "grainStatsKernel", "regrainKernel",
+                     "qcLumaPackKernel", "qcFeatureKernel", "qcFlowStatsKernel", "qcComposeKernel"] {
             guard let fn = library.makeFunction(name: name),
                   let pso = try? device.makeComputePipelineState(function: fn) else {
                 fatalError("Missing Metal kernel \(name)")

@@ -120,6 +120,30 @@ typedef struct {
     int   pad2;
 } InterpQCUniforms;
 
+// Learned artifact scorer (ArtifactScorer.swift). Features are measured on an analysis copy at most ~1920 px wide,
+// so a tile always covers about the same share of the picture.
+#define QC_TILE 64            // analysis-resolution tile size
+#define QC_SUMS 22            // per-tile feature sums (see qcFeatureKernel)
+#define QC_MAXES 4            // per-tile feature maxima
+#define QC_FEATS (QC_SUMS + QC_MAXES)
+#define QC_FLOW 8             // per-tile flow statistics slots (see qcFlowStatsKernel)
+#define QC_FEATHER 8          // qcComposeKernel: analysis pixels feathered on each side of an edge between candidates
+
+typedef struct {
+    int   scale;           // full-resolution pixels per analysis pixel (1, 2, ...)
+    int   tilesX;          // analysis tile grid
+    int   tilesY;
+    int   analysisWidth;
+    int   analysisHeight;
+    float t;               // time of the generated frame (0..1)
+    int   modelWidth;      // flow statistics: model-resolution picture inside the tensor
+    int   modelHeight;
+    int   tensorWidth;
+    int   tensorHeight;
+    int   pad0;
+    int   pad1;
+} QCScoreUniforms;
+
 typedef struct {
     float sigmaSpatial;   // pixels
     float sigmaRange;     // signal units (≈ 2–3 × measured grain)
