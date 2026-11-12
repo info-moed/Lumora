@@ -115,8 +115,8 @@ From `project.yml`:
 | `MACOSX_DEPLOYMENT_TARGET` | `27.0` | Uses macOS 27 APIs. |
 | `SWIFT_OBJC_BRIDGING_HEADER` | `Lumora/Shaders/Lumora-Bridging-Header.h` | Imports `ShaderTypes.h` so Swift and Metal share the exact uniform struct layouts. |
 | `MTL_HEADER_SEARCH_PATHS` | `$(SRCROOT)/Lumora/Shaders` | Lets `Grade.metal` include `ShaderTypes.h`. |
-| `MTL_FAST_MATH` | `YES` | Faster GPU maths; the grading maths is written to tolerate it. |
-| `SWIFT_OPTIMIZATION_LEVEL` | `-O` | Even Debug builds are optimised: the frame pipeline is too slow otherwise. Use a `-Onone` override if you need to step through code. |
+| `MTL_FAST_MATH` | `YES` | Faster GPU math; the grading math is written to tolerate it. |
+| `SWIFT_OPTIMIZATION_LEVEL` | `-O` | Even Debug builds are optimized: the frame pipeline is too slow otherwise. Use a `-Onone` override if you need to step through code. |
 | `ENABLE_HARDENED_RUNTIME` | `YES` | Required for notarization. |
 | `CODE_SIGN_ENTITLEMENTS` | `Lumora/Lumora.entitlements` | **No App Sandbox** (Lumora launches encoder tools) and **library validation disabled** (for future vendor RAW plug-ins). |
 
@@ -185,7 +185,7 @@ That's expected on a developer Mac. (A bundled copy whose libraries are missing 
 bundled copies win, hide the working Homebrew one.)
 
 To ship a self-contained app, put **static builds** of the tools in `/opt/homebrew/bin` or `~/.local/bin` before
-building, or relink them with a tool such as `dylibbundler`, then sign them. Check each tool's licence: FFmpeg with
+building, or relink them with a tool such as `dylibbundler`, then sign them. Check each tool's license: FFmpeg with
 GPL parts, and x265, are GPL.
 
 ---
@@ -221,7 +221,7 @@ xcodebuild -project Lumora.xcodeproj -scheme Lumora -derivedDataPath build/Deriv
 with no windows, no Dock icon and no focus change, so a test run never interrupts whoever is using the Mac. See
 `LumoraMain` in [`Lumora/App/LumoraApp.swift`](../Lumora/App/LumoraApp.swift).
 
-**Test artefacts.** End-to-end clips, outputs and UI snapshots are written to `$TMPDIR/LumoraE2E-<pid>/` (snapshots
+**Test artifacts.** End-to-end clips, outputs and UI snapshots are written to `$TMPDIR/LumoraE2E-<pid>/` (snapshots
 in its `screens/` subfolder). Open the most recent one:
 
 ```bash

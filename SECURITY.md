@@ -18,11 +18,11 @@ new files where you choose. The inputs it treats as **untrusted** are:
 
 ## What Lumora does about it
 
-| Risk | Defence |
+| Risk | Defense |
 |---|---|
 | Command injection | Every tool is launched with an argument array, never a shell. Source and output paths are absolute, so names can't become options. |
 | FFmpeg reaching other resources | Every FFmpeg/ffprobe input is restricted to `file,pipe,fd` protocols, so a playlist disguised as a video can't fetch anything. |
-| Writing outside the chosen folder | Output names are sanitised per path component (no `..`, leading dots or control characters) and the final path is checked to be inside the destination. |
+| Writing outside the chosen folder | Output names are sanitized per path component (no `..`, leading dots or control characters) and the final path is checked to be inside the destination. |
 | Destroying the source | An export or package that would replace its own source is refused; an older output is moved to the Trash, not deleted. |
 | Malformed files crashing the app | Frame rates outside 1–1000 fps, impossible frame counts and sizes outside 16–16384 px are rejected or clamped before they reach timing or GPU code. |
 | Personal metadata leaking | "Remove personal details" copies back only an allowlist of safe tags; sidecar files drop home-folder paths unless you keep metadata. |

@@ -1,6 +1,6 @@
 # HDR and video basics
 
-A plain-English primer on the terms Lumora uses. Ten minutes here makes every setting in the app make sense. No maths
+A plain-English primer on the terms Lumora uses. Ten minutes here makes every setting in the app make sense. No math
 required; there are a few numbers, all explained.
 
 ---
@@ -10,7 +10,7 @@ required; there are a few numbers, all explained.
 - [Brightness is measured in nits](#brightness-is-measured-in-nits)
 - [SDR and HDR](#sdr-and-hdr)
 - [Transfer functions: BT.1886, PQ, HLG and log](#transfer-functions-bt1886-pq-hlg-and-log)
-- [Colour gamut: Rec.709 vs Rec.2020](#colour-gamut-rec709-vs-rec2020)
+- [Color gamut: Rec.709 vs Rec.2020](#color-gamut-rec709-vs-rec2020)
 - [HDR formats: HDR10, HDR10+, HLG, Dolby Vision](#hdr-formats-hdr10-hdr10-hlg-dolby-vision)
 - [Bit depth: 8, 10, 12-bit](#bit-depth-8-10-12-bit)
 - [Chroma subsampling: 4:2:0, 4:2:2, 4:4:4](#chroma-subsampling-420-422-444)
@@ -25,7 +25,7 @@ required; there are a few numbers, all explained.
 
 ## Brightness is measured in nits
 
-A **nit** (candela per square metre, cd/m²) is a unit of brightness on a screen.
+A **nit** (candela per square meter, cd/m²) is a unit of brightness on a screen.
 
 | Thing | Roughly |
 |---|---|
@@ -44,9 +44,9 @@ brighter than SDR. That's why Lumora talks about "where the real highlights live
 ## SDR and HDR
 
 - **SDR (standard dynamic range)** is the video of the last 70 years: designed for about 100 nits and a limited set
-  of colours. Every screen plays it correctly.
-- **HDR (high dynamic range)** describes brightness up to thousands of nits and a much wider range of colours.
-  It needs an HDR screen to look right. On an SDR screen it looks dim and grey unless the player converts it.
+  of colors. Every screen plays it correctly.
+- **HDR (high dynamic range)** describes brightness up to thousands of nits and a much wider range of colors.
+  It needs an HDR screen to look right. On an SDR screen it looks dim and gray unless the player converts it.
 
 Lumora converts in every direction:
 
@@ -75,18 +75,18 @@ works on those, then re-encodes with the target curve.
 
 ---
 
-## Colour gamut: Rec.709 vs Rec.2020
+## Color gamut: Rec.709 vs Rec.2020
 
-The **gamut** is the range of colours a format can describe.
+The **gamut** is the range of colors a format can describe.
 
-- **Rec.709 (BT.709)**: SDR's gamut. Same colours as sRGB.
+- **Rec.709 (BT.709)**: SDR's gamut. Same colors as sRGB.
 - **Rec.2020 (BT.2020)**: HDR's container gamut. Much more saturated reds, greens and cyans.
 - **P3**: in between; what most HDR content is actually mastered in, inside a Rec.2020 container.
 
-Rec.2020's pure primaries are slightly different *hues* from Rec.709's (its red leans a little towards magenta, its
-green towards cyan). When Lumora squeezes extreme Rec.2020 colours into Rec.709, it uses soft gamut compression and
-keeps the hue, so those colours may look slightly different from the "same" named colour in SDR. That is correct
-behaviour.
+Rec.2020's pure primaries are slightly different *hues* from Rec.709's (its red leans a little toward magenta, its
+green toward cyan). When Lumora squeezes extreme Rec.2020 colors into Rec.709, it uses soft gamut compression and
+keeps the hue, so those colors may look slightly different from the "same" named color in SDR. That is correct
+behavior.
 
 ---
 
@@ -113,7 +113,7 @@ or write new metadata when it is.
 
 ## Bit depth: 8, 10, 12-bit
 
-**Bit depth** is how many steps each colour channel has.
+**Bit depth** is how many steps each color channel has.
 
 | Bits | Steps per channel | Use |
 |---|---|---|
@@ -128,10 +128,10 @@ input and grades it in higher precision.
 
 ## Chroma subsampling: 4:2:0, 4:2:2, 4:4:4
 
-Video stores brightness (**luma**) and colour (**chroma**) separately, and usually keeps less colour detail, because
+Video stores brightness (**luma**) and color (**chroma**) separately, and usually keeps less color detail, because
 eyes are less sensitive to it.
 
-| Format | Colour resolution | Use |
+| Format | Color resolution | Use |
 |---|---|---|
 | **4:2:0** | ¼ of full | Almost all delivery: Blu-ray, streaming, TV playback |
 | **4:2:2** | ½ of full | Professional intermediates (ProRes 422) |
@@ -182,9 +182,9 @@ generated frame and repairs bad ones. It never interpolates across a scene cut.
 How do you know a smaller file "looks the same"? Metrics compare the encode to the reference:
 
 - **VMAF** (0–100): Netflix's perceptual score. 95+ ≈ visually indistinguishable at normal distance. Trained on SDR.
-- **ColorVideoVDP** (JOD, 10 = identical): models human vision including HDR, colour and motion.
+- **ColorVideoVDP** (JOD, 10 = identical): models human vision including HDR, color and motion.
 - **CAMBI**: detects banding added by the encode.
-- **ΔE2000**: detects colour shifts.
+- **ΔE2000**: detects color shifts.
 
 Lumora's **Imperceptible** standard uses a fast metric to find the cheapest setting, then checks several others
 before accepting it. See [Feature reference → Quality metrics](features.md#quality-metrics-why-not-just-vmaf).
@@ -194,8 +194,8 @@ before accepting it. See [Feature reference → Quality metrics](features.md#qua
 ## Tone mapping
 
 **Tone mapping** fits one brightness range into another, for example a 4,000-nit HDR master onto a 1,000-nit TV or a
-100-nit SDR screen. A good tone map keeps mid-tones and skin where the colourist put them, and rolls highlights off
-smoothly instead of clipping them to flat white. Lumora's curve sets contrast around mid-grey, adds a gentle toe for
+100-nit SDR screen. A good tone map keeps mid-tones and skin where the colorist put them, and rolls highlights off
+smoothly instead of clipping them to flat white. Lumora's curve sets contrast around mid-gray, adds a gentle toe for
 shadows, and uses a soft shoulder for highlights, all while preserving hue.
 
 ---
@@ -214,6 +214,6 @@ shadows, and uses a soft shoulder for highlights, all while preserving hue.
 | **Preset (encoder)** | Speed vs efficiency trade-off: slower presets make smaller files at the same quality. |
 | **Grain synthesis** | AV1 can strip film grain before encoding and re-add it at playback, saving bitrate. |
 | **RPU** | The Dolby Vision metadata unit attached to each frame. |
-| **LUT / .cube** | A lookup table that applies a colour transform; Lumora can export any look as one. |
+| **LUT / .cube** | A lookup table that applies a color transform; Lumora can export any look as one. |
 | **Proxy** | A small, low-resolution copy of a video used for smooth scrubbing. |
 | **Scratch drive** | Fast disk where Lumora puts all temporary files. |

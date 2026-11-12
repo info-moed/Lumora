@@ -5,7 +5,7 @@
 # link @rpath/... or /opt/homebrew/... dylibs) would fail to launch from inside the app, and because bundled
 # tools win over Homebrew ones in ToolLocator, a broken copy would shadow a working install. Those tools are
 # simply found in Homebrew at run time instead. For a shippable app, use static builds or relink with a tool
-# like dylibbundler, and check each tool's licence (FFmpeg built with GPL parts and x265 are GPL).
+# like dylibbundler, and check each tool's license (FFmpeg built with GPL parts and x265 are GPL).
 set -e
 DEST="${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Resources/bin"
 mkdir -p "$DEST"

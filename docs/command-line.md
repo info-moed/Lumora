@@ -134,8 +134,8 @@ defaults write io.github.info-moed.Lumora planMode "Time budget" && defaults wri
 | `~/Library/Application Support/Lumora/Models/` | Core ML `.mlpackage` models, `models.json` (models you added), `model-choices.json` (best model per content type) | Models: re-convert to restore. |
 | `~/Library/Application Support/Lumora/ModelLab/` | Python `venv`, Practical-RIFE checkout, converter state | Yes; Model Lab rebuilds it. |
 | `~/Library/Application Support/Lumora/mac-profile.json` | "Optimize for this Mac" results | Yes (or Forget profile). |
-| `~/Library/Application Support/Lumora/forecast-learning.json` | Size-forecast corrections learnt from finished exports | Yes; forecasts get less accurate. |
-| `~/Library/Application Support/Lumora/quality-predictor.json` | Quality-search predictor learnt from past encodes | Yes; first trials get slower. |
+| `~/Library/Application Support/Lumora/forecast-learning.json` | Size-forecast corrections learned from finished exports | Yes; forecasts get less accurate. |
+| `~/Library/Application Support/Lumora/quality-predictor.json` | Quality-search predictor learned from past encodes | Yes; first trials get slower. |
 | `~/Library/Application Support/Lumora/queue.json` | Unfinished batch queue | Yes; you lose "resume". |
 | `~/Library/Application Support/Lumora/Calibration/` | Encoder speed/efficiency measured on this Mac | Yes. |
 | `~/Library/Application Support/Lumora/Manifests/` | Export manifests (frame maps used by "Repair these frames") | Yes; repair of old exports stops working. |
@@ -216,7 +216,7 @@ Placeholders filled at run time:
 | `{in}` `{out}` | input (stdin/pipe) and output path |
 | `{w}` `{h}` `{fps_num}` `{fps_den}` `{bits}` `{threads}` | frame geometry, rate, bit depth, threads per segment |
 | `{preset}` `{quality}` | speed preset; quality mapped into `qualityBest…qualityWorst` |
-| `{cp}` `{tc}` `{mc}` | numeric colour primaries / transfer / matrix (9/16/9 for PQ, 9/18/9 for HLG, 1/1/1 for SDR) |
+| `{cp}` `{tc}` `{mc}` | numeric color primaries / transfer / matrix (9/16/9 for PQ, 9/18/9 for HLG, 1/1/1 for SDR) |
 | `{cp_name}` `{tc_name}` `{mc_name}` `{vvenc_hdr}` | named equivalents from `colorNames` |
 | `{maxcll}` `{maxfall}` `{svt_mastering}` `{x265_mastering}` | HDR10 static metadata, measured from your film |
 | `{aom_profile}` `{x265_profile}` | profile for the chosen bit depth and chroma |
@@ -320,7 +320,7 @@ ColorVideoVDP and PU21-PSNR are installed by Model Lab into its Python environme
 
 ## Checking output files
 
-Basic stream facts, including HDR signalling:
+Basic stream facts, including HDR signaling:
 
 ```bash
 ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,profile,pix_fmt,width,height,r_frame_rate,color_range,color_space,color_transfer,color_primaries -of default=nw=1 output.mov
@@ -344,7 +344,7 @@ Decode every frame and report errors (what Lumora's "Verify" does):
 ffmpeg -v error -i output.mkv -f null - && echo "decodes cleanly"
 ```
 
-Dolby Vision: extract the RPU and summarise it:
+Dolby Vision: extract the RPU and summarize it:
 
 ```bash
 ffmpeg -v error -i output.mkv -map 0:v:0 -c:v copy -bsf:v hevc_mp4toannexb -f hevc - | dovi_tool extract-rpu - -o rpu.bin && dovi_tool info -i rpu.bin --summary
@@ -427,7 +427,7 @@ Scratch and caches:
 rm -rf ~/Library/Caches/Lumora\ Scratch
 ```
 
-Everything Lumora has learnt or stored, including models, the Model Lab environment, the regression set and the
+Everything Lumora has learned or stored, including models, the Model Lab environment, the regression set and the
 batch queue (this cannot be undone):
 
 ```bash

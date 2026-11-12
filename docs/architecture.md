@@ -31,7 +31,7 @@ changes. Aimed at contributors. Read [Building from source](building.md) first.
    `CVMetalTextureCache`; Core ML writes into Metal-visible buffers.
 5. **Precision first.** 10-bit is the minimum output; 12-bit paths grade in 32-bit float.
 6. **Measure, then decide.** Content type, light levels, encoder speed and quality come from measurements on *your*
-   footage and *your* Mac, and learnt values improve with use.
+   footage and *your* Mac, and learned values improve with use.
 7. **Explain everything.** Every automatic choice carries a plain-English reason for the UI.
 
 ---
@@ -73,8 +73,8 @@ changes. Aimed at contributors. Read [Building from source](building.md) first.
 |---|---|---|
 | `App/` | Entry point and the single app-wide model the UI binds to | `LumoraMain`, `LumoraApp`, `AppModel` (`@MainActor @Observable`) |
 | `Core/Ingest/` | What a file is, how to decode it, where tools live | `SourceInspector`, `SourceDescriptor`, `SourceColor`, `FrameSource`s, `ToolLocator` |
-| `Core/Color/` | Colour science: primaries, transfer curves, grade parameters, output targets | `Gamut`, `TransferMath`, `GradeParams`, `Look`, `OutputTarget`, `UniformBuilder` |
-| `Core/Analysis/` | One-pass film analysis and HDR judgement | `SceneAnalyzer`, `ContentProfiler`, `CropDetector`, `HDRReportCard`, `ReferenceMatcher`, `HDRLibrary`, `RegressionSet` |
+| `Core/Color/` | Color science: primaries, transfer curves, grade parameters, output targets | `Gamut`, `TransferMath`, `GradeParams`, `Look`, `OutputTarget`, `UniformBuilder` |
+| `Core/Analysis/` | One-pass film analysis and HDR judgment | `SceneAnalyzer`, `ContentProfiler`, `CropDetector`, `HDRReportCard`, `ReferenceMatcher`, `HDRLibrary`, `RegressionSet` |
 | `Core/Presets/` | Turning analysis into choices and advice | `AutoPresetEngine`, `Recommender`, `FormatAdvisor` |
 | `Core/Render/` | Metal device, pipelines and pass encoding | `MetalContext`, `GradeRenderer`, `GrainProcessor` |
 | `Core/Interpolation/` | Planning, generating, checking and repairing in-between frames | `InterpolationPlanner`, `InterpolationEngines`, `InterpolationQC`, `MotionRouter`, `MotionScan`, `InterpolationEvaluator`, `ExternalRepair` |
@@ -97,19 +97,19 @@ The largest files are `AppModel.swift` (UI-facing orchestration), `ExportEngine.
 
 `AppModel.open(_:)`:
 
-1. **Inspect.** `SourceInspector.inspect` tries, in order, AVFoundation (container and colour tags, Dolby Vision
+1. **Inspect.** `SourceInspector.inspect` tries, in order, AVFoundation (container and color tags, Dolby Vision
    configuration, Apple Log tag, camera model), Core Image RAW for stills and DNG folders, then `ffprobe`. It
    returns a `SourceDescriptor` (geometry, rate, frame count, decoder kind, crop, scan type) and a ranked list of
    `SourceColor` interpretations (transfer, gamut, range, e.g. "Apple Log" *and* "Apple Log 2" when unsure).
 2. **Storage.** `StorageInspector` measures the source drive against the bitrate the file needs and either streams
    it with read-ahead (`ReadAheadAdvisor`, `F_RDADVISE`) or stages it to scratch.
 3. **Crop.** `CropDetector` finds letterbox and pillarbox bars.
-4. **Analyse.** `SceneAnalyzer.analyze` decodes every frame once, runs the analysis kernels at the chip's analysis
+4. **Analyze.** `SceneAnalyzer.analyze` decodes every frame once, runs the analysis kernels at the chip's analysis
    width (960 px on Pro/Max chips), and builds the `AnalysisResult`: scenes, cuts, fades, per-scene light levels
    and motion. The same pass can write the preview proxy.
 5. **Profile.** `ContentProfiler` classifies the footage into a `ContentKind` with evidence and confidence;
    `ContentTuning` maps each kind to interpolation, QC, grain, encoder and quality settings.
-6. **Presets.** `AutoPresetEngine.generate` builds a `PresetCandidate` per look and colour interpretation, with
+6. **Presets.** `AutoPresetEngine.generate` builds a `PresetCandidate` per look and color interpretation, with
    per-scene exposure, and marks the recommended one.
 
 ---
@@ -123,7 +123,7 @@ The largest files are `AppModel.swift` (UI-facing orchestration), `ExportEngine.
 3. White balance, exposure, per-scene auto exposure.
 4. Punch: local contrast in log luminance from a guided-filter base layer (`guidedCoeffKernel`), radius scaled to
    the image, soft-clamped against halos.
-5. Tone curve: contrast around mid grey, generalised Reinhard shoulder to the target peak, a toe for shadow density,
+5. Tone curve: contrast around mid gray, generalized Reinhard shoulder to the target peak, a toe for shadow density,
    using a hue-preserving max-RGB norm.
 6. Film-like highlight desaturation near peak.
 7. Oklab saturation and vibrance, with skin hues protected.
@@ -218,7 +218,7 @@ All paths are listed in the [Command-line guide](command-line.md#files-and-folde
 
 | Layer | How |
 |---|---|
-| Maths | Pure unit tests against published reference values (`ColorMathTests`, `DolbyVisionTests`, …) |
+| Math | Pure unit tests against published reference values (`ColorMathTests`, `DolbyVisionTests`, …) |
 | Planning logic | Unit tests on planners, recommender, forecaster, naming, packaging |
 | Real pipeline | `EndToEndTests` generate clips with FFmpeg, run the real engine on the real GPU and encoders, and check the files with `ffprobe` (codec, bit depth, HDR tags, frame count, exposure) |
 | UI | `UISmokeTests` build every window offscreen with a video loaded and draw it to PNG |

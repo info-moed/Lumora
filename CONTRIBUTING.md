@@ -55,6 +55,6 @@ Follow the surrounding code: Swift 5 language mode, `@MainActor @Observable` for
 for pipelines, small focused types, doc comments that say *why*. Metal changes must keep `ShaderTypes.h` as the
 single definition of shared structs.
 
-## Licence
+## License
 
-By contributing you agree that your contribution is released under the project's [MIT licence](LICENSE).
+By contributing you agree that your contribution is released under the project's [MIT license](LICENSE).

@@ -61,7 +61,7 @@ Switch between **Simple** and **Pro** with the selector in the middle of the too
   - **Camera RAW stills** from most cameras.
   - BRAW, R3D, ARRIRAW and Canon RAW need the vendor's SDK as a plug-in (not yet available).
 - On opening, Lumora:
-  1. reads how the file is encoded (colour, HDR format, camera log profile),
+  1. reads how the file is encoded (color, HDR format, camera log profile),
   2. checks the drive's speed and decides whether to stream or copy it to your scratch drive,
   3. looks for black bars,
   4. reads every frame once: scenes, brightness, motion, grain, and a small preview proxy,
@@ -115,7 +115,7 @@ The left column lists **looks** built for this file, each with a thumbnail rende
 |---|---|
 | **Keep original look** | No regrade. For interpolating, upscaling or re-encoding without changing the picture. |
 | **Natural** | True-to-life contrast, skin first. |
-| **Punchy** | More contrast and colour. |
+| **Punchy** | More contrast and color. |
 | **Super Punchy** | Maximum pop, skin still protected. |
 | **Cinematic** | Filmic contrast and roll-off. |
 | **Bright & Clean** | Lifted, clean, airy. |
@@ -144,7 +144,7 @@ interpretation. Compare them and pick the one that looks right. The recommended 
 | **Simple / Pro** | Switches modes. |
 | **Display as** | Which output the preview shows: HDR10 at 1000, 2000 or 4000 nits, HLG, or SDR. |
 | **Before / after** | Split view: the ungraded signal beside the grade. |
-| **False colour** | Colours the picture by brightness, to see exposure at a glance. |
+| **False color** | Colors the picture by brightness, to see exposure at a glance. |
 | **Nits picker** | Click the picture to read the exact brightness of a point. |
 | **Scopes** | Scopes panel under the preview. |
 | **Activity** | Every running task with progress, rate and time remaining. |
@@ -153,9 +153,9 @@ interpretation. Compare them and pick the one that looks right. The recommended 
 
 ### Source tab
 
-- **File facts:** resolution, frame rate, codec, how Lumora reads the colour ("Read as"), scene and fade counts,
+- **File facts:** resolution, frame rate, codec, how Lumora reads the color ("Read as"), scene and fade counts,
   length.
-- **Content:** the detected content type and confidence, with the evidence ("94% of the picture is flat colour").
+- **Content:** the detected content type and confidence, with the evidence ("94% of the picture is flat color").
   Override it here; it tunes interpolation, artifact strictness, grain handling, encoder flags, quality target and
   upscaler. Types: real life, real life with heavy grain, anime, old anime, 3D/CGI, screen content, low light, fast
   motion.
@@ -168,7 +168,7 @@ interpretation. Compare them and pick the one that looks right. The recommended 
 
 - **Tone:** Exposure, Brightness, Contrast, Punch (local contrast), Halo protection, Shadow depth, Highlight snap and
   Highlight softening.
-- **Colour:** Saturation, Vibrance, Skin protection, Warmth and Tint.
+- **Color:** Saturation, Vibrance, Skin protection, Warmth and Tint.
 - **Clean-up and HDR:** Deband, Highlight rebuild, **Rebuild highlights of HDR sources too**, and **Keep the original
   look (no regrade)**.
 - Every slider previews live and resets to the look's value. **Save changes to this preset** keeps your changes.
@@ -215,7 +215,7 @@ interpretation. Compare them and pick the one that looks right. The recommended 
 
 1. Click **Export (⌘E)**.
 2. In the sheet, check **HDR format**, **Peak brightness** (1000 nits recommended), **Codec**, **Bit depth**,
-   **Colour detail** (chroma) and **Quality**.
+   **Color detail** (chroma) and **Quality**.
 3. Tick the **presets to export**. You can export several looks in one go.
 4. Optionally keep **Also export the original frame rate** to compare interpolated vs original.
 5. Click **Export…** and choose a folder (**Export Here**).

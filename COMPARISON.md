@@ -23,7 +23,7 @@ Neither column claims anything about final picture quality. That can only be jud
 | Auto black-bar crop | Not advertised | ✓ — Built |
 | Deinterlace / inverse telecine | Not advertised | ✓, auto-detected — Built |
 | Reference matching to official UHD | ✓ (VESAI Match) | ✓ (Reference Match, with per-band stop report) — Built |
-| HDR scopes | Waveform, parade, CIE, false colour, nits read-out | Waveform (PQ scale), CIE, false colour, nits picker — Built · RGB parade — Planned |
+| HDR scopes | Waveform, parade, CIE, false color, nits read-out | Waveform (PQ scale), CIE, false color, nits picker — Built · RGB parade — Planned |
 | Measured MaxCLL/MaxFALL | ✓ | ✓ from the graded output — Built |
 | Dolby Vision | "Compatible workflow" (Pro tier) | DV 8.4 native via VideoToolbox; DV 8.1 via dovi_tool — Beta |
 | HDR10+ | ✓ (Pro tier) | ✓ — Beta |
@@ -43,17 +43,17 @@ Neither column claims anything about final picture quality. That can only be jud
 | UHD reference library | Demo comparisons on site | Library system with measurements and sources (ships empty by design) — Built |
 | Batch processing | Not advertised | Whole-folder batch — Built |
 | Shareable presets | Profiles | `.lumorapreset` files — Built |
-| Automated tests of colour math | Not public | Unit tests pinned to published reference values — Built |
+| Automated tests of color math | Not public | Unit tests pinned to published reference values — Built |
 | Encode to a VMAF target | — | Per-chunk VMAF target with dip repair and an on-device predictor — Built |
 | Content-aware tuning | — | 8 detected content types driving models, QC, grain, encoder flags and targets — Built |
 | Model management | 50+ bundled models | Model Lab: RIFE 4.6–4.26 catalog, download/import, Core ML conversion (image + HDR flow), per-content benchmark winners — Built |
 | Slow-drive handling | — | Drive detection, single-reader read-ahead, auto-staging to SSD, SSD preview proxies — Built |
 | Disk writes during processing | Not specified | No frame dumps; everything streams; temp only on the chosen SSD — Built |
-| Progress and logging | Not specified | Activity centre (progress, rate, ETA for every job) and a searchable log console — Built |
+| Progress and logging | Not specified | Activity center (progress, rate, ETA for every job) and a searchable log console — Built |
 | Archival encoder recipes | Custom encoding parameters | Research-based AV1 (SVT-AV1) and HEVC (x265) recipes per content type, flag-probed against your encoder build — Built |
 | Time-budget planning | — | Fastest / budget / best-for-this-Mac / maximum; whole-file time estimates; "X more time buys Y%" hints; on-Mac measurement — Built |
 | Quality metrics | — | ColorVideoVDP (HDR), PU21-PSNR, XPSNR, VMAF + NEG, CAMBI banding, MS-SSIM, PSNR-HVS, CIEDE2000, SSIMULACRA 2, AVQT, with search/gate/report roles — Built |
-| "Imperceptible" encoding standard | — | Relaxed VMAF search, proven by perceptual, banding and colour gates — Built |
+| "Imperceptible" encoding standard | — | Relaxed VMAF search, proven by perceptual, banding and color gates — Built |
 | Cloud processing | ✓ (paid) | — |
 | Generative AI suite | ✓ (separate product) | — (out of scope) |
 

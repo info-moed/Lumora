@@ -58,7 +58,7 @@ Full details: [Building from source](building.md#common-build-failures).
 | "This file has no video track." | It's an audio-only or broken file. Check with `ffprobe file`. |
 | MKV, AVI, WebM… won't open | Those formats go through FFmpeg: `brew install ffmpeg`. |
 | "…files need the camera maker's RAW SDK plug-in" | BRAW, R3D, ARRIRAW and Canon RAW need vendor SDK plug-ins, which aren't available yet. Convert to ProRes in the camera maker's app first. |
-| Colours look wrong on camera footage | Lumora may have guessed the log profile wrongly. Compare the looks for each interpretation in the sidebar, or pick the right one under Source → **Read as**. Apple Log 2 colour is approximate until Apple publishes its gamut. |
+| Colors look wrong on camera footage | Lumora may have guessed the log profile wrongly. Compare the looks for each interpretation in the sidebar, or pick the right one under Source → **Read as**. Apple Log 2 color is approximate until Apple publishes its gamut. |
 | Opening a file on a hard drive is slow | Lumora reads hard drives once, in order, and builds a preview proxy. Let the first read finish; scrubbing is fast afterwards. |
 | Black bars were removed but you want them | Source → Picture → untick **Remove black bars**. |
 | Interlaced footage shows combing | Source → Picture → **Scan** → choose the right fix. |
@@ -69,10 +69,10 @@ Full details: [Building from source](building.md#common-build-failures).
 
 | Problem | Fix |
 |---|---|
-| HDR preview looks dim or grey | Your display isn't in HDR mode, or isn't an HDR display. On a MacBook Pro XDR it's automatic; for external screens turn on **High Dynamic Range** in System Settings → Displays. |
+| HDR preview looks dim or gray | Your display isn't in HDR mode, or isn't an HDR display. On a MacBook Pro XDR it's automatic; for external screens turn on **High Dynamic Range** in System Settings → Displays. |
 | Preview looks too bright on an SDR screen | Set **Display as** to SDR to preview the SDR version. |
 | HDR file looks washed out in another player | That player is showing HDR on an SDR screen without tone mapping. Try QuickTime Player, IINA or Infuse, or play it on an HDR TV. |
-| Saturated colours shift slightly converting HDR → SDR | Expected for colours outside Rec.709: Lumora keeps their hue while bringing them into gamut. See [HDR basics → gamut](hdr-basics.md#colour-gamut-rec709-vs-rec2020). |
+| Saturated colors shift slightly converting HDR → SDR | Expected for colors outside Rec.709: Lumora keeps their hue while bringing them into gamut. See [HDR basics → gamut](hdr-basics.md#color-gamut-rec709-vs-rec2020). |
 | Banding in skies | Look → Clean-up and HDR → **Deband**; export 10-bit or 12-bit (always on). |
 
 ---
@@ -81,7 +81,7 @@ Full details: [Building from source](building.md#common-build-failures).
 
 | Problem | Fix |
 |---|---|
-| "… can't do N-bit" / "… supports … colour only" | That codec doesn't support that bit depth or chroma format. The message lists what it does support. |
+| "… can't do N-bit" / "… supports … color only" | That codec doesn't support that bit depth or chroma format. The message lists what it does support. |
 | "Dolby Vision 8.1 needs HEVC" / "HDR10+ needs HEVC (or AV1)" | Choose HEVC (or AV1 for HDR10+). |
 | "The svtav1 encoder isn't installed" (or another) | `scripts/deps.sh install --all`, or install that one tool. |
 | "SvtAv1EncApp failed: …" (or another encoder) | The message ends with the encoder's own error. A missing library ("Library not loaded") means a broken install: `scripts/deps.sh status` shows it; `brew reinstall <formula>` fixes it. An unknown option means the encoder changed; run `scripts/deps.sh verify` and report it. |

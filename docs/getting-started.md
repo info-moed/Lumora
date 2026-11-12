@@ -63,7 +63,7 @@ Terminal is an app where you type commands instead of clicking. You'll only need
 
 **How to run a command from this guide:**
 
-1. Copy the text from a grey box (e.g. `xcode-select -p`).
+1. Copy the text from a gray box (e.g. `xcode-select -p`).
 2. Click in the Terminal window, paste with **⌘V**, press **Return**.
 3. Wait until the prompt (`%`) comes back before running the next one.
 
@@ -221,7 +221,7 @@ Open **Lumora** from your Applications folder (or from Xcode).
   of the window.
 - A banner may suggest **Optimize for this Mac**. It's optional. It spends a while measuring your Mac to pick the
   fastest settings. You can dismiss it and run it later from **Tools → Optimize for this Mac…**.
-- Lumora's interface is always dark, to keep the picture judgement honest.
+- Lumora's interface is always dark, to keep the picture judgment honest.
 
 > **macOS says the app "can't be opened"?** Apps you build yourself normally open fine. If you downloaded a built
 > `Lumora.app` from someone else, right-click it → **Open** → **Open**. See

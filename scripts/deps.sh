@@ -159,7 +159,7 @@ verify_flags() {
   local failures=0 json="$ROOT/Lumora/Resources/encoders.json"
   while IFS='|' read -r key bin helparg; do
     have "$bin" || { say "  ${D}$bin not installed; skipped${N}"; continue; }
-    # Normalise "--[no-]flag" (x265, vvenc) so it counts as listing "--flag".
+    # Normalize "--[no-]flag" (x265, vvenc) so it counts as listing "--flag".
     local help; help=$("$bin" "$helparg" 2>&1 | sed 's/--\[no-\]/--/g' || true)
     local flags; flags=$(python3 -I - "$json" "$key" <<'PY'
 import json, sys

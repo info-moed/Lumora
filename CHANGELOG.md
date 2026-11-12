@@ -53,7 +53,7 @@ The first version that compiles and runs. Earlier versions were complete source 
   Dependabot for the workflow's actions.
 - **Documentation** for every level: getting started, HDR basics, user guide, building, command line, architecture,
   troubleshooting, contributing.
-- MIT licence; bundle identifier `io.github.info-moed.Lumora`.
+- MIT license; bundle identifier `io.github.info-moed.Lumora`.
 
 ---
 
@@ -99,15 +99,15 @@ The first version that compiles and runs. Earlier versions were complete source 
 - **Built — Reference frames from your own films,** with their settings. **Check all** re-renders them after any update and flags visible changes (below 45 dB in a perceptual domain).
 
 ### Tests
-- **Built:** name guessing, Plex paths with editions, rename sanitising, NFO escaping and IDs, overnight schedule windows, SHA-256 known answer.
+- **Built:** name guessing, Plex paths with editions, rename sanitizing, NFO escaping and IDs, overnight schedule windows, SHA-256 known answer.
 
 ---
 
-## [0.10.0] — 2026-11-03 · "The colourist's Dolby Vision survives; the grade fits your screen"
+## [0.10.0] — 2026-11-03 · "The colorist's Dolby Vision survives; the grade fits your screen"
 
 ### Dolby Vision, kept
 - **Built — Profile detection** (5, 7, 8) and whether an enhancement layer is present.
-- **Built — Original Dolby Vision retimed.** When the picture isn't regraded (Keep original look) and the output is HEVC, Lumora carries the film's **own** Dolby Vision through interpolation, black-bar cropping and re-encoding, including the colourist's trims for different TVs:
+- **Built — Original Dolby Vision retimed.** When the picture isn't regraded (Keep original look) and the output is HEVC, Lumora carries the film's **own** Dolby Vision through interpolation, black-bar cropping and re-encoding, including the colorist's trims for different TVs:
   1. Extract the RPU, converting profile 7 to 8.1.
   2. Map every output frame to the source frame it came from. Generated frames take the nearest original in the same shot, since Lumora never interpolates across cuts.
   3. Rebuild with dovi_tool's editor in two safe passes: removals, then duplications applied from the end.
@@ -130,7 +130,7 @@ The first version that compiles and runs. Earlier versions were complete source 
 - **Built — Display-adapted grading:**
   - Highlights are graded to the screen's real peak, and the preview shows it as that screen would.
   - A **brightness-limiter guard** holds back scenes that would push past what the screen can sustain full-screen (OLEDs especially), so the TV doesn't dim the whole picture unpredictably.
-  - **Make it pop** uses the screen's headroom: brighter highlights, a touch more clarity and colour, and highlight rebuild for HDR sources.
+  - **Make it pop** uses the screen's headroom: brighter highlights, a touch more clarity and color, and highlight rebuild for HDR sources.
 - **Built — Future-proof export** in one click, producing two files:
   - a 12-bit, 4000-nit ProRes 4444 XQ master for tomorrow's screens
   - a 1000-nit HEVC Dolby Vision 8.1 copy for today's TVs
@@ -181,7 +181,7 @@ The first version that compiles and runs. Earlier versions were complete source 
 ## [0.8.0] — 2026-11-03 · "Smart all the way down"
 
 ### Grain, made safe everywhere
-- **Built — Grain-aware interpolation.** For grainy footage, Lumora splits each frame into clean picture and grain with an edge-preserving filter tuned to the measured grain. It interpolates the clean picture, then re-grains each new frame with real grain from the nearest source frame, shifted to a fresh random offset. In-between frames keep exactly the film's grain size, colour and strength: no softer "pumping" frames, no frozen grain. This switches on automatically for heavy grain, old anime and low-light footage.
+- **Built — Grain-aware interpolation.** For grainy footage, Lumora splits each frame into clean picture and grain with an edge-preserving filter tuned to the measured grain. It interpolates the clean picture, then re-grains each new frame with real grain from the nearest source frame, shifted to a fresh random offset. In-between frames keep exactly the film's grain size, color and strength: no softer "pumping" frames, no frozen grain. This switches on automatically for heavy grain, old anime and low-light footage.
 - **Built — Grain-blind artifact checks.** The structure check compares 3×3 averages, so random grain is no longer mistaken for warping.
 - **Built — Fair scoring with grain synthesis.** Every metric (VMAF, CAMBI, XPSNR, SSIMULACRA 2, ColorVideoVDP, PU21) now:
   - decodes AV1 **without** its synthetic grain (`-export_side_data film_grain`)
@@ -235,7 +235,7 @@ The first version that compiles and runs. Earlier versions were complete source 
   - ProRes, which uses Apple's published data rates
 
   Typically within ±30%.
-- **Built — Refine with samples** (a few minutes). Encodes ~8 two-second samples of contrasting scenes with your exact settings, including the full quality search and perceptual checks. It then extrapolates across every scene of the film, weighting each by how alike it is to the samples (dynamic range, colour, darkness, skin), and corrects for keyframe overhead. Typically ±10–15%, shown as a range with a confidence figure.
+- **Built — Refine with samples** (a few minutes). Encodes ~8 two-second samples of contrasting scenes with your exact settings, including the full quality search and perceptual checks. It then extrapolates across every scene of the film, weighting each by how alike it is to the samples (dynamic range, color, darkness, skin), and corrects for keyframe overhead. Typically ±10–15%, shown as a range with a confidence figure.
 - **Built — Exact audio and subtitle sizes.** Measured from the container (AVFoundation sample sizes, MKV byte-count tags, or bitrate × duration) and added unchanged, since those streams pass straight through.
 - **Built — Live projection.** During target-quality encodes, the monitor projects the final size from finished chunks, blending from the forecast to measured data. It fully trusts the measurements once a third of the film is done.
 - **Built — Learns from every export.** The actual size is compared with the forecast, per codec, content type and forecast method. The median correction and the spread of past errors then tighten future forecasts; the card says how many encodes it learned from.
@@ -253,12 +253,12 @@ The first version that compiles and runs. Earlier versions were complete source 
 
 ### Beyond VMAF: a multi-metric quality engine
 - **Built — Eleven metrics**, each explained in plain words and marked when it is HDR-aware:
-  - **ColorVideoVDP** (Cambridge, SIGGRAPH 2024). Models human vision for luminance, colour and motion on a described display, SDR and HDR (PQ/HLG). Scores are in JOD: 10 = identical; a 1-JOD drop means 75% of viewers notice. Runs on this Mac (MPS when available).
+  - **ColorVideoVDP** (Cambridge, SIGGRAPH 2024). Models human vision for luminance, color and motion on a described display, SDR and HDR (PQ/HLG). Scores are in JOD: 10 = identical; a 1-JOD drop means 75% of viewers notice. Runs on this Mac (MPS when available).
   - **PU21-PSNR.** PSNR on perceptually uniform HDR values.
   - **XPSNR** (Fraunhofer). Perceptually weighted PSNR, via FFmpeg's filter.
   - **VMAF**, plus **VMAF NEG**, which ignores encoder sharpening tricks.
   - **CAMBI** (Netflix). Banding, in full-reference mode (how much banding the encode *adds*), with PQ-aware visibility for HDR.
-  - **MS-SSIM**, **PSNR-HVS** and **CIEDE2000** colour difference, all from the same libvmaf pass.
+  - **MS-SSIM**, **PSNR-HVS** and **CIEDE2000** color difference, all from the same libvmaf pass.
   - **SSIMULACRA 2.** Psycho-visual, SDR deliveries, via `ssimulacra2_rs`.
   - **AVQT** (Apple). HDR10/HLG/Dolby Vision aware, used when comparing finished files.
 - **Built — Concurrent, streamed metrics.** The RAM master is piped into each tool at once, so every metric runs in parallel and nothing is written to disk. ColorVideoVDP scores 1-second windows across each chunk, which keeps memory bounded at 4K/8K.
@@ -276,11 +276,11 @@ The first version that compiles and runs. Earlier versions were complete source 
   - **Visually lossless.**
   - **Transparent streaming.**
   - **VMAF only.**
-- **Better bitrate for the same invisibility.** The search uses a relaxed VMAF and lets the perceptual gates decide. Chunks that VMAF would over-feed stop as soon as human-vision models can't see a difference; chunks VMAF misjudges (banding, colour shifts, HDR highlights) get extra bits until they pass.
+- **Better bitrate for the same invisibility.** The search uses a relaxed VMAF and lets the perceptual gates decide. Chunks that VMAF would over-feed stop as soon as human-vision models can't see a difference; chunks VMAF misjudges (banding, color shifts, HDR highlights) get extra bits until they pass.
 - **Safe fallbacks.** If a gate's tool isn't installed, it is skipped with a note, and missing ColorVideoVDP raises the VMAF target to 95 automatically.
 
 ### Encoder and planner
-- **Built — Two-stage acceptance per chunk:** a fast search with VMAF/XPSNR/CAMBI/colour, then a perceptual proof with ColorVideoVDP/SSIMULACRA 2. A failed gate raises quality and re-checks, up to four times, with the reason logged and shown in the encode monitor.
+- **Built — Two-stage acceptance per chunk:** a fast search with VMAF/XPSNR/CAMBI/color, then a perceptual proof with ColorVideoVDP/SSIMULACRA 2. A failed gate raises quality and re-checks, up to four times, with the reason logged and shown in the encode monitor.
 - **Built — Encode monitor** shows every metric per chunk, plus which gate forced extra quality.
 - **Built — Time planner** includes the cost of the slow perceptual gates in its estimates.
 
@@ -331,9 +331,9 @@ The first version that compiles and runs. Earlier versions were complete source 
 - **Built — Batch uses the planner too:** every file gets settings that fit your chosen mode and budget.
 
 ### Honesty notes built into the UI
-- Film grain synthesis is off by default in VMAF-target mode, because VMAF penalises re-created grain. You can turn it on and judge by eye.
+- Film grain synthesis is off by default in VMAF-target mode, because VMAF penalizes re-created grain. You can turn it on and judge by eye.
 - Psycho-visual extras improve what eyes see; the VMAF loop may spend a few more bits to hold its score.
-- Until you measure, times are labelled *estimated*.
+- Until you measure, times are labeled *estimated*.
 
 ### Tests
 - **Built:** modes ordered by time and efficiency, budget respected, upgrades slower and better, grain synthesis rules, and anime x265 flags.
@@ -356,7 +356,7 @@ The first version that compiles and runs. Earlier versions were complete source 
 - **Built — Encode monitor.** A live per-frame VMAF chart against the target and floor, plus a chunk map showing state, trials, setting and score. A VMAF row also appears under the scene strip.
 
 ### Content test and granular content types
-- **Built — Content test on import.** About 40 sampled moments are measured on the GPU: detail, flat-colour share, grain in smooth areas, hard edges, colourfulness and motion, combined with repeated-frame and telecine detection. The result is a type with a confidence and plain-English evidence ("62% flat colour; 44% of frames repeat; film grain; telecined").
+- **Built — Content test on import.** About 40 sampled moments are measured on the GPU: detail, flat-color share, grain in smooth areas, hard edges, colorfulness and motion, combined with repeated-frame and telecine detection. The result is a type with a confidence and plain-English evidence ("62% flat color; 44% of frames repeat; film grain; telecined").
 - **Built — Eight tuned content types:**
   - Real life
   - Real life, heavy grain
@@ -395,12 +395,12 @@ The first version that compiles and runs. Earlier versions were complete source 
 - **No frame dumps anywhere.** Interpolation, grading, encoding and VMAF all stream: decoder to GPU to encoder pipes and VMAF FIFOs. The only large writes are the final file and, optionally, the staged copy.
 
 ### Interface
-- **Built — Redesigned main window.** It follows the grading suite: a neutral-grey surround so the picture is judged correctly, wide expanded headings, and colour used only for meaning.
+- **Built — Redesigned main window.** It follows the grading suite: a neutral-gray surround so the picture is judged correctly, wide expanded headings, and color used only for meaning.
   - **Scene strip:** every scene is shown lit at its real highlight brightness, in true HDR on XDR displays. It carries repair ticks and VMAF results, and you click to jump.
   - **Inspector tabs:** Source, Look, Motion, Enhance, Deliver.
   - **Parameter sliders:** each shows a live value and a tick at its default; double-click the label to reset.
   - **Timecode transport** with frame stepping.
-- **Built — Activity centre.** Every long job (analysis, content test, staging, downloads, conversion, export) has a progress bar, rate and ETA. It sits in a toolbar ring.
+- **Built — Activity center.** Every long job (analysis, content test, staging, downloads, conversion, export) has a progress bar, rate and ETA. It sits in a toolbar ring.
 - **Built — Log console.** Level and area filters, search, follow mode, a verbose switch, export, and daily log files in `~/Library/Logs/Lumora`. Every decision is logged: detection, storage plan, content test, chunk trials, model choice, and tool command lines when verbose.
 - **Built — Settings:** scratch drive (with speed test), auto-staging, and status of every helper tool.
 
@@ -423,10 +423,10 @@ The first version that compiles and runs. Earlier versions were complete source 
 - **Built — Exact BT.2020 decode for HDR MKV/MP4 through FFmpeg.** The YCbCr matrix, range and accurate rounding are now set explicitly instead of guessed.
 
 ### Smarter artifact detection
-- **Built — Forward/backward motion check** (flow models). Where both frames contribute but the two motion fields disagree, the motion is unreliable. These tiles are combined with the existing "structure in neither neighbour" check. Occlusions, where one side is hidden by design, are excluded.
+- **Built — Forward/backward motion check** (flow models). Where both frames contribute but the two motion fields disagree, the motion is unreliable. These tiles are combined with the existing "structure in neither neighbor" check. Occlusions, where one side is hidden by design, are excluded.
 - **Built — Batched interpolation.** All in-between frames for a pair of originals (for example three frames for 4×) are generated in one Core ML batch.
 
-### Full hardware utilisation
+### Full hardware utilization
 - **Built — Concurrent export pipeline.** The export now runs as three stages connected by bounded async channels:
   1. Decode, interpolation and upscaling. This uses the media engine, Neural Engine and GPU Neural Accelerators.
   2. GPU grading and packing. This never blocks a thread; it suspends on Metal completion handlers.
@@ -438,17 +438,17 @@ The first version that compiles and runs. Earlier versions were complete source 
 
 ### Grading interpolation against the original
 - **Built — Compare window.** The original and an interpolated (or otherwise processed) version play side by side or with a wipe, in real HDR. They stay synced in time and step frame by frame.
-  - Each side has its own colour interpretation, so an SDR original and an HDR result both display correctly.
-  - Every frame is labelled *original* or *generated (t)*.
+  - Each side has its own color interpretation, so an SDR original and an HDR result both display correctly.
+  - Every frame is labeled *original* or *generated (t)*.
 - **Built — Interpolation Report Card.** It works for files from Lumora or any other app, even regraded or HDR-added ones. It reports:
   - **Original frames preserved:** PSNR and SSIM in the PQ domain on frames that should be untouched.
-  - **Artifacts:** generated frames containing structure that exists in neither real neighbour.
+  - **Artifacts:** generated frames containing structure that exists in neither real neighbor.
   - **Ghosting:** generated frames that are only cross-fades.
   - **Fake frames:** copies of a real frame.
   - **Morphs across scene cuts.**
   - **Motion smoothness:** evenness of motion steps between originals.
 
-  If the file was regraded, it is first tone-normalised, by curve-matching the brightness of aligned original frames, so the score measures motion rather than colour. Results come as a 0–100 score with plain-English findings and a clickable list of problem frames.
+  If the file was regraded, it is first tone-normalized, by curve-matching the brightness of aligned original frames, so the score measures motion rather than color. Results come as a 0–100 score with plain-English findings and a clickable list of problem frames.
 - **Built — Hold-out benchmark.** Real frames are removed from the original, rebuilt by every installed model (plus plain blending), and scored against the true frames. The best model is selected automatically, and the artifact detector's strictness is calibrated so it flags almost no real frames.
 - **Built — Export both versions.** With interpolation on, Lumora can also export the same grade at the original frame rate. *Compare original vs interpolated…* opens both side by side.
 
@@ -457,7 +457,7 @@ The first version that compiles and runs. Earlier versions were complete source 
 
 ### Changed
 - The `InterpolationEngine` API is batch-based and returns per-frame motion-consistency tiles.
-- `FrameStream` needs decode uniforms for the source colour (used to build the flow proxy).
+- `FrameStream` needs decode uniforms for the source color (used to build the flow proxy).
 - Every render path goes through `renderNits`, which handles both grading and passthrough.
 
 ---
@@ -467,7 +467,7 @@ The first version that compiles and runs. Earlier versions were complete source 
 ### Picture quality
 - **Built — Edge-aware punch (guided filter).** Clarity is now added relative to an edge-preserving base layer instead of a plain blur, which removes the halos around high-contrast edges (skylines, faces against windows, text). A *Halo protection* slider trades classic clarity for edge awareness.
 - **Built — Flicker guard.** Within a shot, the punch filter's coefficients are eased toward the previous frame, so local contrast never shimmers or pumps. It resets automatically at every cut.
-- **Built — TPDF dithering** at the true output bit depth (10 or 12-bit) before quantisation. This removes the contour banding that HDR expansion can expose in skies and gradients.
+- **Built — TPDF dithering** at the true output bit depth (10 or 12-bit) before quantization. This removes the contour banding that HDR expansion can expose in skies and gradients.
 - **Built — Debanding for compressed sources** (rips, phone video, streams). Smooth gradients that compression stepped are detected and rebuilt before grading, so highlight expansion doesn't magnify the steps. *Deband* slider, off by default.
 - **Built — Black-bar detection and auto-crop.** Letterbox and pillarbox bars are found automatically and removed from analysis, grading and encoding. This gives more accurate brightness measurements and no bits wasted on black. *Remove black bars* toggle.
 
@@ -490,7 +490,7 @@ The first version that compiles and runs. Earlier versions were complete source 
 ### Grading tools (new)
 - **Built — HDR waveform** on the PQ (ST 2084) scale with 1 / 100 / 203 / 1000 / 4000-nit markers.
 - **Built — CIE 1931 gamut scope** with Rec.709, P3-D65 and Rec.2020 triangles, measured from the graded output.
-- **Built — False-colour mode.** It shows brightness bands: deep shadows, mid-tones, above HDR reference white (203), above 600, above 1000, and clipping.
+- **Built — False-color mode.** It shows brightness bands: deep shadows, mid-tones, above HDR reference white (203), above 600, above 1000, and clipping.
 - **Built — Nits picker.** Click any point of the picture to read its graded brightness and RGB in nits.
 - **Built — Reference Match.** Give Lumora the official HDR release of the same film or show. It:
   - finds the time offset automatically by correlating thumbnails
@@ -501,7 +501,7 @@ The first version that compiles and runs. Earlier versions were complete source 
   The curve can be removed at any time.
 
 ### Workflow (new)
-- **Built — Batch processing.** Point it at a folder (for example a season of episodes). Every file is inspected, cropped, analysed and given the recommended (or chosen) look, then exported with the current settings.
+- **Built — Batch processing.** Point it at a folder (for example a season of episodes). Every file is inspected, cropped, analyzed and given the recommended (or chosen) look, then exported with the current settings.
 - **Built — Shareable presets** (`.lumorapreset`). They store the look, not footage-specific exposure, so a preset adapts to the next clip.
 - **Built — HDR still export.** It saves the current frame as:
   - 10-bit HDR HEIC (native)
@@ -519,7 +519,7 @@ The first version that compiles and runs. Earlier versions were complete source 
 ### Changed
 - The punch filter uses guided-filter coefficients instead of a single blurred luminance plane (`gradeToNits` signature changed).
 - Tensor kernels support tiles with overlap (upscaling) as well as whole frames (interpolation).
-- All analysis, measurement, preview, export and scope passes honour the crop rectangle.
+- All analysis, measurement, preview, export and scope passes honor the crop rectangle.
 - Export sizes now come from the crop and upscale stage, not the decoded frame size.
 
 ---
@@ -603,7 +603,7 @@ The first version that compiles and runs. Earlier versions were complete source 
 
 ### Known limitations
 - Not yet compiled: written without access to a Mac; expect a round of fixes in Xcode 27.
-- Apple Log 2 colour is approximate until Apple Wide Gamut primaries are copied from Apple's white paper.
+- Apple Log 2 color is approximate until Apple Wide Gamut primaries are copied from Apple's white paper.
 - HDR10+ luminance distributions are approximated from per-scene max/average.
 - AV2 output is raw `.obu` (no MP4 binding yet), with no audio; the reference encoder is very slow.
 - Preview shows the un-upscaled frame; upscaling applies on export.

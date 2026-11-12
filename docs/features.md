@@ -45,7 +45,7 @@ Every pixel goes through these steps, in order:
 2. **Convert to the working space**, linear BT.2020.
 3. **White balance and exposure**, including per-scene auto exposure.
 4. **Punch.** Local contrast is applied in log-luminance. The radius scales with the image, and a soft clamp prevents halos.
-5. **Tone curve.** Contrast is set around mid grey, a generalized Reinhard shoulder rolls off to the target peak, and a toe adds shadow density. The curve uses a hue-preserving norm.
+5. **Tone curve.** Contrast is set around mid gray, a generalized Reinhard shoulder rolls off to the target peak, and a toe adds shadow density. The curve uses a hue-preserving norm.
 6. **Highlight desaturation** near peak, like film.
 7. **Color.** Oklab saturation plus vibrance, with skin hues held back.
 8. **Output.** Conversion to the output gamut with soft gamut compression, then PQ, HLG (BT.2100 inverse OOTF) or BT.1886 encoding.
@@ -134,7 +134,7 @@ Long batches survive restarts, follow your hours, pause on battery or heat, and 
 
 ## Dolby Vision and screens
 
-- **Original Dolby Vision kept and retimed** when the look is unchanged and the output is HEVC. That includes the colourist's trims, through interpolation and cropping. Otherwise Lumora writes new metadata and says why.
+- **Original Dolby Vision kept and retimed** when the look is unchanged and the output is HEVC. That includes the colorist's trims, through interpolation and cropping. Otherwise Lumora writes new metadata and says why.
 - **Grade for a screen** reads this Mac's display (reference modes exactly; XDR panels from Apple's specs; other HDR screens estimated) or targets phones, OLED and mini-LED TVs. It grades highlights to the real peak and guards against TV brightness limiters. **Make it pop** uses the screen's full headroom.
 - **Future-proof export:** a 4000-nit 12-bit master plus a Dolby Vision viewing copy.
 
@@ -196,17 +196,17 @@ Audio and subtitles are measured exactly from the source and added unchanged. **
 
 ## Quality metrics: why not just VMAF
 
-VMAF is fast and well understood, but it was trained on SDR viewing, misses banding and colour shifts, and can be inflated by sharpening. Lumora combines several metrics, each doing what it's good at:
+VMAF is fast and well understood, but it was trained on SDR viewing, misses banding and color shifts, and can be inflated by sharpening. Lumora combines several metrics, each doing what it's good at:
 
 | Metric | What it catches | HDR | Speed | Source |
 |---|---|---|---|---|
-| ColorVideoVDP | Human-vision model: luminance, colour and motion on a described display (JOD; 10 = identical) | Yes | Slow | `pip install cvvdp` (Model Lab) |
+| ColorVideoVDP | Human-vision model: luminance, color and motion on a described display (JOD; 10 = identical) | Yes | Slow | `pip install cvvdp` (Model Lab) |
 | PU21-PSNR | Fidelity in perceptually uniform HDR units | Yes | Fast | Same as above |
 | XPSNR | Perceptually weighted error | — | Fast | FFmpeg 7+ |
 | VMAF / VMAF NEG | Overall perceptual quality; NEG ignores sharpening | SDR-trained | Fast | libvmaf |
 | CAMBI | Banding added by the encode | PQ-aware | Fast | libvmaf |
 | MS-SSIM, PSNR-HVS | Structure and contrast-weighted error | — | Fast | libvmaf |
-| CIEDE2000 | Colour shifts | — | Fast | libvmaf |
+| CIEDE2000 | Color shifts | — | Fast | libvmaf |
 | SSIMULACRA 2 | Psycho-visual fidelity (SDR) | No | Medium | `cargo install ssimulacra2_rs` |
 | AVQT | Apple's perceptual score (file comparisons) | Yes | Fast | developer.apple.com |
 
@@ -222,7 +222,7 @@ This usually lands at a lower bitrate than chasing VMAF 95 alone, while catching
 
 - **ColorVideoVDP:** 9.6 JOD means less than half a just-objectionable difference from identical.
 - **SSIMULACRA 2:** about 90 is "hard to tell apart at normal viewing".
-- **XPSNR thresholds** aren't standardised, so XPSNR is report-only by default.
+- **XPSNR thresholds** aren't standardized, so XPSNR is report-only by default.
 
 All thresholds are editable in Deliver → Quality.
 
@@ -264,7 +264,7 @@ What the sources say, in short:
 - **4.25** is the RIFE author's current recommended default for most scenes. It added more flow blocks and markedly improved anime.
 - **4.26** is the newest release. Testers disagree: some report extra artifacts in certain scenes compared with 4.25, others prefer it. It needs 64-pixel padding instead of 32.
 - **Lite variants** (4.25 lite, 4.22 lite, 4.17 lite) trade a little quality for speed. They're good for scans and long batches.
-- **Community favourites:** 4.18 and 4.15 for live action, 4.9 as an all-rounder on lighter hardware, 4.6 for anime speed.
+- **Community favorites:** 4.18 and 4.15 for live action, 4.9 as an all-rounder on lighter hardware, 4.6 for anime speed.
 
 Because no single version wins everywhere, **Model Lab** benchmarks every installed model on real frames removed from *your* footage. It remembers the winner per content type. Until a benchmark exists, each type uses the starting order in `ContentTuning`.
 
@@ -330,7 +330,7 @@ Put converted `.mlpackage` files in `~/Library/Application Support/Lumora/Models
 
 - **RIFE 4.x** (MIT) is the default. Convert it with `scripts/convert_rife_coreml.py`.
 - **FILM** (Apache-2.0) is the default repair model, because it is better on large motion.
-- **IFRNet** and **GMFSS** are optional. **Check each model's licence before you distribute it.**
+- **IFRNet** and **GMFSS** are optional. **Check each model's license before you distribute it.**
 
 If no model is installed, generated frames fall back to blending, so the app still works.
 
@@ -347,7 +347,7 @@ If no model is installed, generated frames fall back to blending, so the app sti
 ## RAW formats
 
 - **Native:** ProRes RAW, DNG / CinemaDNG sequences (open the folder), and single RAW stills from most cameras.
-- **Vendor SDKs:** BRAW, R3D, ARRIRAW and Canon RAW need each vendor's SDK under its own licence.
+- **Vendor SDKs:** BRAW, R3D, ARRIRAW and Canon RAW need each vendor's SDK under its own license.
   - Implement `VendorRAWPlugin` in a bundle under `~/Library/Application Support/Lumora/PlugIns/`.
   - The plug-in loader is still to be written.
 
@@ -365,7 +365,7 @@ Lumora ships **without ratings of its own**. A list of "best and worst" discs is
 
 ## VERIFY before relying on it
 
-1. **Apple Wide Gamut primaries** (Apple Log 2). They are not in public sources. Copy them from Apple's *Apple Log Profile* white paper into `Gamut.appleWideGamut`. Until then, Apple Log 2 colour is approximate, and the UI says so.
+1. **Apple Wide Gamut primaries** (Apple Log 2). They are not in public sources. Copy them from Apple's *Apple Log Profile* white paper into `Gamut.appleWideGamut`. Until then, Apple Log 2 color is approximate, and the UI says so.
 2. **Apple Log signal range.** The decoder assumes Apple Log values are normalized to legal range. Camera logs (S-Log3, LogC, V-Log) are re-expanded first. Check against Apple's LUTs.
 3. **Encoder flags in `encoders.json`.** Check each tool's `--help` for the version installed, especially the VVenC HDR flags and AVM flags.
 4. **Metadata schemas.** The dovi_tool `generate` JSON, the HDR10+ JSON schema (beta: its luminance distributions are approximated), and `MP4Box :dvp=8.1`.
@@ -377,8 +377,8 @@ Lumora ships **without ratings of its own**. A list of "best and worst" discs is
 ## Legal notes
 
 - **Your files only.** Lumora works on video files you already have. It does not decrypt discs; breaking AACS is illegal in the US even for personal copies.
-- **Dolby Vision and HDR10+.** The metadata is generated with open tools. Using the logos, or certified delivery, requires licences from Dolby and HDR10+ Technologies.
-- **Tool licences.** FFmpeg builds with GPL components, and x265, are GPL. Ship LGPL builds, or keep GPL tools as user-installed. SVT-AV1, libaom, VVenC and AVM use BSD-style licences with AOM/Fraunhofer patent terms.
+- **Dolby Vision and HDR10+.** The metadata is generated with open tools. Using the logos, or certified delivery, requires licenses from Dolby and HDR10+ Technologies.
+- **Tool licenses.** FFmpeg builds with GPL components, and x265, are GPL. Ship LGPL builds, or keep GPL tools as user-installed. SVT-AV1, libaom, VVenC and AVM use BSD-style licenses with AOM/Fraunhofer patent terms.
 - **Original work.** Lumora is not affiliated with Tekno3D/VESAI or Real Video Enhancer and contains none of their code.
 
 ---
