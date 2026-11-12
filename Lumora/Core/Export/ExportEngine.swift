@@ -154,7 +154,10 @@ final class ExportEngine {
         let ids = Set(job.encodeChoice?.optionIDs ?? [])
         let av1 = job.codec == .av1 || job.codec == .av1Pro
         let measured = av1 && ids.contains("grainTable")
-        let encoderGrain = ids.contains("grain") || ids.contains("aomgrain")
+        // Without a plan the content tune applies; SVT-AV1's grain tune synthesizes grain like the "grain" extra does.
+        let tuneGrain = av1 && job.encodeChoice == nil
+            && (encoderSpec(job)?.tunes?[ContentTuning.preset(job.contentKind).encoderTune] ?? []).contains("--film-grain")
+        let encoderGrain = ids.contains("grain") || ids.contains("aomgrain") || tuneGrain
         let texture = av1 && job.filmTexture != .off
         guard measured || encoderGrain || texture else { return g }
         g.strip = true
@@ -722,7 +725,8 @@ final class ExportEngine {
             "svt_mastering": HDRMetadata.svtMastering(meta), "x265_mastering": HDRMetadata.x265Mastering(meta),
             "aom_profile": (job.bitDepth == 12 || job.chroma == .c422) ? "2" : (job.chroma == .c444 ? "1" : "0"),
             "x265_profile": "main\(profile)\(job.bitDepth)",
-            "grain_table": ctx.grain.table?.path ?? ""
+            "grain_table": ctx.grain.table?.path ?? "",
+            "svt_grain": "\(EncodeRecipes.svtGrainLevel(job.contentKind))"
         ]
         // The planner's extras replace the simpler per-content tune when present.
         var planned = extra ?? job.encodeChoice?.extraArgs
@@ -740,6 +744,7 @@ final class ExportEngine {
         } else if ctx.grain.table != nil {
             planned = ctx.grain.tableFlag
         }
+        if spec.binary == EncodeRecipes.svtBinary, let p = planned { planned = EncodeRecipes.svtArgs(p, pq: kindKey == "pq") }
         let tune = planned == nil ? ContentTuning.preset(job.contentKind).encoderTune : "default"
         let process = Process()
         process.executableURL = exe

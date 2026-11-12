@@ -291,11 +291,13 @@ Only the installed mainline v4.3.0 options are documented above. Options that lo
 
 ## Lumora findings
 
-- --lp is passed the CPU core count (or cores per instance), but it is a 0-6 parallelism level; v4.3.0 clamps anything above 6 to 6 and prints a warning, so all parallel Lumora instances run at maximum parallelism and memory.
-- --luminance-qp-bias 25 is offered for real life/heavy grain/low light/old anime without checking the output transfer; Codec Wiki says not to use it on PQ (HDR10).
-- The encoders.json grain tune uses --film-grain 10 --film-grain-denoise 0 while the EncodeRecipes grain option uses levels 12/8/4 with --film-grain-denoise 1; the two paths describe different behavior.
-- Film-grain options can be combined with presets 8 and 10 on Lumora's ladder; SVT-AV1 warns that film grain above preset 6 is costly.
-- At 4K, Lumora's preset 10 rung is silently capped to preset 9 in random-access mode.
+- Tuning results (docs/encoding/tuning-svtav1.md, SVT-AV1 v4.3.0 on an M3 Max): every finding below was measured with BD-rates on VMAF, VMAF NEG and XPSNR plus CAMBI, scoring grain synthesis against a de-grained master as Lumora does.
+- --lp is now a level derived from each instance's share of the cores (EncodeRecipes.svtParallelism), no longer the core count that the encoder clamped to 6.
+- --luminance-qp-bias is dropped for HDR10 (PQ) exports and --qm-min is raised to at least 8 there (EncodeRecipes.svtArgs).
+- Grain synthesis uses one level per content type on both paths (heavy grain 12, old anime 8, low light 4) with --film-grain-denoise 1, and is offered on presets 6 and slower only, priced per rung from measured CPU time.
+- With grain synthesis the temporal filter stays on (--tf-strength 1): 15-46% smaller than --enable-tf 0 against the noise-free original.
+- Per content type: --qm-min 6 for live action and old anime, 8 for anime, CG and low light; --ac-bias 1.0 for live action, CG, heavy grain and low light; --tune 0 for anime; --variance-boost-curve 1 for low light; --variance-boost-strength 1 for fast motion.
+- The --lookahead 120 extra produced bit-identical output and was removed; preset 10 was dropped from the ladder in favor of preset 9.
 - GrainTable.write output (filmgrn1, one entry, lag 0, seed 7391) matches the v4.3.0 parser rules.
 
 ## All options
@@ -408,11 +410,11 @@ Only the installed mainline v4.3.0 options are documented above. Options that lo
 | [`--tune`](#tune) | 0 = VQ, 1 = PSNR, 2 = SSIM, 3 = IQ (Image Quality), 4 = MS_SSIM (MS-SSIM and SSIMULACRA2 optimized), 5 = VMAF | 1 | Chooses what the encoder optimizes for: subjective sharpness (VQ), PSNR, SSIM, still-image quality, MS-SSIM/SSIMULACRA2, or VMAF. |  | ✓ |
 | [`--scm`](#scm) | 0: off, 1: on, 2: content adaptive, 3: content adaptive (anti-alias aware) | 2 | Screen-content mode: enables palette and intra block copy tools for text, UI and graphics, either always (1) or when detection says so (2, 3). |  | ✓ |
 | [`--enable-variance-boost`](#enable-variance-boost) | 0-1 | 0 | Variance-based adaptive quantization: gives low-contrast superblocks (skies, skin, fog, night scenes) a lower qindex so they keep detail instead of collapsing into blocks. | ✓ | ✓ |
-| [`--variance-boost-strength`](#variance-boost-strength) | 1-4 | 2 | How hard low-contrast superblocks are boosted (1 mild, 2 gentle, 3 medium, 4 aggressive). |  |  |
+| [`--variance-boost-strength`](#variance-boost-strength) | 1-4 | 2 | How hard low-contrast superblocks are boosted (1 mild, 2 gentle, 3 medium, 4 aggressive). |  | ✓ |
 | [`--variance-octile`](#variance-octile) | 1-8 | 5 | How much of a superblock must be low-contrast before it is boosted: 1 boosts if 1/8 is flat, 8 only if all of it is. |  |  |
-| [`--variance-boost-curve`](#variance-boost-curve) | 0-2 (0 default, 1 low-medium contrast, 2 still picture) | 0 | Selects the variance boost formula: 0 standard, 1 extends boosting to low-medium contrast areas at a modest bitrate cost, 2 tuned for still images (SSIMULACRA2 on CID22). |  |  |
+| [`--variance-boost-curve`](#variance-boost-curve) | 0-2 (0 default, 1 low-medium contrast, 2 still picture) | 0 | Selects the variance boost formula: 0 standard, 1 extends boosting to low-medium contrast areas at a modest bitrate cost, 2 tuned for still images (SSIMULACRA2 on CID22). |  | ✓ |
 | [`--qp-scale-compress-strength`](#qp-scale-compress-strength) | 0-3 | 0 | Narrows the QP gap between temporal layers in a mini-GOP, so quality fluctuates less frame to frame at some cost in average efficiency. |  |  |
-| [`--ac-bias`](#ac-bias) | 0.0-8.0 | 0.0 | Psychovisual energy-preservation term: penalizes reconstructions that lose high-frequency 'energy' compared with the source, like x264/x265 psy-rd. |  |  |
+| [`--ac-bias`](#ac-bias) | 0.0-8.0 | 0.0 | Psychovisual energy-preservation term: penalizes reconstructions that lose high-frequency 'energy' compared with the source, like x264/x265 psy-rd. |  | ✓ |
 
 ### Film grain and noise
 
@@ -1218,7 +1220,7 @@ Main speed/efficiency dial. Lower presets enable more coding tools and search ha
 | speed | `6 or 8` | Suggested when preset 4 is too slow; 8 is the last preset Codec Wiki considers fully usable in v3.0. | [source](https://codecs.wiki/blog/svt-av1-fourth-deep-dive-p1) |
 | streaming/small size | `3-6 (0 for very high view counts)` | Streaming Learning Center found 3-6 the useful VOD range on v1.4 and only very popular titles justify preset 0. | [source](https://streaminglearningcenter.com/encoding/choosing-a-preset-for-svt-av1-and-libaom-av1.html) |
 
-**In Lumora:** '`--preset` {preset}', default '4'. EncodeRecipes AV1 ladder offers presets 10, 8, 6, 5, 4, 3, 2, 1, 0 (seed speed/saving relative to 10), then continues into libaom cpu-used 4-0. MacOptimizer benchmarks a fast preset to choose the instance count.
+**In Lumora:** '`--preset` {preset}', default '4'. EncodeRecipes AV1 ladder offers presets 9, 8, 6, 5, 4, 3, 2, 1, 0 (preset 10 dropped: SVT-AV1 warns that non-RTC presets 10+ may show artifacts, and 9 was 23% smaller for 32% more CPU time), then continues into libaom cpu-used 4-0. Speeds are CPU time per frame measured on an M3 Max, relative to preset 10 (the scale the libaom rungs share); film-grain synthesis is offered on presets 6 and slower only. MacOptimizer benchmarks a fast preset to choose the instance count (docs/encoding/tuning-svtav1.md).
 
 **Notes:** v4.3.0 source: random-access presets above 11 map to 11; 4K+ random access caps at 9 (so Lumora's preset 10 rung equals preset 9 at 4K); still-image (`--avif`) caps at 9; `--rtc` only allows 7-13. Presets were renumbered in v2.3.0 and v3.0.0, so older preset numbers do not translate one-to-one. Film grain above preset 6 prints a compute-overhead warning. Above 4K resolution, presets 4 and below are rejected for video (all-intra excepted).
 
@@ -1322,7 +1324,7 @@ Extra future frames analyzed beyond what the mini-GOP, temporal filter and rate 
 
 **Effect:** quality small + when larger · speed small - · size slightly smaller
 
-**In Lumora:** Optional 'Deeper look-ahead': '`--lookahead` 120'.
+**In Lumora:** Not set. Lumora used to offer '`--lookahead` 120'; at preset 4 in CRF mode it produced bit-identical output on a 20 s clip, so the option was removed (docs/encoding/tuning-svtav1.md).
 
 **Notes:** v4.3.0 fixed nondeterministic output with `--lookahead` 0.
 
@@ -1471,7 +1473,7 @@ Lowers the QP of darker frames in proportion to how dark they are, to fight dark
 | low light | `10-50 (test), SDR or HLG only` | Codec Wiki's BD-rate figures improved most on anime and got worse on live action and gaming clips; the author suggests testing values such as 10, 30 and 50, considers values below 50 safe, and says it is not suited to PQ. | [source](https://codecs.wiki/blog/svt-av1-fourth-deep-dive-p2) |
 | HDR | `0 for PQ (HDR10)` | Frame-average luma does not map to perceived darkness the same way on PQ; the study restricts the feature to SDR and HLG. | [source](https://codecs.wiki/blog/svt-av1-fourth-deep-dive-p2) |
 
-**In Lumora:** Optional 'Brighter handling of dark scenes': '`--luminance-qp-bias` 25', recommended for real life, heavy grain, low light and old anime regardless of output transfer. For HDR10 (PQ) exports this contradicts the Codec Wiki guidance and should be gated off.
+**In Lumora:** Optional 'Brighter handling of dark scenes': '`--luminance-qp-bias` 25', recommended for real life, heavy grain, low light and old anime. Dropped for HDR10 (PQ) exports by EncodeRecipes.svtArgs on every path (Codec Wiki: SDR and HLG only; on Lumora's PQ clips dropping it saved 1.6-1.9% XPSNR BD-rate). Kept for SDR and HLG: removing it there saved XPSNR but cost VMAF (docs/encoding/tuning-svtav1.md).
 
 **Notes:** Documented since v3.0.2. The svt-av1-hdr fork has its own PQ-aware variants.
 
@@ -1512,7 +1514,7 @@ Chooses what the encoder optimizes for: subjective sharpness (VQ), PSNR, SSIM, s
 | archive | `3 for still images only` | Parameters.md marks IQ as still-image only. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Parameters.md) |
 | streaming/small size | `5 when VMAF is the delivery metric` | Added in v4.2.0 targeting about 15% VMAF BD-rate gain at a small PSNR cost. The encoder warns that it applies unsharp-mask pre-processing, so higher VMAF may not mean higher fidelity. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/CHANGELOG.md) |
 
-**In Lumora:** '`--tune` 0' in the encoders.json anime tune (with `--enable-tf` 0); otherwise the default (1).
+**In Lumora:** '`--tune` 0' for anime, both in the planner ('Tune for visual quality', measured -1.1% VMAF and -2.0% XPSNR BD-rate) and in the encoders.json anime tune; every other kind keeps the default (1). Tunes 2 and 4 were larger on Lumora's clips (docs/encoding/tuning-svtav1.md).
 
 **Notes:** Tune numbers differ between projects: SVT-AV1-PSY's tune 3 was 'subjective SSIM', mainline's tune 3 is IQ; svt-av1-hdr adds tune 6 (film grain). Low delay forces tune 0 to 1. Tune 5 (VMAF) arrived in v4.2.0; tune 4 (MS-SSIM) is also post-v4.0, but the changelog does not name its release. v4.3.0 validation: tunes 2-5 accept only CRF (`--rc` 0); tune 3 (IQ) is rejected with random access, so it is for `--avif`/all-intra (low delay is experimental); tunes 2 and 4 reject low delay; tune 5 needs random access.
 
@@ -1550,7 +1552,7 @@ Variance-based adaptive quantization: gives low-contrast superblocks (skies, ski
 | low light | `1` | The appendix targets night, foggy and overexposed scenes specifically. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Appendix-Variance-Boost.md) |
 | HDR | `1 (mainline curves are SDR-tuned)` | Still helpful on flat areas, but only the svt-av1-hdr fork has a PQ-specific curve. | [source](https://github.com/juliobbv-p/svt-av1-hdr) |
 
-**In Lumora:** Optional 'Protect flat and dark areas': '`--enable-variance-boost` 1'.
+**In Lumora:** Optional 'Protect flat and dark areas': '`--enable-variance-boost` 1', plus '`--variance-boost-curve` 1' for low light and '`--variance-boost-strength` 1' for fast motion; turning it off cost 2-17% XPSNR BD-rate on every clip (docs/encoding/tuning-svtav1.md).
 
 **Notes:** Automatically disabled with CBR and with `--aq-mode` 1. Forced on by tunes 3 and 4. Default on in svt-av1-hdr.
 
@@ -1571,6 +1573,8 @@ How hard low-contrast superblocks are boosted (1 mild, 2 gentle, 3 medium, 4 agg
 | CGI | `2` | Detailed-texture animation fits the default curve. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Appendix-Variance-Boost.md) |
 | low light | `3` | Suited to content mixing very high- and low-contrast scenes such as horror or thrillers. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Appendix-Variance-Boost.md) |
 | archive | `3 (below CRF 20, with octile 3)` | Codec Wiki suggests this pairing for more consistent gains at very high quality. | [source](https://codecs.wiki/blog/svt-av1-fourth-deep-dive-p2) |
+
+**In Lumora:** '`--variance-boost-strength` 1' with variance boost for fast motion only (ahead on VMAF, VMAF NEG and XPSNR on the action clip); the default (2) elsewhere, where 1 and 3 split VMAF and XPSNR (docs/encoding/tuning-svtav1.md).
 
 **Notes:** 4 prints an 'aggressive' warning and can inflate bitrate and make grain preservation inconsistent.
 
@@ -1604,6 +1608,8 @@ Selects the variance boost formula: 0 standard, 1 extends boosting to low-medium
 | For | Value | Why | Source |
 |---|---|---|---|
 | live action | `0` | Codec Wiki found curves 0-2 mostly indistinguishable, with curve 2 better on a few clips. | [source](https://codecs.wiki/blog/svt-av1-fourth-deep-dive-p2) |
+
+**In Lumora:** '`--variance-boost-curve` 1' with variance boost for low light only (ahead on VMAF, VMAF NEG and XPSNR there); default curve elsewhere (docs/encoding/tuning-svtav1.md).
 
 **Notes:** Curve 3 (PQ-optimized) exists only in svt-av1-hdr. Tunes 3 and 4 force curve 2.
 
@@ -1639,6 +1645,8 @@ Psychovisual energy-preservation term: penalizes reconstructions that lose high-
 | fast motion | `1.0-1.5` | Moderate values keep sharpness in textures and complex motion. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Parameters.md) |
 | heavy grain | `4.0-6.0 with --enable-tf 0 --enable-cdef 0` | High values with TF and CDEF off can dramatically improve retention of real grain. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Parameters.md) |
 
+**In Lumora:** Optional 'Keep texture energy': '`--ac-bias` 1.0' for live action, CG, heavy grain and low light (smaller at equal VMAF and XPSNR on those clips; about +7% CPU time) (docs/encoding/tuning-svtav1.md).
+
 **Notes:** Added in v4.0 (from SVT-AV1-PSY). svt-av1-hdr's tune 6 bundles ac-bias 4.0 with fork-only options.
 
 ### Film grain and noise
@@ -1658,7 +1666,7 @@ Strength of the motion-compensated temporal filter used to build alt-ref frames.
 | live action | `1` | Codec Wiki found 1 or lower removes keyframe blocking/smoothing issues, gains flatten below 2, and 4 performs very poorly. | [source](https://codecs.wiki/blog/svt-av1-fourth-deep-dive-p2) |
 | heavy grain | `1 (or --enable-tf 0)` | Weaker temporal filtering preserves real grain; the PSY-derived forks default to 1. | [source](https://github.com/juliobbv-p/svt-av1-hdr) |
 
-**In Lumora:** '`--tf-strength` 1' ('Gentle temporal filter') for content that is neither anime nor grainy.
+**In Lumora:** '`--tf-strength` 1' ('Gentle temporal filter') for every content type except anime, including heavy grain, old anime and low light: with grain synthesis the encoder sees a denoised picture, and strength 1 was 15-46% smaller than no temporal filter against the noise-free original (docs/encoding/tuning-svtav1.md).
 
 **Notes:** In tune 0 the key-frame filter strength is offset too. The fork-only `--kf-tf-strength` does not exist in mainline. v4.0.1 fixed the default shown in the help.
 
@@ -1677,7 +1685,7 @@ Builds temporally filtered alt-ref frames. They improve compression, but the fil
 | anime | `0 (clip dependent)` | The animation deep dive found turning TF off can slightly improve efficiency at high quality and speeds things up, depending on the clip. | [source](https://codecs.wiki/blog/svt-av1-deep-dive) |
 | heavy grain | `0 with high --ac-bias` | Recommended by the SVT-AV1 psychovisual appendix for grain retention. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Parameters.md) |
 
-**In Lumora:** '`--enable-tf` 0' in the encoders.json anime tune and as the 'No temporal smoothing' option for anime and grainy kinds.
+**In Lumora:** '`--enable-tf` 0' for anime only: in the planner's 'No temporal smoothing' option and the encoders.json anime tune (docs/encoding/tuning-svtav1.md).
 
 **Notes:** Codec Wiki's v3.0 study found TF-off competitive with low `--tf-strength` but sometimes slightly worse; Minecraft-like content did worse.
 
@@ -1712,7 +1720,7 @@ Enables film-grain synthesis: the encoder estimates a grain model and signals it
 | old anime | `up to about 10` | Grainy (film-era) animation can use higher levels up to around 10. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/CommonQuestions.md) |
 | CGI | `0` | If the 3D animation has no grain, leaving it off is faster and avoids losing fine detail. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/CommonQuestions.md) |
 
-**In Lumora:** encoders.json 'grain' tune: '`--film-grain` 10 `--film-grain-denoise` 0'. EncodeRecipes option: '`--film-grain` 12' (heavy grain), 4 (anime/old anime) or 8 (others) with '`--film-grain-denoise` 1', recommended for heavy grain, old anime and low light. Dropped when a measured `--fgs-table` is used.
+**In Lumora:** Same level on both paths: EncodeRecipes.svtGrainLevel gives 12 for heavy grain, 8 for old anime, 4 for low light (8 for other kinds when forced on), used by the planner's 'grain' extra and by the encoders.json 'grain' tune through {svt_grain}. Offered on presets 6 and slower only, priced per rung from measured CPU time (+142% at preset 6 down to none at preset 1). Dropped when a measured `--fgs-table` is used (docs/encoding/tuning-svtav1.md).
 
 **Notes:** Above preset 6 the encoder warns of significant compute overhead (Lumora's ladder includes presets 8 and 10). Lumora's level for old anime (4) is lower than the FAQ's 'up to ~10' for grainy animation. `--adaptive-film-grain` (default on) adapts the synthesis block size to resolution.
 
@@ -1732,7 +1740,7 @@ Chooses whether the encoder also removes the grain from the picture it codes. Wi
 | heavy grain | `0` | Codec Wiki recommends plain `--film-grain` without denoise in most cases because denoising always removes fine detail. | [source](https://codecs.wiki/docs/encoders/SVT-AV1) |
 | streaming/small size | `1` | The FAQ says removing the grain and replacing it with synthetic grain is where the large efficiency gains come from. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/CommonQuestions.md) |
 
-**In Lumora:** 0 in the encoders.json grain tune, 1 in the EncodeRecipes grain option (the two paths disagree). Removed when `--fgs-table` is used; Lumora then denoises the frames itself.
+**In Lumora:** Always 1, on the planner path and in the encoders.json grain tune: Lumora scores grain synthesis against a de-grained master, and denoise 0 cost 22-30% VMAF BD-rate on heavy grain while stacking synthetic grain on coded grain. Removed when `--fgs-table` is used; Lumora then denoises the frames itself (docs/encoding/tuning-svtav1.md).
 
 **Notes:** Default changed to 0 (from SVT-AV1-PSY). Ignored with a warning when `--film-grain` is 0. With `--fgs-table` the app disables encoder denoising.
 
@@ -1960,7 +1968,7 @@ Turns on quantization matrices so high-frequency coefficients are quantized more
 | archive | `1` | Codec Wiki found QMs improve efficiency at high quality with no real speed cost. | [source](https://codecs.wiki/blog/svt-av1-deep-dive) |
 | live action | `1` | Recommended by the Codec Wiki SVT-AV1 page. | [source](https://codecs.wiki/docs/encoders/SVT-AV1) |
 
-**In Lumora:** Optional 'Quantization matrices' choice: '`--enable-qm` 1 `--qm-min` 4', offered for every content type except screen content.
+**In Lumora:** Optional 'Quantization matrices': '`--enable-qm` 1 `--qm-min` N' with N from EncodeRecipes.svtQMMin, offered for every content type except screen content (docs/encoding/tuning-svtav1.md).
 
 **Notes:** Tunes 3 (IQ) and 4 (MS-SSIM) force QMs on with levels 4-10. The svt-av1-hdr fork enables QMs by default.
 
@@ -1980,7 +1988,7 @@ Steepest (least flat) luma quantization matrix allowed; lower values mean strong
 | heavy grain | `keep higher (default 8)` | Codec Wiki advises against qm-min 0 for extremely heavy grain. | [source](https://codecs.wiki/docs/encoders/SVT-AV1) |
 | archive | `4` | The encoder's own IQ and MS-SSIM tunes pick 4 as the floor (v4.3.0 source), a middle ground between 0 and 8. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/v4.3.0/Source/Lib/Globals/enc_handle.c) |
 
-**In Lumora:** '`--qm-min` 4' with the QM option.
+**In Lumora:** Per content type (EncodeRecipes.svtQMMin): 8 for anime, CG and low light, 6 for live action and old anime, 4 for heavy grain and fast motion; at least 8 for HDR10 (PQ) exports. 0 lost 3-8% XPSNR BD-rate on every clip (docs/encoding/tuning-svtav1.md).
 
 **Notes:** The SVT-AV1 docs say lower levels lower bitrate with slightly worse quality in CRF, more so at low CRF; community tests saw net efficiency gains. Sources disagree on the best floor (0 vs 4); test on your content.
 
@@ -2110,7 +2118,7 @@ Level of parallelism, not a thread count. Higher levels create more threads and 
 |---|---|---|---|
 | speed | `lower level per instance (e.g. 3-4) with several instances pinned to separate cores` | The docs show running parallel encodes with a modest `--lp` each; since output is unchanged, chunked parallel instances scale better than one encode on many cores. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Parameters.md) |
 
-**In Lumora:** '`--lp` {threads}' where threads = cpuCores (single encode / repair) or cpuCores / instances (segmented exports). Because `--lp` is a level, values above 6 are clamped to 6 with a warning (v4.3.0 enc_handle.c), so every Lumora instance runs at maximum parallelism and memory. Mapping cores to levels the way the library's auto mode does (1 core -> 1, 2 -> 2, up to 5 -> 3, up to 11 -> 4, up to 23 -> 5, more -> 6) would match the intent.
+**In Lumora:** '`--lp` {svt_lp}': EncoderSpec.render derives the level from the cores one instance fills (threads = cpuCores for a single encode, cpuCores / instances for segments and target-quality chunks) with EncodeRecipes.svtParallelism: 1 core -> 1, 2 -> 2, 3-5 -> 3, 6-11 -> 4, 12-23 -> 5, 24+ -> 6, the table the library's automatic level applies to the whole machine. Measured on an M3 Max: level 6 was never faster than 5 and used 6-12% more memory; memory grows with every level (docs/encoding/tuning-svtav1.md).
 
 **Notes:** Replaced the old thread-count meaning (`--lp` as logical processors) in v2.3.0/v3.0.0. Docs mention a `--pin` option, but it is not in this build's help.
 
