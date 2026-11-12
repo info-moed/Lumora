@@ -91,8 +91,9 @@ Full details: [Building from source](building.md#common-build-failures).
 | Problem | Fix |
 |---|---|
 | "… can't do N-bit" / "… supports … color only" | That codec doesn't support that bit depth or chroma format. The message lists what it does support. |
-| "Dolby Vision 8.1 needs HEVC" / "HDR10+ needs HEVC (or AV1)" | Choose HEVC (or AV1 for HDR10+). |
-| "The svtav1 encoder isn't installed" (or another) | `scripts/deps.sh install --all`, or install that one tool. |
+| "Dolby Vision 8.1 … isn't available with …" / "HDR10+ isn't available with …" | The message lists the codecs that can carry it: hardware HEVC for Dolby Vision; hardware HEVC or x265 HEVC for HDR10+. |
+| "AV1 · SVT-AV1 needs the SvtAv1EncApp encoder, which isn't installed" (or another) | `scripts/deps.sh install --all`, or install that one tool. |
+| "The helper tool “MP4Box” isn't installed" (x265 or VVC export) | Raw HEVC/VVC streams need MP4Box (or mkvmerge for HEVC) to get correct timestamps: `brew install gpac`. |
 | "SvtAv1EncApp failed: …" (or another encoder) | The message ends with the encoder's own error. A missing library ("Library not loaded") means a broken install: `scripts/deps.sh status` shows it; `brew reinstall <formula>` fixes it. An unknown option means the encoder changed; run `scripts/deps.sh verify` and report it. |
 | "The helper tool “ffmpeg” isn't installed" | `brew install ffmpeg` |
 | Export is very slow | Software encoders (AV1, VVC, AV2) are much slower than hardware HEVC/ProRes. Check Deliver → **Time and quality**, or choose HEVC. Run **Optimize for this Mac** once. |

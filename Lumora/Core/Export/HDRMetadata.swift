@@ -39,6 +39,12 @@ enum HDRMetadata {
             + "L(\(Int(s.peakNits * 10000)),\(Int(s.minNits * 10000)))"
     }
 
+    /// VVenC `MasteringDisplayColourVolume`: G, B, R, white point (units of 0.00002), max, min (0.0001 cd/m²).
+    static func vvencMastering(_ s: Static) -> String {
+        [p3.g.0, p3.g.1, p3.b.0, p3.b.1, p3.r.0, p3.r.1, p3.wp.0, p3.wp.1,
+         Int(s.peakNits * 10000), Int(s.minNits * 10000)].map(String.init).joined(separator: ",")
+    }
+
     static func pqCode12(_ nits: Float) -> Int {
         let m1: Float = 0.1593017578125, m2: Float = 78.84375
         let c1: Float = 0.8359375, c2: Float = 18.8515625, c3: Float = 18.6875
