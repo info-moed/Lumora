@@ -273,7 +273,9 @@ enum MetricSuite {
         if set.contains(.cambi) { collect(.cambi) { d in d["cambi_full_reference"] ?? d.first { $0.key.contains("cambi") && $0.key.contains("full") }?.value ?? d["cambi"] } }
         if set.contains(.msssim) { collect(.msssim) { $0["float_ms_ssim"] } }
         if set.contains(.psnrHvs) { collect(.psnrHvs) { $0["psnr_hvs"] ?? $0["psnr_hvs_y"] } }
-        if set.contains(.ciede) { collect(.ciede) { $0["ciede2000"] } }
+        // libvmaf reports CIEDE2000 as a dB-like score, 45 − 20·log10(mean ΔE), higher = better; convert it back
+        // to ΔE so the profile thresholds (≤ 1.5 ΔE) mean what they say. Identical frames (score ∞) are ΔE 0.
+        if set.contains(.ciede) { collect(.ciede) { d in d["ciede2000"].map { pow(10, (45 - $0) / 20) } } }
         return s
     }
 
@@ -285,16 +287,16 @@ enum MetricSuite {
         let p = Process()
         p.executableURL = ToolLocator.url(for: "ffmpeg")
         p.arguments = ["-v", "error", "-f", "yuv4mpegpipe", "-i", "pipe:0"] + ctx.decoderArgs + ["-r", "\(ctx.rate.0)/\(ctx.rate.1)", "-i", distorted.path,
-                       "-lavfi", "[1:v]format=yuv420p10le[d];[0:v]format=yuv420p10le[r];[d][r]xpsnr=stats_file=\(stats.lastPathComponent)",
+                       "-lavfi", "[1:v]\(VMAFRunner.untagged)format=yuv420p10le[d];[0:v]\(VMAFRunner.untagged)format=yuv420p10le[r];[d][r]xpsnr=stats_file=\(stats.lastPathComponent)",
                        "-f", "null", "-"]
         p.currentDirectoryURL = stats.deletingLastPathComponent()      // relative name: nothing to escape in the graph
         let pipe = Pipe()
         p.standardInput = pipe
         p.standardError = FileHandle.nullDevice
         p.arguments = FFHarden.args("ffmpeg", p.arguments ?? [])
-        try p.run()
+        try p.runWatched()
         try await Task.detached { try reference(pipe.fileHandleForWriting); try pipe.fileHandleForWriting.close() }.value
-        await Task.detached { p.waitUntilExit() }.value
+        await p.exited()
         // Lines look like: "n:    1  XPSNR y: 41.2345  XPSNR u: 44.1  XPSNR v: 45.0"
         let text = (try? String(contentsOf: stats, encoding: .utf8)) ?? ""
         var values: [(Int, Double)] = []
@@ -330,13 +332,13 @@ enum MetricSuite {
         tool.standardOutput = out
         tool.standardError = FileHandle.nullDevice
         dec.arguments = FFHarden.args("ffmpeg", dec.arguments ?? [])
-        try dec.run(); try tool.run()
+        try dec.runWatched(); try tool.runWatched()
         try await Task.detached {
             let h = try FileHandle(forWritingTo: URL(fileURLWithPath: ref))
             try reference(h); try h.close()
         }.value
         let text = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        await Task.detached { dec.waitUntilExit(); tool.waitUntilExit() }.value
+        await dec.exited(); await tool.exited()
         // Expected lines: "Frame 12: 87.12345" (VERIFY against your ssimulacra2_rs version).
         var values: [(Int, Double)] = []
         for line in text.split(separator: "\n") where line.hasPrefix("Frame") {
@@ -375,13 +377,13 @@ enum MetricSuite {
         py.standardOutput = out
         py.standardError = FileHandle.nullDevice
         dec.arguments = FFHarden.args("ffmpeg", dec.arguments ?? [])
-        try dec.run(); try py.run()
+        try dec.runWatched(); try py.runWatched()
         try await Task.detached {
             let h = try FileHandle(forWritingTo: URL(fileURLWithPath: ref))
             try reference(h); try h.close()
         }.value
         let data = out.fileHandleForReading.readDataToEndOfFile()
-        await Task.detached { dec.waitUntilExit(); py.waitUntilExit() }.value
+        await dec.exited(); await py.exited()
         var s = MetricScores()
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             Log.warning(.quality, "Python metrics returned no result: \(String(decoding: data.prefix(300), as: UTF8.self))")

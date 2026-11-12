@@ -72,6 +72,44 @@ extension Process {
         terminationHandler = { _ in s.signal() }
         return s
     }
+
+    /// Starts the process with an exit watch, so `exited()` can await it. `await Task.detached { waitUntilExit() }`
+    /// can miss the exit and hang forever when processes are started and awaited across threads of the
+    /// concurrency pool; the termination handler always fires.
+    func runWatched() throws {
+        let watch = ProcessExitWatch()
+        terminationHandler = { _ in watch.fire() }
+        objc_setAssociatedObject(self, &ProcessExitWatch.key, watch, .OBJC_ASSOCIATION_RETAIN)
+        try run()
+    }
+
+    /// Waits for a process started with `runWatched()` to exit, without blocking a thread.
+    func exited() async {
+        guard let watch = objc_getAssociatedObject(self, &ProcessExitWatch.key) as? ProcessExitWatch else {
+            await Task.detached { self.waitUntilExit() }.value
+            return
+        }
+        await watch.wait()
+    }
+}
+
+final class ProcessExitWatch: @unchecked Sendable {
+    nonisolated(unsafe) static var key: UInt8 = 0
+    private let lock = NSLock()
+    private var done = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func fire() {
+        lock.lock(); done = true; let w = waiters; waiters = []; lock.unlock()
+        for c in w { c.resume() }
+    }
+
+    func wait() async {
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+            lock.lock()
+            if done { lock.unlock(); c.resume() } else { waiters.append(c); lock.unlock() }
+        }
+    }
 }
 
 /// Tool capability checks run external processes. Do them once, off the main thread, at launch, so views

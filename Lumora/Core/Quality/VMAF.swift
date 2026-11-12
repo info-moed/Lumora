@@ -31,6 +31,12 @@ enum VMAFRunner {
 
     enum Backend { case vmafCLI, ffmpegLibvmaf, none }
 
+    /// Clears colour tags at the start of each branch of a two-input FFmpeg comparison graph. The reference Y4M
+    /// carries no matrix while an encode is tagged (BT.709 / BT.2020), and FFmpeg would then convert one side's
+    /// matrix before the metric sees it: a CRF 18 encode scored VMAF 47 / XPSNR 10 dB instead of 99 / 45 dB.
+    /// Metrics must compare code values exactly as coded, as the vmaf CLI path does.
+    static let untagged = "setparams=range=unknown:color_primaries=unknown:color_trc=unknown:colorspace=unknown,"
+
     static let backend: Backend = {
         if ToolLocator.isAvailable("vmaf") { return .vmafCLI }
         if let filters = try? ToolLocator.run("ffmpeg", ["-hide_banner", "-filters"]),
@@ -40,13 +46,14 @@ enum VMAFRunner {
     static var available: Bool { backend != .none }
 
     /// - writeReference: writes the reference as a 4:2:0 10-bit Y4M stream (header + frames) to the handle.
+    /// - using: the backend to run (defaults to the detected one; tests pass `.ffmpegLibvmaf` to exercise the fallback).
     static func score(writeReference: @escaping (FileHandle) throws -> Void, distorted: URL, frameRate: (Int, Int),
-                      options o: Options, workDir: URL) async throws -> Result {
+                      options o: Options, workDir: URL, using chosen: Backend? = nil) async throws -> Result {
         let tag = UUID().uuidString.prefix(6)
         let json = workDir.appendingPathComponent("vmaf-\(tag).json")
         let scale = o.downscaleHeight.map { "scale=-2:\($0):flags=bicubic," } ?? ""
         Log.debug(.quality, "VMAF \(distorted.lastPathComponent) model=\(o.model) subsample=\(o.subsample) scale=\(o.downscaleHeight ?? 0)")
-        switch backend {
+        switch chosen ?? backend {
         case .none:
             throw LumoraError.missingTool("vmaf (brew install libvmaf)")
         case .vmafCLI:
@@ -69,7 +76,7 @@ enum VMAFRunner {
                 scaler.standardInput = pipe
                 scaler.standardError = FileHandle.nullDevice
                 scaler.arguments = FFHarden.args("ffmpeg", scaler.arguments ?? [])
-                try scaler.run()
+                try scaler.runWatched()
                 try await Task.detached { try writeReference(pipe.fileHandleForWriting); try pipe.fileHandleForWriting.close() }.value
                 await wait(scaler)
             } else {
@@ -85,7 +92,7 @@ enum VMAFRunner {
         case .ffmpegLibvmaf:
             let p = Process()
             p.executableURL = ToolLocator.url(for: "ffmpeg")
-            let graph = "[1:v]\(scale)format=yuv420p10le[d];[0:v]\(scale)format=yuv420p10le[r];"
+            let graph = "[1:v]\(untagged)\(scale)format=yuv420p10le[d];[0:v]\(untagged)\(scale)format=yuv420p10le[r];"
                 + "[d][r]libvmaf=model=version=\(o.model):n_threads=\(o.threads):n_subsample=\(o.subsample):log_fmt=json:log_path=\(json.lastPathComponent)"
             p.arguments = ["-v", "error", "-f", "yuv4mpegpipe", "-i", "pipe:0", "-r", "\(frameRate.0)/\(frameRate.1)", "-i", distorted.path,
                            "-lavfi", graph, "-f", "null", "-"]
@@ -96,7 +103,7 @@ enum VMAFRunner {
             p.standardInput = pipe
             p.standardError = FileHandle.nullDevice
             p.arguments = FFHarden.args("ffmpeg", p.arguments ?? [])
-            try p.run()
+            try p.runWatched()
             try await Task.detached { try writeReference(pipe.fileHandleForWriting); try pipe.fileHandleForWriting.close() }.value
             await wait(p)
             guard p.terminationStatus == 0 else { throw LumoraError.toolFailed("ffmpeg libvmaf", "exit \(p.terminationStatus)") }
@@ -136,7 +143,7 @@ enum VMAFRunner {
             scaler.standardInput = pipe
             scaler.standardError = FileHandle.nullDevice
             scaler.arguments = FFHarden.args("ffmpeg", scaler.arguments ?? [])
-            try scaler.run()
+            try scaler.runWatched()
             try await Task.detached { try writeReference(pipe.fileHandleForWriting); try pipe.fileHandleForWriting.close() }.value
             await wait(scaler)
         } else {
@@ -152,7 +159,8 @@ enum VMAFRunner {
               let frames = obj["frames"] as? [[String: Any]] else { throw LumoraError.unsupported("Unreadable libvmaf log") }
         return frames.compactMap { f in
             guard let n = f["frameNum"] as? Int, let m = f["metrics"] as? [String: Any] else { return nil }
-            return (n, m.compactMapValues { ($0 as? NSNumber)?.doubleValue })
+            // libvmaf writes non-finite scores as null: PSNR-HVS and CIEDE2000 of an identical frame are +∞.
+            return (n, m.compactMapValues { $0 is NSNull ? Double.infinity : ($0 as? NSNumber)?.doubleValue })
         }
     }
 
@@ -163,13 +171,13 @@ enum VMAFRunner {
         p.arguments = args
         p.standardOutput = FileHandle.nullDevice
         p.standardError = FileHandle.nullDevice
-        try p.run()
+        try p.runWatched()
         Log.debug(.tools, "\(tool) \(args.joined(separator: " "))")
         return p
     }
 
     private static func wait(_ p: Process) async {
-        await Task.detached { p.waitUntilExit() }.value
+        await p.exited()
     }
 
     static func parse(_ url: URL) throws -> Result {

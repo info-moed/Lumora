@@ -148,6 +148,23 @@ final class TargetQualityEncoder {
             }
             return true
         }
+        /// How far a trial clears the fast check (negative = short of it): the mean against the target and, for a
+        /// higher-is-better search metric, the worst frames against the floor. The search interpolates on this, so a
+        /// chunk held back by its worst frames is steered by them rather than by a mean that already passes.
+        func margin(_ s: MetricScores) -> Double {
+            let score = primaryScore(s)
+            guard primary.metric.higherIsBetter else { return primary.threshold - score }
+            var m = score - primary.threshold
+            if let worst = s.pooled[primary.metric]?.worst { m = min(m, worst - (primary.threshold - target.floorMargin)) }
+            return m
+        }
+        func fastFailures(_ s: MetricScores) -> [String] {
+            var f = s.passes(profile, includeSlow: false).failures
+            if primary.metric.higherIsBetter, let worst = s.pooled[primary.metric]?.worst, worst < primary.threshold - target.floorMargin {
+                f.append("worst 5% \(String(format: "%.2f", worst)) < floor \(String(format: "%.2f", primary.threshold - target.floorMargin))")
+            }
+            return f
+        }
         func file(_ tag: String) -> URL {
             let ext = codec == .hevc ? "mov" : (EncoderCatalog.shared.spec(for: codec.cliKey ?? "")?.ext ?? "bin")
             return workDir.appendingPathComponent("chunk\(chunkID)-\(tag).\(ext)")
@@ -166,7 +183,7 @@ final class TargetQualityEncoder {
         }
 
         // --- 1. Search: cheapest level meeting the search target and fast gates.
-        var tried: [(level: Double, score: Double, ok: Bool, scores: MetricScores, url: URL)] = []
+        var tried: [(level: Double, score: Double, margin: Double, ok: Bool, scores: MetricScores, url: URL)] = []
         await MainActor.run { EncodeMonitor.shared.update(chunkID) { $0.state = .searching } }
         for trial in 0..<target.maxTrials {
             try Task.checkCancellation()
@@ -174,8 +191,8 @@ final class TargetQualityEncoder {
             try await encodeOne(frames, level, url)
             let sc = try await measure(frames[...], url, slow: false)
             let ok = passesFast(sc)
-            tried.append((level, primaryScore(sc), ok, sc, url))
-            Log.info(.quality, "Chunk \(chunkID) trial \(trial + 1): \(Self.describe(codec, level: level)) → \(primary.metric.displayName) \(String(format: "%.2f", primaryScore(sc)))\(ok ? "" : " (" + sc.passes(profile, includeSlow: false).failures.joined(separator: ", ") + ")")")
+            tried.append((level, primaryScore(sc), margin(sc), ok, sc, url))
+            Log.info(.quality, "Chunk \(chunkID) trial \(trial + 1): \(Self.describe(codec, level: level)) → \(primary.metric.displayName) \(String(format: "%.2f", primaryScore(sc)))\(ok ? "" : " (" + fastFailures(sc).joined(separator: ", ") + ")")")
             let lvl = level
             await MainActor.run { EncodeMonitor.shared.update(chunkID) { $0.trials += 1; $0.setting = Self.describe(codec, level: lvl) } }
             await publish(sc)
@@ -183,9 +200,9 @@ final class TargetQualityEncoder {
             let failBelow = tried.filter { t in !t.ok && (bestPass.map { t.level < $0.level } ?? true) }.max { $0.level < $1.level }
             if let p = bestPass, let f = failBelow, p.level - f.level <= range.step { break }
             var next: Double
-            let gap = primary.metric.higherIsBetter ? primary.threshold - primaryScore(sc) : primaryScore(sc) - primary.threshold
+            let gap = -margin(sc)
             if let p = bestPass, let f = failBelow {
-                let t = (primary.threshold - f.score) / max(0.01, p.score - f.score)
+                let t = -f.margin / max(0.01, p.margin - f.margin)
                 next = f.level + (p.level - f.level) * min(0.9, max(0.1, t))
             } else if bestPass != nil {
                 next = level - max(range.step, -gap * (codec == .hevc ? 3 : 1.2) + range.step)
@@ -198,6 +215,12 @@ final class TargetQualityEncoder {
         }
         var chosen = tried.filter(\.ok).min { $0.level < $1.level } ?? tried.max { $0.score < $1.score }!
         for t in tried where t.url != chosen.url { try? FileManager.default.removeItem(at: t.url) }
+        // The monitor shows the accepted encode, not whichever trial happened to run last.
+        do {
+            let lvl = chosen.level
+            await MainActor.run { EncodeMonitor.shared.update(chunkID) { $0.setting = Self.describe(codec, level: lvl) } }
+            await publish(chosen.scores)
+        }
 
         // --- 2. Prove it: perceptual gates (ColorVideoVDP, SSIMULACRA 2) on the chosen encode; step up if needed.
         var chosenScores = chosen.scores
@@ -219,7 +242,7 @@ final class TargetQualityEncoder {
                 let url = file("g\(attempt)")
                 try await encodeOne(frames, lvl, url)
                 try? FileManager.default.removeItem(at: chosen.url)
-                chosen = (lvl, 0, true, MetricScores(), url)
+                chosen = (lvl, 0, 0, true, MetricScores(), url)
                 await MainActor.run { EncodeMonitor.shared.update(chunkID) { $0.setting = Self.describe(codec, level: lvl); $0.trials += 1 } }
             }
         }

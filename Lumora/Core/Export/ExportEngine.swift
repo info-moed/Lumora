@@ -310,7 +310,7 @@ final class ExportEngine {
                 try handle.write(contentsOf: Data(first.y4mHeader(fpsNum: ctx.rate.num, fpsDen: ctx.rate.den).utf8))
                 for f in frames { try f.write(to: handle) }
                 try handle.close()
-                await Task.detached { process.waitUntilExit() }.value
+                await process.exited()
                 guard process.terminationStatus == 0 else {
                     throw LumoraError.toolFailed(rungSpec.binary, String((try? String(contentsOf: log, encoding: .utf8))?.suffix(800) ?? ""))
                 }
@@ -335,9 +335,11 @@ final class ExportEngine {
             }
             // Size at the target VMAF (log-linear between the two points); without VMAF, size at equal CRF.
             var sizeAtTarget = points[0].size
-            if points[0].score != points[1].score, VMAFRunner.available {
+            // Extrapolate at most one bracket beyond the measured pair: on easy footage both scores sit near 100 and an
+            // unbounded line through two almost-equal scores lands at absurd sizes (e.g. "99% smaller").
+            if points[0].score > points[1].score + 0.05, VMAFRunner.available {
                 let (a, b) = (points[0], points[1])
-                let t = (target - a.score) / (b.score - a.score)
+                let t = min(2, max(-1, (target - a.score) / (b.score - a.score)))
                 sizeAtTarget = exp(log(a.size) + t * (log(b.size) - log(a.size)))
             }
             if firstSize == nil { firstSize = sizeAtTarget / max(0.01, 1 - recipe.rungs[i].seedSaving) }
@@ -707,13 +709,13 @@ final class ExportEngine {
         process.standardOutput = FileHandle.nullDevice
         if spec.input == "fifo" {
             guard mkfifo(inArg, 0o600) == 0 else { throw LumoraError.unsupported("Couldn't create pipe for \(spec.binary)") }
-            try process.run()
+            try process.runWatched()
             let h = try await Task.detached { try FileHandle(forWritingTo: URL(fileURLWithPath: inArg)) }.value
             return (process, h, log)
         }
         let pipe = Pipe()
         process.standardInput = pipe
-        try process.run()
+        try process.runWatched()
         return (process, pipe.fileHandleForWriting, log)
     }
 
@@ -867,7 +869,7 @@ final class ExportEngine {
                     for f in frames { try f.write(to: handle) }
                     try handle.close()
                 } catch { process.terminate(); throw error }
-                await Task.detached { process.waitUntilExit() }.value
+                await process.exited()
                 guard process.terminationStatus == 0 else {
                     throw LumoraError.toolFailed(spec.binary, String((try? String(contentsOf: log, encoding: .utf8))?.suffix(1200) ?? ""))
                 }
@@ -1014,14 +1016,14 @@ final class ExportEngine {
             // If the encoder quit on its own, its log says why; that beats a broken-pipe or cancellation error.
             let exitedByItself = !process.isRunning
             if process.isRunning { process.terminate() }
-            try? await Task.detached { process.waitUntilExit() }.value
+            await process.exited()
             if exitedByItself, process.terminationStatus != 0 { throw Self.encoderFailure(spec.binary, log: log) }
             throw error
         }
         _ = await grader.value
         let events = try await producer.value
         try handle.close()
-        try await Task.detached { process.waitUntilExit() }.value
+        await process.exited()
         guard process.terminationStatus == 0 else { throw Self.encoderFailure(spec.binary, log: log) }
         return events
     }
