@@ -144,6 +144,11 @@ final class AppModel {
 
     var selectedPreset: PresetCandidate? { presets.first { $0.id == selectedPresetID } }
 
+    /// The frame on screen at time `t`. Times built by adding 1/fps (the frame-step buttons) land a hair below
+    /// n/fps, so plain truncation would show frame n-1, stepping would stall, and the picture would disagree with
+    /// the timecode; the small tolerance keeps n/fps on frame n.
+    nonisolated static func frameIndex(at t: Double, fps: Double) -> Int { max(0, Int((t * fps + 1e-4).rounded(.down))) }
+
     // MARK: Open & analyse
 
     func presentOpenPanel() {
@@ -173,6 +178,9 @@ final class AppModel {
             d.crop = removeBlackBars ? detectedCrop : UniformBuilder.fullFrame
             descriptor = d
             matchReport = nil
+            presets = []                      // a new file starts from its own recommended look
+            selectedPresetID = nil
+            thumbnails = [:]
             colorCandidates = colors
             selectedColor = colors.first
             previewTime = d.durationSeconds / 2
@@ -243,13 +251,16 @@ final class AppModel {
             contentKind = profile.kind
             TaskCenter.shared.finish(ct)
         } else { TaskCenter.shared.finish(ct, error: LumoraError.unsupported("content test failed")) }
+        let keepLook = selectedPreset?.look
         report = (color.transfer == .pq || color.transfer == .hlg || color.transfer.isSDR)
             ? HDRReportCard.make(title: d.url.deletingPathExtension().lastPathComponent, descriptor: d, color: color, analysis: a)
             : nil
         presets = AutoPresetEngine.generate(colors: colorCandidates.filter { $0 == color } + colorCandidates.filter { $0 != color },
                                             analysis: a, report: report)
         applyTuningToPresets()
-        selectedPresetID = presets.first(where: \.recommended)?.id ?? presets.first?.id
+        // Re-analysing (black bars, scan fix, colour reading, an applied recommendation) keeps the chosen look.
+        selectedPresetID = keepLook.flatMap { l in presets.first { $0.look == l && $0.color == color }?.id }
+            ?? presets.first(where: \.recommended)?.id ?? presets.first?.id
         status = "\(a.scenes.count) scenes, \(presets.count) presets ready for \(contentKind.displayName.lowercased())"
         renderThumbnails()
     }
@@ -259,7 +270,7 @@ final class AppModel {
         let d = proxyDescriptor ?? d0      // scrub from the SSD proxy when the source is on a slow drive
         do {
             let src = try await d.makeFrameSource()
-            let index = min(d.frameCount - 1, Int(previewTime * d.fps))
+            let index = min(d.frameCount - 1, Self.frameIndex(at: previewTime, fps: d.fps))
             try src.start(at: index, count: 1)
             previewFrame = try src.nextFrame()
             src.cancel()
@@ -311,8 +322,10 @@ final class AppModel {
     }
 
     func applyUpgrade(_ u: EncodePlan.Upgrade) {
+        // The upgrade's extra time is relative to the plan on screen, so measure it before switching modes.
+        let base = currentPlan()?.seconds ?? 0
         planMode = .budget
-        budgetHours = ((currentPlan()?.seconds ?? 0) + u.extraSeconds) / 3600 + 0.05
+        budgetHours = (base + u.extraSeconds) / 3600 + 0.05
         planVersion += 1
     }
 
@@ -559,7 +572,7 @@ final class AppModel {
         playTask = Task {
             do {
                 let src = try await d.makeFrameSource()
-                let startFrame = Int(previewTime * d.fps)
+                let startFrame = Self.frameIndex(at: previewTime, fps: d.fps)
                 try src.start(at: startFrame, count: nil)
                 var shown = 0
                 let t0 = Date()
@@ -573,7 +586,8 @@ final class AppModel {
                 }
                 src.cancel()
             } catch {}
-            playing = false
+            // A paused (cancelled) loop must not flip the state of a playback started after it.
+            if !Task.isCancelled { playing = false }
         }
     }
 
@@ -807,7 +821,7 @@ final class AppModel {
 
     func sceneExposure(for preset: PresetCandidate) -> Float {
         guard let a = analysis, let d = descriptor else { return 0 }
-        return preset.sceneExposures[safe: a.sceneIndex(for: Int(previewTime * d.fps))] ?? 0
+        return preset.sceneExposures[safe: a.sceneIndex(for: Self.frameIndex(at: previewTime, fps: d.fps))] ?? 0
     }
 
     func previewUniforms(viewport: SIMD4<Float>) -> GradeUniforms? {
@@ -1073,6 +1087,7 @@ final class AppModel {
         let chosen = presets.filter { presetIDs.contains($0.id) }
         run("Exporting") { [self] in
             for var p in chosen {
+                try Task.checkCancellation()
                 if p.id == selectedPresetID { p.params = params }
                 let ext = delivery == .dolbyVision81 || delivery == .hdr10Plus ? "mkv"
                         : (codec.defaultContainer == "mov" && d.kind != .avfoundation ? "mkv" : codec.defaultContainer)
@@ -1107,6 +1122,7 @@ final class AppModel {
                     Task { @MainActor in self.status = "\(p.look.displayName): \(label)"; self.progress = value }
                 }
                 qcEvents = engine.qcEvents
+                try Task.checkCancellation()          // cancelled while finishing: don't package or announce it
                 lastExportURL = url
                 if let f = forecast, let actual = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize {
                     // Learn on the video part (audio passes through unchanged).
@@ -1124,6 +1140,7 @@ final class AppModel {
                 status = "Saved \(lastPackage?.video.lastPathComponent ?? url.lastPathComponent)"
                 // Same grade at the original frame rate, so you can keep whichever you prefer.
                 if alsoExportOriginalRate, interpolation.mode != .off {
+                    try Task.checkCancellation()
                     var plain = job
                     plain.interpolation.mode = .off
                     plain.outputURL = job.outputURL.deletingPathExtension()

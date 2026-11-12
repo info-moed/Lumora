@@ -408,7 +408,7 @@ struct TimeQualitySection: View {
                 Picker("How much time", selection: $model.planMode) {
                     ForEach(PlanMode.allCases) { Text($0.rawValue).tag($0) }
                 }
-                .pickerStyle(.segmented)
+                .pickerStyle(.menu)      // four segments don't fit the inspector's width
                 .labelsHidden()
                 Text(model.planMode.explanation).font(Theme.note).foregroundStyle(.secondary)
                 if model.planMode == .budget {

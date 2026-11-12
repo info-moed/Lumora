@@ -122,7 +122,10 @@ enum DeliveryFormat: String, CaseIterable, Identifiable, Codable, Hashable {
     func supported(by codec: Codec) -> Bool {
         switch self {
         case .hdr10Plus: return codec.supportsHDR10Plus
-        case .dolbyVision81, .dolbyVision84: return codec.supportsDolbyVision
+        // 8.1 is HDR10 plus an RPU that dovi_tool injects after encoding, so x265 HEVC carries it too;
+        // 8.4 (HLG-based) is written by the hardware encoder only.
+        case .dolbyVision81: return codec.supportsDolbyVision || codec == .hevc12
+        case .dolbyVision84: return codec.supportsDolbyVision
         default: return true
         }
     }

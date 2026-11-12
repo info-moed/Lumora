@@ -55,7 +55,15 @@ enum SourceInspector {
 
     /// Uses FFmpeg's `idet` field detector on ~400 frames when a source might be interlaced or telecined.
     static func detectScanFix(_ d: SourceDescriptor) -> ScanFix {
-        let flagged = d.fieldOrder.map { $0 != "progressive" && $0 != "unknown" } ?? false
+        var fieldOrder = d.fieldOrder
+        // AVFoundation leaves the field count out for interlaced H.264/HEVC in MP4/MOV, so ask the stream itself.
+        if fieldOrder == nil, ToolLocator.isAvailable("ffprobe"),
+           let out = try? ToolLocator.run("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=field_order",
+                                                      "-of", "default=nw=1:nk=1", d.url.path]) {
+            let v = String(decoding: out, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !v.isEmpty { fieldOrder = v }
+        }
+        let flagged = fieldOrder.map { $0 != "progressive" && $0 != "unknown" } ?? false
         let legacy = d.height <= 576 || ["mpeg2video", "vc1", "mpeg1video"].contains(d.codec)
         guard flagged || legacy, ToolLocator.isAvailable("ffmpeg") else { return .none }
         guard let log = try? ToolLocator.runCapturingStderr("ffmpeg", ["-hide_banner", "-nostdin", "-i", d.url.path,

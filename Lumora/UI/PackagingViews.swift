@@ -50,7 +50,7 @@ struct PackageSection: View {
             Picker("Existing metadata", selection: $model.packaging.metadataPolicy) {
                 ForEach(MetadataPolicy.allCases) { Text($0.rawValue).tag($0) }
             }
-            .pickerStyle(.segmented)
+            .pickerStyle(.menu)          // a segmented control of these labels is wider than the side panels
             Text(model.packaging.metadataPolicy.explanation).font(Theme.note).foregroundStyle(.secondary)
             let personal = model.sourceStreams.tags.keys.filter { MetadataPolicy.personalKeys.contains($0.lowercased()) }
             if !personal.isEmpty {

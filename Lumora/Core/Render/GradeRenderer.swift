@@ -481,7 +481,11 @@ final class GradeRenderer {
     // MARK: Thumbnails
 
     func thumbnail(_ texture: MTLTexture, uniforms: GradeUniforms, width: Int) -> CGImage? {
-        let h = max(2, width * texture.height / max(1, texture.width))
+        // Shaped like the picture area (black bars removed), not the decoded frame, so cropped footage isn't stretched.
+        let rect = uniforms.sourceRect
+        let areaW = Double(texture.width) * Double(rect.z > 0 ? rect.z : 1)
+        let areaH = Double(texture.height) * Double(rect.w > 0 ? rect.w : 1)
+        let h = max(2, Int((Double(width) * areaH / max(1, areaW)).rounded()))
         let dst = ctx.makeTexture(width: width, height: h, format: .rgba16Float)
         var u = uniforms
         u.viewport = SIMD4<Float>(0, 0, Float(width), Float(h))

@@ -35,7 +35,7 @@ enum RegressionSet {
     @MainActor
     static func add(from model: AppModel, note: String) async throws {
         guard let d = model.descriptor, let p = model.selectedPreset, let c = model.selectedColor else { return }
-        let f = Int(model.previewTime * d.fps)
+        let f = AppModel.frameIndex(at: model.previewTime, fps: d.fps)
         let exposure = model.analysis.map { p.sceneExposures[safe: $0.sceneIndex(for: f)] ?? 0 } ?? 0
         let pixels = try await render(d: d, frame: f, params: model.params, exposure: exposure, color: c, target: model.previewTarget)
         let g = GoldenFrame(source: d.url.path, frame: f, look: p.look, params: model.params, exposure: exposure, colorName: c.name,
