@@ -185,6 +185,9 @@ final class FFmpegFrameSource: FrameSource {
         guard ToolLocator.isAvailable("ffmpeg") else { throw LumoraError.missingTool("ffmpeg") }
     }
 
+    /// A source dropped mid-stream (an early return, a cancelled export) must not leave FFmpeg blocked on a full pipe.
+    deinit { cancel() }
+
     func start(at frame: Int, count: Int?) throws {
         cancel()
         let p = Process()
@@ -227,6 +230,9 @@ final class FFmpegFrameSource: FrameSource {
 
     func cancel() {
         process?.terminate()
+        // Close our end of the pipe now: an FFmpeg blocked writing a frame then gets EPIPE and exits, instead of
+        // waiting forever on a reader that still exists (the Process keeps the Pipe, and with it the read end, alive).
+        try? handle?.close()
         process = nil
         handle = nil
     }

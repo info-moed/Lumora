@@ -72,6 +72,20 @@ extension Process {
         terminationHandler = { _ in s.signal() }
         return s
     }
+
+    /// Waits for exit without a run loop. `waitUntilExit()` waits for a run-loop notification and, called on a
+    /// worker thread (e.g. inside `Task.detached`), can miss it and block forever although the process is long
+    /// gone; that was an intermittent hang of multi-segment software encodes. `isRunning` is reliable everywhere.
+    func waitForExit() async {
+        while isRunning {
+            do { try await Task.sleep(nanoseconds: 2_000_000) } catch { usleep(2_000) }   // still wait when cancelled
+        }
+    }
+
+    /// The blocking form of `waitForExit()`, for code that is already off the main thread.
+    func blockUntilExit() {
+        while isRunning { usleep(1_000) }
+    }
 }
 
 /// Tool capability checks run external processes. Do them once, off the main thread, at launch, so views

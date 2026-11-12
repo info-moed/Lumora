@@ -110,6 +110,7 @@ enum SourceInspector {
             if item.identifier == .quickTimeMetadataMake { d.make = try? await item.load(.stringValue) }
             if item.identifier == .quickTimeMetadataModel { d.model = try? await item.load(.stringValue) }
         }
+        try validateGeometry(d)          // before any frame is decoded: a 0×0 texture aborts in Metal
         let probe = try await probeSignal(d)
         return (d, rankCandidates(d, probe: probe))
     }
@@ -157,6 +158,7 @@ enum SourceInspector {
         let tags = (root["format"] as? [String: Any])?["tags"] as? [String: Any] ?? [:]
         d.make = tags["com.apple.quicktime.make"] as? String
         d.model = tags["com.apple.quicktime.model"] as? String
+        try validateGeometry(d)          // before any frame is decoded: a 0×0 texture aborts in Metal
         let probe = try await probeSignal(d)
         return (d, rankCandidates(d, probe: probe))
     }
@@ -201,16 +203,25 @@ enum SourceInspector {
         let neutral = SourceColor(name: "probe", transfer: .linear, gamut: .rec2020, legalToFull: false, confidence: 0)
         let u = UniformBuilder.analysis(source: neutral, gridW: 256, gridH: 144)
         var hist = [UInt32](repeating: 0, count: Int(HIST_BINS))
-        var chroma: Float = 0, samples: Float = 0
-        for f in [0.2, 0.5, 0.8].map({ Int(Double(d.frameCount) * $0) }) {
+        var chroma: Float = 0, samples: Float = 0, decoded = 0
+        // Frame 0 is the fallback when the container overstates the length (a 2-second file claiming 100 hours
+        // has nothing at 20, 50 or 80 % of the claim).
+        for f in [0.2, 0.5, 0.8, 0].map({ Int(Double(d.frameCount) * $0) }) where f > 0 || decoded == 0 {
             try src.start(at: f, count: 1)
             guard let frame = try src.nextFrame() else { continue }
+            decoded += 1
             let s = renderer.analyze(frame.texture, uniforms: u, gridWidth: 256)
             for i in 0..<hist.count { hist[i] += s.histogram[i] }
             chroma += Float(s.chromaSum) / 1000
             samples += Float(s.count)
         }
         src.cancel()
+        // Not one picture at the start, middle or end: an unknown codec or a file damaged beyond use. Say so now
+        // rather than letting analysis fail later with a bare "no frames".
+        if decoded == 0 {
+            throw LumoraError.unsupported("Lumora can't decode any picture from this file (video codec “\(d.codec)”). "
+                                          + "It is damaged, or it uses a codec FFmpeg and macOS don't support.")
+        }
         let value = { (p: Float) in 0.18 * powf(2, Histogram.percentileStop(hist, p)) }
         return SignalProbe(p01: value(0.01), median: value(0.5), p995: value(0.995),
                            chroma: samples > 0 ? chroma / samples : 0)

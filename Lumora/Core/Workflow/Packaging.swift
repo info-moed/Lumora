@@ -186,7 +186,21 @@ enum Naming {
             return Character(u)
         }).trimmingCharacters(in: .whitespaces)
         while c.hasPrefix(".") { c.removeFirst() }
-        return String(c.prefix(200)).trimmingCharacters(in: .whitespaces)
+        return truncated(c, maxBytes: 200).trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Cuts a name at a character boundary so its UTF-8 form fits `maxBytes`. File systems allow 255 bytes (or
+    /// UTF-16 units) per name, and emoji or combining accents take 2–4 of those per character, so a limit in
+    /// characters isn't enough; the remaining room is for extensions and sidecar suffixes like ".hdr-report.txt".
+    static func truncated(_ s: String, maxBytes: Int) -> String {
+        guard s.utf8.count > maxBytes else { return s }
+        var out = "", bytes = 0
+        for ch in s {
+            bytes += ch.utf8.count
+            if bytes > maxBytes { break }
+            out.append(ch)
+        }
+        return out
     }
 
     /// Guesses title / year / season / episode from a file name like "The.Movie.2019.2160p.UHD.mkv" or "Show.S02E05.mkv".

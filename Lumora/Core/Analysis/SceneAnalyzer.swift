@@ -73,7 +73,7 @@ enum SceneAnalyzer {
         var lastThumb: [Float]?
         var motionPerFrame: [Float] = []
         var skin: [Float] = [], chroma: [Float] = [], means: [Float] = []
-        hists.reserveCapacity(d.frameCount)
+        hists.reserveCapacity(min(d.frameCount, 1 << 16))   // the container's frame count can be a lie (100 h claimed, 2 s real)
         // Up to 3 frames in flight on the GPU while the media engine decodes the next ones.
         var inFlight: [Task<GradeRenderer.FrameStats, Never>] = []
         func consume(_ s: GradeRenderer.FrameStats) {

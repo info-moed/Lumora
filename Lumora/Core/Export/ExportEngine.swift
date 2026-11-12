@@ -98,6 +98,19 @@ final class ExportEngine {
         return nil
     }
 
+    /// The output folder must exist and be writable, checked before any work so a read-only or vanished folder is
+    /// reported up front, in plain words, instead of after the whole encode as a failed move of a temp file.
+    static func checkOutputFolder(_ output: URL) throws {
+        let folder = output.deletingLastPathComponent()
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: folder.path, isDirectory: &isDir), isDir.boolValue else {
+            throw LumoraError.unsupported("The output folder “\(folder.lastPathComponent)” doesn't exist (was the drive disconnected?). Choose another folder.")
+        }
+        guard FileManager.default.isWritableFile(atPath: folder.path) else {
+            throw LumoraError.unsupported("Lumora can't write to the folder “\(folder.lastPathComponent)”: it is read-only or you don't have permission. Choose another folder.")
+        }
+    }
+
     /// An older file at the output path goes to the Trash (recoverable), never straight to deletion, and the
     /// source itself is never touched.
     static func clearOutput(_ job: ExportJob) throws {
@@ -114,7 +127,10 @@ final class ExportEngine {
 
     private func baseContext(_ job: ExportJob) throws -> Context {
         let d = job.descriptor
-        let (fullPlan, rate) = InterpolationPlanner.plan(sourceFrames: d.frameCount, sourceRate: (d.fpsNum, d.fpsDen),
+        // Analysis decoded every frame once, so its count is the truth; the container's count is only a claim
+        // (a truncated file, a header saying 100 hours, a duration-based estimate).
+        let sourceFrames = job.analysis.frameCount > 0 ? job.analysis.frameCount : d.frameCount
+        let (fullPlan, rate) = InterpolationPlanner.plan(sourceFrames: sourceFrames, sourceRate: (d.fpsNum, d.fpsDen),
                                                      settings: job.interpolation, analysis: job.analysis)
         let wide = job.target.outputGamut == .rec2020
         let probeStage = try PreGradeStage(sourceWidth: d.width, sourceHeight: d.height, crop: d.crop, mode: job.upscale)
@@ -310,7 +326,7 @@ final class ExportEngine {
                 try handle.write(contentsOf: Data(first.y4mHeader(fpsNum: ctx.rate.num, fpsDen: ctx.rate.den).utf8))
                 for f in frames { try f.write(to: handle) }
                 try handle.close()
-                await Task.detached { process.waitUntilExit() }.value
+                await process.waitForExit()
                 guard process.terminationStatus == 0 else {
                     throw LumoraError.toolFailed(rungSpec.binary, String((try? String(contentsOf: log, encoding: .utf8))?.suffix(800) ?? ""))
                 }
@@ -372,6 +388,7 @@ final class ExportEngine {
 
     func run(_ job: ExportJob, status: @escaping (String, Double) -> Void) async throws -> URL {
         if let problem = Self.validate(job) { throw LumoraError.unsupported(problem) }
+        try Self.checkOutputFolder(job.outputURL)
         var ctx = try baseContext(job)
         let d = job.descriptor
         let plan = ctx.plan
@@ -399,6 +416,7 @@ final class ExportEngine {
             status("Finishing file", 1)
             var result = try await join(ctx, segments: pieces, tmp: tmp)
             if job.delivery == .dolbyVision81 || job.delivery == .hdr10Plus { result = try injectDynamicMetadata(ctx, file: result, tmp: tmp) }
+            try Task.checkCancellation()
             try Self.clearOutput(job)
             try FileManager.default.moveItem(at: result, to: job.outputURL)
             ExportManifest(output: job.outputURL.path, source: job.descriptor.url.path, codec: job.codec, rateNum: ctx.rate.num,
@@ -436,12 +454,14 @@ final class ExportEngine {
             return out.sorted { $0.0 < $1.0 }.map(\.1)
         }
 
+        try Task.checkCancellation()
         status("Finishing file", 1)
         var result = try await join(ctx, segments: segmentFiles, tmp: tmp)
         if job.delivery == .dolbyVision81 || job.delivery == .hdr10Plus {
             status("Adding \(job.delivery.displayName) metadata", 1)
             result = try injectDynamicMetadata(ctx, file: result, tmp: tmp)
         }
+        try Task.checkCancellation()
         try Self.clearOutput(job)
         try FileManager.default.moveItem(at: result, to: job.outputURL)
         return job.outputURL
@@ -629,6 +649,7 @@ final class ExportEngine {
 
         do {
             while let item = try await encoded.receive() {
+                try Task.checkCancellation()
                 let (pb, time) = item
                 while !input.isReadyForMoreMediaData { try await Task.sleep(nanoseconds: 1_000_000) }
                 guard adaptor.append(pb, withPresentationTime: time) else {
@@ -637,7 +658,12 @@ final class ExportEngine {
                 tick()
             }
         } catch {
+            // The producer and grader are separate tasks blocked on their channels: fail the channels so they wake,
+            // see the cancellation and stop (closing the decoder), instead of waiting forever for a reader.
             producer.cancel(); grader.cancel()
+            await prepared.fail(error); await encoded.fail(error)
+            _ = await grader.value
+            _ = await producer.result
             writer.cancelWriting()
             throw error
         }
@@ -821,9 +847,11 @@ final class ExportEngine {
         let tq = TargetQualityEncoder(engine: self)
         let encodeOne = chunkEncoder(ctx, tmp: tmp, threads: threads)
         var pieces: [TargetQualityEncoder.Piece] = []
-        try await withThrowingTaskGroup(of: [TargetQualityEncoder.Piece].self) { group in
+        do {
+            try await withThrowingTaskGroup(of: [TargetQualityEncoder.Piece].self) { group in
             var running = 0
             while let chunk = try await channel.receive() {
+                try Task.checkCancellation()
                 if running >= concurrent, let done = try await group.next() { pieces += done; running -= 1 }
                 let scene = job.analysis.scenes[safe: job.analysis.sceneIndex(for: ctx.plan[chunk.start].a)]
                     ?? SceneStats(start: 0, end: 0, keyStops: -1.2, p005: -6, p50: -1, p995: 3, skinFraction: 0, avgChroma: 0)
@@ -839,6 +867,14 @@ final class ExportEngine {
                 running += 1
             }
             for try await done in group { pieces += done }
+            }
+        } catch {
+            // Wake and stop the render and decode tasks (they hold every rendered frame and the decoder).
+            render.cancel(); producer.cancel()
+            await prepared.fail(error); await channel.fail(error)
+            _ = await render.value
+            _ = await producer.result
+            throw error
         }
         _ = await render.value
         qcEvents += try await producer.value
@@ -867,7 +903,7 @@ final class ExportEngine {
                     for f in frames { try f.write(to: handle) }
                     try handle.close()
                 } catch { process.terminate(); throw error }
-                await Task.detached { process.waitUntilExit() }.value
+                await process.waitForExit()
                 guard process.terminationStatus == 0 else {
                     throw LumoraError.toolFailed(spec.binary, String((try? String(contentsOf: log, encoding: .utf8))?.suffix(1200) ?? ""))
                 }
@@ -1006,22 +1042,26 @@ final class ExportEngine {
         do {
             // Writer stage: the encoder process (CPU cores) consumes frames while the GPU grades the next ones.
             while let planes = try await packed.receive() {
+                try Task.checkCancellation()
                 try planes.write(to: handle)
                 tick()
             }
         } catch {
             producer.cancel(); grader.cancel()
+            await prepared.fail(error); await packed.fail(error)
+            _ = await grader.value
+            _ = await producer.result
             // If the encoder quit on its own, its log says why; that beats a broken-pipe or cancellation error.
             let exitedByItself = !process.isRunning
             if process.isRunning { process.terminate() }
-            try? await Task.detached { process.waitUntilExit() }.value
+            await process.waitForExit()
             if exitedByItself, process.terminationStatus != 0 { throw Self.encoderFailure(spec.binary, log: log) }
             throw error
         }
         _ = await grader.value
         let events = try await producer.value
         try handle.close()
-        try await Task.detached { process.waitUntilExit() }.value
+        await process.waitForExit()
         guard process.terminationStatus == 0 else { throw Self.encoderFailure(spec.binary, log: log) }
         return events
     }
@@ -1039,6 +1079,11 @@ final class ExportEngine {
         var isSlowMo = false
         if case .slowMotion = job.interpolation.mode { isSlowMo = true }
         let carrySource = !isSlowMo && (job.descriptor.kind == .avfoundation || job.descriptor.kind == .ffmpeg)
+        // The decoders may have finished from already-open files, but the audio and subtitles are read from the
+        // source now: if it vanished mid-export, say so instead of failing in a tool or dropping the audio.
+        if carrySource, !FileManager.default.fileExists(atPath: job.descriptor.url.path) {
+            throw LumoraError.unsupported("The source file “\(job.descriptor.url.lastPathComponent)” was moved or deleted during the export, so its audio and subtitles can't be added. Put it back and export again.")
+        }
         let ext = segments[0].pathExtension
 
         // AV2: no container binding yet; OBU streams concatenate directly.

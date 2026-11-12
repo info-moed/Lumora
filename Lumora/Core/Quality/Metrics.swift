@@ -285,7 +285,7 @@ enum MetricSuite {
         let p = Process()
         p.executableURL = ToolLocator.url(for: "ffmpeg")
         p.arguments = ["-v", "error", "-f", "yuv4mpegpipe", "-i", "pipe:0"] + ctx.decoderArgs + ["-r", "\(ctx.rate.0)/\(ctx.rate.1)", "-i", distorted.path,
-                       "-lavfi", "[1:v]format=yuv420p10le[d];[0:v]format=yuv420p10le[r];[d][r]xpsnr=stats_file=\(stats.lastPathComponent)",
+                       "-lavfi", "[1:v]\(VMAFRunner.sameCodeValues)format=yuv420p10le[d];[0:v]\(VMAFRunner.sameCodeValues)format=yuv420p10le[r];[d][r]xpsnr=stats_file=\(stats.lastPathComponent)",
                        "-f", "null", "-"]
         p.currentDirectoryURL = stats.deletingLastPathComponent()      // relative name: nothing to escape in the graph
         let pipe = Pipe()
@@ -294,7 +294,7 @@ enum MetricSuite {
         p.arguments = FFHarden.args("ffmpeg", p.arguments ?? [])
         try p.run()
         try await Task.detached { try reference(pipe.fileHandleForWriting); try pipe.fileHandleForWriting.close() }.value
-        await Task.detached { p.waitUntilExit() }.value
+        await p.waitForExit()
         // Lines look like: "n:    1  XPSNR y: 41.2345  XPSNR u: 44.1  XPSNR v: 45.0"
         let text = (try? String(contentsOf: stats, encoding: .utf8)) ?? ""
         var values: [(Int, Double)] = []
@@ -336,7 +336,7 @@ enum MetricSuite {
             try reference(h); try h.close()
         }.value
         let text = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        await Task.detached { dec.waitUntilExit(); tool.waitUntilExit() }.value
+        await dec.waitForExit(); await tool.waitForExit()
         // Expected lines: "Frame 12: 87.12345" (VERIFY against your ssimulacra2_rs version).
         var values: [(Int, Double)] = []
         for line in text.split(separator: "\n") where line.hasPrefix("Frame") {
@@ -381,7 +381,7 @@ enum MetricSuite {
             try reference(h); try h.close()
         }.value
         let data = out.fileHandleForReading.readDataToEndOfFile()
-        await Task.detached { dec.waitUntilExit(); py.waitUntilExit() }.value
+        await dec.waitForExit(); await py.waitForExit()
         var s = MetricScores()
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             Log.warning(.quality, "Python metrics returned no result: \(String(decoding: data.prefix(300), as: UTF8.self))")

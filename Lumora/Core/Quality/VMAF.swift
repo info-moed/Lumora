@@ -39,6 +39,12 @@ enum VMAFRunner {
     }()
     static var available: Bool { backend != .none }
 
+    /// Put at the head of each input of a two-input FFmpeg comparison filter (libvmaf, xpsnr). The reference Y4M
+    /// carries no matrix tag while an encode is tagged BT.709/BT.2020, and FFmpeg 8+ then auto-converts one input's
+    /// matrix to match the other, so the metric compares altered pixels (VMAF 66 instead of 98, XPSNR 12 dB instead
+    /// of 43). Marking both sides alike keeps the comparison on the code values, as the vmaf CLI does.
+    static let sameCodeValues = "setparams=colorspace=unknown:range=tv,"
+
     /// - writeReference: writes the reference as a 4:2:0 10-bit Y4M stream (header + frames) to the handle.
     static func score(writeReference: @escaping (FileHandle) throws -> Void, distorted: URL, frameRate: (Int, Int),
                       options o: Options, workDir: URL) async throws -> Result {
@@ -85,7 +91,7 @@ enum VMAFRunner {
         case .ffmpegLibvmaf:
             let p = Process()
             p.executableURL = ToolLocator.url(for: "ffmpeg")
-            let graph = "[1:v]\(scale)format=yuv420p10le[d];[0:v]\(scale)format=yuv420p10le[r];"
+            let graph = "[1:v]\(sameCodeValues)\(scale)format=yuv420p10le[d];[0:v]\(sameCodeValues)\(scale)format=yuv420p10le[r];"
                 + "[d][r]libvmaf=model=version=\(o.model):n_threads=\(o.threads):n_subsample=\(o.subsample):log_fmt=json:log_path=\(json.lastPathComponent)"
             p.arguments = ["-v", "error", "-f", "yuv4mpegpipe", "-i", "pipe:0", "-r", "\(frameRate.0)/\(frameRate.1)", "-i", distorted.path,
                            "-lavfi", graph, "-f", "null", "-"]
@@ -169,7 +175,7 @@ enum VMAFRunner {
     }
 
     private static func wait(_ p: Process) async {
-        await Task.detached { p.waitUntilExit() }.value
+        await p.waitForExit()
     }
 
     static func parse(_ url: URL) throws -> Result {

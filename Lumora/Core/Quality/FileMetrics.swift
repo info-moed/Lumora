@@ -33,7 +33,7 @@ enum FileMetrics {
             while let chunk = try pipe.fileHandleForReading.read(upToCount: 8 << 20), !chunk.isEmpty {
                 try handle.write(contentsOf: chunk)
             }
-            p.waitUntilExit()
+            p.blockUntilExit()
         }
         let scores = try await MetricSuite.measure(metrics, reference: writeReference, distorted: test, ctx: ctx)
         var avqt: Double?
