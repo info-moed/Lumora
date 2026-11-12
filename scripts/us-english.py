@@ -50,7 +50,7 @@ WORDS = re.compile(r'(?<![-_])\b(' + '|'.join(sorted(W, key=len, reverse=True)) 
 ISES = re.compile(r'(?<![-_])\b(' + '|'.join(sorted(set(ISE), key=len, reverse=True))
                   + r')(ations|ation|able|ers|ing|ed|es|er|e)\b(?![-_])', re.I)
 TEXT = ('.md', '.swift', '.metal', '.h', '.py', '.sh', '.yml', '.json', '.txt')
-SKIP = ('docs/encoding/',)   # generated from encoder data that quotes tools' own spellings verbatim (e.g. Matroska "Colour")
+SKIP = ('docs/encoding/', 'scripts/us-english.py')   # generated from encoder data that quotes tools' own spellings verbatim (e.g. Matroska "Colour")
 
 
 def keep_case(src, dst):
