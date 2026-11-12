@@ -534,7 +534,7 @@ struct ForecastSection: View {
                     Text("\(SizeForecast.gb(f.low))–\(SizeForecast.gb(f.high))").font(Theme.note.monospacedDigit()).foregroundStyle(.secondary)
                 }
                 let pct = Int((f.savingFraction * 100).rounded())
-                Text(pct > 0 ? "\(pct)% smaller than the \(SizeForecast.gb(f.sourceBytes)) source" : "about \(SizeForecast.gb(f.sourceBytes - f.mid)) larger than the source")
+                Text(pct > 0 ? "\(pct)% smaller than the \(SizeForecast.gb(f.sourceBytes)) source" : "about \(SizeForecast.gb(f.mid - f.sourceBytes)) larger than the source")
                     .font(Theme.body)
                 HStack(spacing: 14) {
                     Label(qualityLine, systemImage: "eye").font(Theme.note)

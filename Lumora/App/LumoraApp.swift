@@ -8,6 +8,7 @@ enum LumoraMain {
     static func main() {
         // An encoder that exits early must not take the app down with SIGPIPE; writes throw instead.
         signal(SIGPIPE, SIG_IGN)
+        ToolProbe.warmUp()
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
             let app = NSApplication.shared
             app.setActivationPolicy(.prohibited)

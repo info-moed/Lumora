@@ -26,9 +26,10 @@ enum ToolLocator {
         let err = Pipe()
         p.standardOutput = FileHandle.nullDevice
         p.standardError = err
+        let exited = p.exitSignal()
         try p.run()
         let data = err.fileHandleForReading.readDataToEndOfFile()
-        p.waitUntilExit()
+        exited.wait()
         return String(decoding: data, as: UTF8.self)
     }
 
@@ -42,14 +43,44 @@ enum ToolLocator {
         let out = Pipe(), err = Pipe()
         p.standardOutput = out
         p.standardError = err
+        let exited = p.exitSignal()
         try p.run()
+        // Drain stderr concurrently so a chatty tool can't fill that pipe and stall while we read stdout.
+        var errData = Data()
+        let errDone = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .utility).async {
+            errData = err.fileHandleForReading.readDataToEndOfFile()
+            errDone.signal()
+        }
         let data = out.fileHandleForReading.readDataToEndOfFile()
-        let errData = err.fileHandleForReading.readDataToEndOfFile()
-        p.waitUntilExit()
+        errDone.wait()
+        exited.wait()
         guard p.terminationStatus == 0 else {
             throw LumoraError.toolFailed(name, String(decoding: errData.suffix(2000), as: UTF8.self))
         }
         return data
+    }
+}
+
+extension Process {
+    /// A semaphore signalled when the process exits. Unlike `waitUntilExit()`, waiting on it doesn't spin the
+    /// current run loop, so a short tool call made on the main thread (e.g. while SwiftUI is computing a view)
+    /// can't re-enter UI updates. Call before `run()`.
+    func exitSignal() -> DispatchSemaphore {
+        let s = DispatchSemaphore(value: 0)
+        terminationHandler = { _ in s.signal() }
+        return s
+    }
+}
+
+/// Tool capability checks run external processes. Do them once, off the main thread, at launch, so views
+/// that show "installed / not installed" only ever read cached answers.
+enum ToolProbe {
+    static func warmUp() {
+        DispatchQueue.global(qos: .utility).async {
+            _ = VMAFRunner.backend
+            _ = MetricSuite.ffmpegHasXPSNR
+        }
     }
 }
 
