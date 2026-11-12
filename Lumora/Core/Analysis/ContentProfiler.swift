@@ -154,7 +154,13 @@ enum ContentProfiler {
         var kind = ContentKind.realLife
         var conf: Float = 0.6
         let animation = (flat > 0.38 && repeats > 0.15) || flat > 0.55 || (flat > 0.3 && edges > 0.03 && repeats > 0.25)
-        if animation {
+        // Screen content is flat, sharp and mostly unchanging. It has to be tested before animation: every screen
+        // recording also passes the flat-colour animation test, so checked afterwards it could never be chosen.
+        // Animation on twos/threes repeats about half to two thirds of its frames; a screen far more.
+        if flat > 0.6 && edges > 0.03 && mot < 0.003 && repeats > 0.8 {
+            kind = .screenContent; conf = 0.7
+            ev.append("large flat areas with sharp edges and little motion")
+        } else if animation {
             ev.append(String(format: "%.0f%% of the picture is flat colour", flat * 100))
             if repeats > 0.1 { ev.append(String(format: "%.0f%% of frames repeat (drawn on twos/threes)", repeats * 100)) }
             if legacy || grain > 0.008 {
@@ -167,9 +173,6 @@ enum ContentProfiler {
                 kind = .anime
             }
             conf = min(0.95, 0.55 + flat * 0.4 + repeats * 0.5)
-        } else if flat > 0.6 && edges > 0.03 && mot < 0.003 {
-            kind = .screenContent; conf = 0.7
-            ev.append("large flat areas with sharp edges and little motion")
         } else if grain > 0.011 && a.globalKey < -3.5 {
             kind = .lowLightNoisy; conf = 0.7
             ev.append("dark picture with heavy noise")

@@ -20,12 +20,17 @@ enum ScanFix: String, Codable, CaseIterable, Hashable {
         case .inverseTelecine: return "Inverse telecine (restore 24p film)"
         }
     }
-    var ffmpegFilter: String? {
+    var ffmpegFilter: String? { ffmpegFilter(fieldsFlagged: true) }
+
+    /// `fieldsFlagged`: the stream marks its frames as interlaced. bwdif's `deint=interlaced` only touches flagged
+    /// frames, so interlacing the field detector found in a stream coded as progressive must deinterlace every frame.
+    func ffmpegFilter(fieldsFlagged: Bool) -> String? {
+        let deint = fieldsFlagged ? "interlaced" : "all"
         switch self {
         case .none: return nil
-        case .deinterlace: return "bwdif=mode=send_frame:deint=interlaced"
-        case .deinterlaceDouble: return "bwdif=mode=send_field:deint=interlaced"
-        case .inverseTelecine: return "fieldmatch,bwdif=deint=interlaced,decimate"
+        case .deinterlace: return "bwdif=mode=send_frame:deint=\(deint)"
+        case .deinterlaceDouble: return "bwdif=mode=send_field:deint=\(deint)"
+        case .inverseTelecine: return "fieldmatch,bwdif=deint=interlaced,decimate"   // fieldmatch flags what it can't match
         }
     }
 }
@@ -62,6 +67,9 @@ struct SourceDescriptor: Hashable {
     var crop = SIMD4<Float>(0, 0, 1, 1)   // black bars removed (uv origin + size)
     var outputWidth: Int { Int(Float(width) * crop.z) & ~1 }
     var outputHeight: Int { Int(Float(height) * crop.w) & ~1 }
+
+    /// The stream itself marks its frames as interlaced (field order other than progressive / unknown).
+    var fieldsFlagged: Bool { fieldOrder.map { $0 != "progressive" && $0 != "unknown" } ?? false }
 
     var fps: Double { Double(fpsNum) / Double(fpsDen) }
     var durationSeconds: Double { Double(frameCount) / fps }
@@ -104,7 +112,7 @@ struct SourceDescriptor: Hashable {
         case .avfoundation:
             let s = AVFoundationFrameSource(url: url,
                                             convertDolbyVisionToPQ: isDolbyVision && transferTag?.contains("HLG") != true,
-                                            highPrecision: highPrecision)
+                                            highPrecision: highPrecision, fps: fps)
             try await s.prepare()
             return s
         case .ffmpeg:

@@ -225,7 +225,7 @@ final class AppModel {
         if let proxy, let url = await proxy.finish() {
             var pd = d
             pd.url = url; pd.kind = .avfoundation; pd.scanFix = .none
-            pd.width = Int(Float(d.width) * 720 / Float(max(1, d.height))) & ~1; pd.height = min(720, d.height) & ~1
+            (pd.width, pd.height) = ProxyWriter.outputSize(for: d)
             proxyDescriptor = pd
             Log.info(.storage, "Preview proxy ready on the scratch SSD: \(url.lastPathComponent)")
         }

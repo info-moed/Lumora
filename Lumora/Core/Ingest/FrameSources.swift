@@ -39,11 +39,16 @@ final class AVFoundationFrameSource: FrameSource {
     private var output: AVAssetReaderTrackOutput?
     private let ctx = MetalContext.shared
 
-    init(url: URL, convertDolbyVisionToPQ: Bool = false, highPrecision: Bool = false) {
+    private let fpsOverride: Double?
+
+    /// - fps: the descriptor's rate, so seeking and frame numbers follow the same timeline as the rest of the app
+    ///   (it differs from nominalFrameRate for variable-frame-rate files).
+    init(url: URL, convertDolbyVisionToPQ: Bool = false, highPrecision: Bool = false, fps: Double? = nil) {
         self.url = url
         self.asset = AVURLAsset(url: url)
         self.convertDolbyVisionToPQ = convertDolbyVisionToPQ
         self.highPrecision = highPrecision
+        self.fpsOverride = fps.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
     }
 
     func prepare() async throws {
@@ -52,7 +57,7 @@ final class AVFoundationFrameSource: FrameSource {
         let (size, rate, range) = try await t.load(.naturalSize, .nominalFrameRate, .timeRange)
         width = Int(size.width) & ~1
         height = Int(size.height) & ~1
-        fps = rate > 0 ? Double(rate) : 24
+        fps = fpsOverride ?? (rate > 0 ? Double(rate) : 24)
         frameCount = safeFrameCount(seconds: range.duration.seconds, fps: fps)
     }
 
@@ -173,11 +178,19 @@ final class FFmpegFrameSource: FrameSource {
 
     init(descriptor d: SourceDescriptor) throws {
         url = d.url
-        scanFilter = d.scanFix.ffmpegFilter
+        scanFilter = d.scanFix.ffmpegFilter(fieldsFlagged: d.fieldsFlagged)
         // State the YCbCr matrix and range explicitly: a wrong guess (BT.601/709 on a BT.2020 HDR file)
-        // silently shifts colours. The signal stays PQ/HLG/log-encoded; nothing is tone mapped.
+        // silently shifts colours. The file's own matrix tag wins; untagged files are guessed from their
+        // primaries and transfer. The signal stays PQ/HLG/log-encoded; nothing is tone mapped.
         let wide = d.primariesTag == "ITU_R_2020" || d.transferTag?.contains("2084") == true || d.transferTag?.contains("HLG") == true
-        colorFilter = "in_color_matrix=\(wide ? "bt2020" : "bt709"):in_range=tv:out_range=pc"
+        let matrix: String
+        switch d.matrixTag {
+        case "ITU_R_601_4"?: matrix = "bt601"
+        case "ITU_R_709_2"?: matrix = "bt709"
+        case "ITU_R_2020"?: matrix = "bt2020"
+        default: matrix = wide ? "bt2020" : "bt709"
+        }
+        colorFilter = "in_color_matrix=\(matrix):in_range=tv:out_range=pc"
         width = d.width
         height = d.height
         fps = d.fps

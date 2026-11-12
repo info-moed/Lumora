@@ -55,7 +55,7 @@ enum SourceInspector {
 
     /// Uses FFmpeg's `idet` field detector on ~400 frames when a source might be interlaced or telecined.
     static func detectScanFix(_ d: SourceDescriptor) -> ScanFix {
-        let flagged = d.fieldOrder.map { $0 != "progressive" && $0 != "unknown" } ?? false
+        let flagged = d.fieldsFlagged
         let legacy = d.height <= 576 || ["mpeg2video", "vc1", "mpeg1video"].contains(d.codec)
         guard flagged || legacy, ToolLocator.isAvailable("ffmpeg") else { return .none }
         guard let log = try? ToolLocator.runCapturingStderr("ffmpeg", ["-hide_banner", "-nostdin", "-i", d.url.path,
@@ -81,11 +81,24 @@ enum SourceInspector {
         let asset = AVURLAsset(url: url)
         guard let track = try await asset.loadTracks(withMediaType: .video).first else { throw LumoraError.noVideoTrack }
         var d = SourceDescriptor(url: url, kind: .avfoundation)
-        let (size, rate, range, formats) = try await track.load(.naturalSize, .nominalFrameRate, .timeRange, .formatDescriptions)
+        let (size, rate, range, formats, minFrame) = try await track.load(.naturalSize, .nominalFrameRate, .timeRange,
+                                                                          .formatDescriptions, .minFrameDuration)
         d.width = Int(size.width) & ~1
         d.height = Int(size.height) & ~1
         (d.fpsNum, d.fpsDen) = rationalFrameRate(Double(rate > 0 ? rate : 24))
         d.frameCount = safeFrameCount(seconds: range.duration.seconds, fps: d.fps)
+        // Variable frame rate (shortest frame well under 1/nominal rate): nominalFrameRate is not frames ÷ duration,
+        // so duration × nominal rate miscounts the frames. Count the samples and use the average rate instead,
+        // which keeps every frame and the clip's real duration.
+        if minFrame.isValid, minFrame.seconds > 0, rate > 0, 1 / minFrame.seconds > Double(rate) * 1.05,
+           let cursor = track.makeSampleCursorAtFirstSampleInDecodeOrder() {
+            let samples = Int(cursor.stepInDecodeOrder(byCount: Int64(Int32.max))) + 1
+            let seconds = range.duration.seconds
+            if samples > 1, seconds > 0, abs(samples - d.frameCount) > 1 {
+                (d.fpsNum, d.fpsDen) = rationalFrameRate(Double(samples) / seconds)
+                d.frameCount = safeFrameCount(seconds: seconds, fps: d.fps)
+            }
+        }
         d.hasAudio = !(try await asset.loadTracks(withMediaType: .audio)).isEmpty
 
         if let fd = formats.first {
@@ -125,8 +138,17 @@ enum SourceInspector {
             throw LumoraError.noVideoTrack
         }
         var d = SourceDescriptor(url: url, kind: .ffmpeg)
-        d.width = (v["width"] as? Int ?? 0) & ~1
+        let codedWidth = v["width"] as? Int ?? 0
+        d.width = codedWidth & ~1
         d.height = (v["height"] as? Int ?? 0) & ~1
+        // Anamorphic video (e.g. 720×480 at 32:27): use the square-pixel display width, like AVFoundation's
+        // naturalSize does, so both paths agree and the FFmpeg pipe scales the frames to the right shape.
+        if let sar = v["sample_aspect_ratio"] as? String {
+            let p = sar.split(separator: ":").compactMap { Double($0) }
+            if p.count == 2, p[0] > 0, p[1] > 0, (0.25...4).contains(p[0] / p[1]), p[0] != p[1] {
+                d.width = Int((Double(codedWidth) * p[0] / p[1]).rounded(.down)) & ~1
+            }
+        }
         d.codec = v["codec_name"] as? String ?? "?"
         if let r = v["avg_frame_rate"] as? String ?? v["r_frame_rate"] as? String {
             let p = r.split(separator: "/").compactMap { Double($0) }
@@ -147,6 +169,12 @@ enum SourceInspector {
         default: break
         }
         if v["color_primaries"] as? String == "bt2020" { d.primariesTag = "ITU_R_2020" }
+        switch v["color_space"] as? String {
+        case "bt709": d.matrixTag = "ITU_R_709_2"
+        case "smpte170m", "bt470bg": d.matrixTag = "ITU_R_601_4"
+        case "bt2020nc", "bt2020c": d.matrixTag = "ITU_R_2020"
+        default: break
+        }
         let sideData = v["side_data_list"] as? [[String: Any]] ?? []
         d.isDolbyVision = sideData.contains { ($0["side_data_type"] as? String)?.contains("DOVI") == true }
         if let dovi = sideData.first(where: { ($0["side_data_type"] as? String)?.contains("DOVI") == true }) {
