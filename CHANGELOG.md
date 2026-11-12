@@ -9,6 +9,54 @@ Status tags used below:
 
 ---
 
+## [0.11.1] — 2026-11-11 · "Builds, runs, tested"
+
+The first version that compiles and runs. Earlier versions were complete source that had never been built.
+
+### Fixed — build
+- Metal: removed local `max3`/`min3`, which now clash with the Metal standard library.
+- Swift: a `let internal` binding (a keyword), `@Observable` properties declared several per line, a shadowed `plan`,
+  main-actor isolation of Model Lab paths, a private method used across files, a stale `.h264` case, missing
+  `av1Pro`/`hevc12` segment counts, and two type mismatches in packaging reports.
+- `usesExternalPlaybackWhileExternalScreenIsActive` is unavailable on macOS; removed.
+
+### Fixed — runtime
+- **AV1 / every software encoder failed.** The build step copied Homebrew encoders into the app without their
+  libraries, and bundled copies take priority. Only self-contained tools are bundled now.
+- **A failed encoder was reported as "CancellationError".** Lumora now shows the encoder's own error.
+- **Opening Model Lab (and Deliver → Quality) could crash.** Tool probes ran `waitUntilExit()` inside a SwiftUI
+  update, which spins the run loop. Tool calls no longer spin the run loop, and probes run in the background at
+  launch.
+- "about -170 KB larger than the source": the size difference was subtracted the wrong way round.
+- When packaging, a title already inside the file now beats a guess from its file name.
+
+### Security
+- Output names can no longer escape the chosen folder (`..`, absolute paths, hidden names, control characters), and
+  the final path is checked.
+- Exports and packaging refuse to replace their own source; replaced outputs go to the Trash.
+- "Remove personal details" uses an allowlist of safe tags instead of a denylist; sidecars drop home-folder paths.
+- Hostile frame rates, frame counts and sizes are rejected or clamped instead of crashing.
+- FFmpeg inputs are restricted to local files and pipes; concat lists and filter arguments are escaped or relative.
+- RIFE downloads are pinned to published SHA-256 digests; imports are checksummed and need confirmation before
+  conversion; PyTorch loads weights only; pip installs wheels only; Practical-RIFE is pinned to a commit; archives
+  with symbolic links are refused.
+- The TMDB key moved to the Keychain. Release builds no longer disable library validation.
+- New [SECURITY.md](SECURITY.md).
+
+### Added
+- **Tests:** end-to-end exports (SDR→HDR10 HEVC, HDR10→SDR, ProRes 4444 XQ 12-bit, AV1, 2× frame rate), offscreen
+  rendering of every window, and 17 hostile-input tests. Tests run headless and skip cleanly on machines without a
+  GPU or hardware encoder.
+- **`scripts/deps.sh`:** status (including whether each tool actually starts), install, update-then-verify, a weekly
+  unattended check with notifications, and `deps.lock` with the last verified versions.
+- **CI** on GitHub's macOS 27 / Xcode 27 runners: every push, and weekly against the newest dependencies.
+  Dependabot for the workflow's actions.
+- **Documentation** for every level: getting started, HDR basics, user guide, building, command line, architecture,
+  troubleshooting, contributing.
+- MIT licence; bundle identifier `io.github.info-moed.Lumora`.
+
+---
+
 ## [0.11.0] — 2026-11-03 · "Library-ready, verifiable, unattended"
 
 ### Packaging: every export comes out finished

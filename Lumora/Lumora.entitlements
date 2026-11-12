@@ -6,7 +6,5 @@
          encoder tools and loads camera-vendor RAW SDK plug-ins, which the sandbox would block. -->
     <key>com.apple.security.app-sandbox</key>
     <false/>
-    <key>com.apple.security.cs.disable-library-validation</key>
-    <true/>
 </dict>
 </plist>

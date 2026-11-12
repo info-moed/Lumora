@@ -102,6 +102,7 @@ final class EndToEndTests: XCTestCase {
     }
 
     func testInspectAndAnalyzeFindTheCut() async throws {
+        try TestHardware.requireGPU()
         let src = try Self.makeClip("sdr.mp4", hdr: false)
         let (d, colors) = try await SourceInspector.inspect(src)
         XCTAssertEqual(d.width, 1280); XCTAssertEqual(d.height, 720)
@@ -118,6 +119,7 @@ final class EndToEndTests: XCTestCase {
     }
 
     func testSDRToHDR10HardwareHEVC() async throws {
+        try TestHardware.requireHardwareHEVC()
         let src = try Self.makeClip("sdr.mp4", hdr: false)
         let job = try await makeJob(src, delivery: .hdr10, codec: .hevc, out: "sdr-to-hdr10.mov")
         let url = try await ExportEngine().run(job) { _, _ in }
@@ -133,6 +135,7 @@ final class EndToEndTests: XCTestCase {
     }
 
     func testHDR10ToSDRHardwareHEVC() async throws {
+        try TestHardware.requireHardwareHEVC()
         let src = try Self.makeClip("hdr10.mp4", hdr: true)
         let job = try await makeJob(src, delivery: .sdr, codec: .hevc, out: "hdr10-to-sdr.mov")
         let url = try await ExportEngine().run(job) { _, _ in }
@@ -146,6 +149,7 @@ final class EndToEndTests: XCTestCase {
     }
 
     func testHDR10ToProRes4444XQ12Bit() async throws {
+        try TestHardware.requireProRes()
         let src = try Self.makeClip("hdr10.mp4", hdr: true)
         var job = try await makeJob(src, delivery: .hdr10, codec: .prores4444XQ, out: "hdr10-prores.mov")
         job.bitDepth = 12; job.chroma = .c444
@@ -157,6 +161,7 @@ final class EndToEndTests: XCTestCase {
     }
 
     func testDoubleFrameRateWithoutModelsFallsBackToBlending() async throws {
+        try TestHardware.requireHardwareHEVC()
         let src = try Self.makeClip("sdr.mp4", hdr: false)
         var job = try await makeJob(src, delivery: .sdr, codec: .hevc, out: "sdr-48fps.mov")
         job.interpolation.mode = .multiply(2)
@@ -168,6 +173,7 @@ final class EndToEndTests: XCTestCase {
     }
 
     func testSDRToHDR10SoftwareAV1() async throws {
+        try TestHardware.requireGPU()
         guard Codec.av1.available else { throw XCTSkip("SVT-AV1 not installed") }
         let src = try Self.makeClip("sdr.mp4", hdr: false)
         var job = try await makeJob(src, delivery: .hdr10, codec: .av1, out: "sdr-to-hdr10-av1.mkv")

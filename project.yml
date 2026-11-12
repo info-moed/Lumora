@@ -1,7 +1,7 @@
 # Generate the Xcode project with:  brew install xcodegen && xcodegen
 name: Lumora
 options:
-  bundleIdPrefix: com.example
+  bundleIdPrefix: io.github.info-moed
   deploymentTarget:
     macOS: "27.0"
   createIntermediateGroups: true
@@ -16,6 +16,11 @@ settings:
     SWIFT_OPTIMIZATION_LEVEL: -O
     ENABLE_HARDENED_RUNTIME: YES
     CODE_SIGN_ENTITLEMENTS: Lumora/Lumora.entitlements
+  configs:
+    # Debug hosts the unit tests, a separately signed bundle that a hardened runtime with library validation
+    # would refuse to load. Release (what ships and gets notarized) keeps the hardened runtime, no exemptions.
+    Debug:
+      ENABLE_HARDENED_RUNTIME: NO
 targets:
   Lumora:
     type: application
@@ -30,9 +35,11 @@ targets:
       path: Lumora/Info.plist
       properties:
         CFBundleDisplayName: Lumora
+        CFBundleShortVersionString: "0.11.1"
+        CFBundleVersion: "1"
         LSMinimumSystemVersion: "27.0"
         LSApplicationCategoryType: public.app-category.video
-        NSHumanReadableCopyright: "© Your Company"
+        NSHumanReadableCopyright: "© 2026 info-moed. MIT licence."
     postBuildScripts:
       - name: Bundle helper tools (optional)
         script: '"$SRCROOT/scripts/bundle-tools.sh" || true'

@@ -68,6 +68,7 @@ enum VMAFRunner {
                 let pipe = Pipe()
                 scaler.standardInput = pipe
                 scaler.standardError = FileHandle.nullDevice
+                scaler.arguments = FFHarden.args("ffmpeg", scaler.arguments ?? [])
                 try scaler.run()
                 try await Task.detached { try writeReference(pipe.fileHandleForWriting); try pipe.fileHandleForWriting.close() }.value
                 await wait(scaler)
@@ -85,12 +86,16 @@ enum VMAFRunner {
             let p = Process()
             p.executableURL = ToolLocator.url(for: "ffmpeg")
             let graph = "[1:v]\(scale)format=yuv420p10le[d];[0:v]\(scale)format=yuv420p10le[r];"
-                + "[d][r]libvmaf=model=version=\(o.model):n_threads=\(o.threads):n_subsample=\(o.subsample):log_fmt=json:log_path=\(json.path)"
+                + "[d][r]libvmaf=model=version=\(o.model):n_threads=\(o.threads):n_subsample=\(o.subsample):log_fmt=json:log_path=\(json.lastPathComponent)"
             p.arguments = ["-v", "error", "-f", "yuv4mpegpipe", "-i", "pipe:0", "-r", "\(frameRate.0)/\(frameRate.1)", "-i", distorted.path,
                            "-lavfi", graph, "-f", "null", "-"]
+            // The log goes to a plain relative name inside the job folder, so no path characters (':', ',', '\'')
+            // ever need escaping inside the filtergraph.
+            p.currentDirectoryURL = json.deletingLastPathComponent()
             let pipe = Pipe()
             p.standardInput = pipe
             p.standardError = FileHandle.nullDevice
+            p.arguments = FFHarden.args("ffmpeg", p.arguments ?? [])
             try p.run()
             try await Task.detached { try writeReference(pipe.fileHandleForWriting); try pipe.fileHandleForWriting.close() }.value
             await wait(p)
@@ -130,6 +135,7 @@ enum VMAFRunner {
             let pipe = Pipe()
             scaler.standardInput = pipe
             scaler.standardError = FileHandle.nullDevice
+            scaler.arguments = FFHarden.args("ffmpeg", scaler.arguments ?? [])
             try scaler.run()
             try await Task.detached { try writeReference(pipe.fileHandleForWriting); try pipe.fileHandleForWriting.close() }.value
             await wait(scaler)

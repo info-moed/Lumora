@@ -15,6 +15,12 @@ RIFE's forward() signature differs slightly between 4.x releases; adjust Wrapper
 """
 import argparse, sys
 import torch
+# Load checkpoints as plain tensors only: a tampered .pkl/.pth can't run code during unpickling.
+_torch_load = torch.load
+def _weights_only_load(*args, **kwargs):
+    kwargs["weights_only"] = True
+    return _torch_load(*args, **kwargs)
+torch.load = _weights_only_load
 import coremltools as ct
 
 p = argparse.ArgumentParser()

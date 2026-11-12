@@ -17,7 +17,9 @@ enum SourceInspector {
         let ext = url.pathExtension.lowercased()
 
         if isDir.boolValue || rawStillExtensions.contains(ext) {
-            return try inspectRAW(url, isDirectory: isDir.boolValue)
+            let raw = try inspectRAW(url, isDirectory: isDir.boolValue)
+            try validateGeometry(raw.0)
+            return raw
         }
         if VendorRAWRegistry.vendorExtensions.contains(ext) {
             guard let plugin = VendorRAWRegistry.plugin(for: url) else { throw LumoraError.needsVendorSDK(ext) }
@@ -34,9 +36,21 @@ enum SourceInspector {
         } else {
             result = try await inspectFFmpeg(url)
         }
+        try validateGeometry(result.0)
         result.0.suggestedScanFix = detectScanFix(result.0)
         if result.0.suggestedScanFix != .none { result.0 = result.0.applying(result.0.suggestedScanFix) }
         return result
+    }
+
+    /// Lumora's GPU textures are 16…16384 px per side; anything outside that is a broken or hostile file.
+    static func validateGeometry(_ d: SourceDescriptor) throws {
+        guard d.width >= 16, d.height >= 16 else {
+            throw LumoraError.decodeFailed("The video reports an impossible size (\(d.width)×\(d.height)).")
+        }
+        guard d.width <= 16384, d.height <= 16384 else {
+            throw LumoraError.unsupported("Videos larger than 16384 pixels on a side aren't supported (\(d.width)×\(d.height)).")
+        }
+        guard d.frameCount >= 1 else { throw LumoraError.decodeFailed("The video has no frames.") }
     }
 
     /// Uses FFmpeg's `idet` field detector on ~400 frames when a source might be interlaced or telecined.
@@ -71,7 +85,7 @@ enum SourceInspector {
         d.width = Int(size.width) & ~1
         d.height = Int(size.height) & ~1
         (d.fpsNum, d.fpsDen) = rationalFrameRate(Double(rate > 0 ? rate : 24))
-        d.frameCount = max(1, Int((range.duration.seconds * d.fps).rounded()))
+        d.frameCount = safeFrameCount(seconds: range.duration.seconds, fps: d.fps)
         d.hasAudio = !(try await asset.loadTracks(withMediaType: .audio)).isEmpty
 
         if let fd = formats.first {
@@ -120,7 +134,8 @@ enum SourceInspector {
         }
         let duration = Double(v["duration"] as? String ?? "") ??
                        Double((root["format"] as? [String: Any])?["duration"] as? String ?? "") ?? 0
-        d.frameCount = Int(v["nb_frames"] as? String ?? "") ?? max(1, Int((duration * d.fps).rounded()))
+        d.frameCount = Int(v["nb_frames"] as? String ?? "").map { min(max(1, $0), 10_000_000) }
+            ?? safeFrameCount(seconds: duration, fps: d.fps)
         d.fieldOrder = v["field_order"] as? String
         if let pix = v["pix_fmt"] as? String {
             d.bitDepth = pix.contains("12") ? 12 : pix.contains("10") ? 10 : 8

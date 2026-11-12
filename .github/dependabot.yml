@@ -1,0 +1,8 @@
+# Keeps the GitHub Actions used by CI up to date. Homebrew tools are checked by the weekly CI run and by
+# scripts/deps.sh (see docs/command-line.md#keeping-dependencies-up-to-date).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

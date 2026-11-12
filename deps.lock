@@ -1,0 +1,17 @@
+# Dependency versions last verified by scripts/deps.sh verify:
+# encoder-flag check + build + full test suite all passed with exactly these versions.
+# Rewritten automatically after every successful verify. Commit it so others know a known-good set.
+verified 2026-11-11
+macos 27.3
+xcode 27.0 (27A5252f)
+xcodegen 2.46.0
+ffmpeg 9.0.2_1
+svt-av1 4.3.0
+aom 3.15.3
+x265 4.3
+vvenc 1.14.0
+libvmaf 3.2.1
+gpac 26.07.0_2
+mkvtoolnix 103.0
+dovi_tool 2.3.4
+hdr10plus_tool 1.7.2

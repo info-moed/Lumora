@@ -120,8 +120,25 @@ struct SourceDescriptor: Hashable {
     }
 }
 
-/// Converts a float frame rate to the usual broadcast rationals.
+/// Converts a float frame rate to the usual broadcast rationals. Rates outside 1…1000 fps (or NaN) come from
+/// broken or hostile files; they are treated as unknown (24 fps) rather than overflowing timescales later.
+/// Frames in `seconds` at `fps`, safe against NaN, infinity, negative and absurd values (capped at ~10 M frames,
+/// which is 46 hours at 60 fps). Never traps.
+func safeFrameCount(seconds: Double, fps: Double) -> Int {
+    let v = seconds * fps
+    guard v.isFinite, v >= 1 else { return 1 }
+    return Int(min(v.rounded(), 10_000_000))
+}
+
+/// The frame index for a timestamp, safe against invalid timestamps.
+func safeFrameIndex(seconds: Double, fps: Double) -> Int {
+    let v = seconds * fps
+    guard v.isFinite, v >= 0 else { return 0 }
+    return Int(min(v.rounded(), 10_000_000))
+}
+
 func rationalFrameRate(_ fps: Double) -> (Int, Int) {
+    guard fps.isFinite, fps >= 1, fps <= 1000 else { return (24, 1) }
     let known: [(Double, Int, Int)] = [(23.976, 24000, 1001), (29.97, 30000, 1001), (59.94, 60000, 1001),
                                        (119.88, 120000, 1001), (47.952, 48000, 1001)]
     for (f, n, d) in known where abs(fps - f) < 0.01 { return (n, d) }

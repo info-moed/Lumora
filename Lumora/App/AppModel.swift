@@ -350,7 +350,7 @@ final class AppModel {
         quality += monitor.chunks.map { c in "Chunk \(c.id + 1): \(c.state.rawValue)\(c.vmafMean.map { String(format: ", VMAF %.2f", $0) } ?? "")" }
         quality += qcEvents.isEmpty ? [] : ["Interpolation: \(qcEvents.count) frames repaired"]
         var settings: [String: Any] = [
-            "source": d.url.path, "frames": d.frameCount, "fps": "\(d.fpsNum)/\(d.fpsDen)",
+            "source": packaging.metadataPolicy == .keep ? d.url.path : d.url.lastPathComponent, "frames": d.frameCount, "fps": "\(d.fpsNum)/\(d.fpsDen)",
             "look": job.preset.look.rawValue, "delivery": job.delivery.rawValue, "codec": job.codec.rawValue,
             "encoder": job.encodeChoice?.encoderKey ?? job.codec.cliKey ?? "videotoolbox",
             "preset": job.encodeChoice?.rungLabel ?? "", "extras": job.encodeChoice?.optionIDs ?? [],
@@ -373,7 +373,8 @@ final class AppModel {
                                    codec: job.codec == .av1 || job.codec == .av1Pro ? "AV1" : (job.codec == .vvc ? "VVC" : (job.codec == .av2 ? "AV2" : (job.codec.isHardware && job.codec != .hevc ? "ProRes" : "HEVC"))),
                                    appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev",
                                    settings: settings, qualityLines: quality, hdrReport: report?.findings ?? [],
-                                   logLines: LogStore.shared.entries.filter { $0.date >= startedAt }.map { "\($0.date) [\($0.category.rawValue)] \($0.message)" },
+                                   logLines: LogStore.shared.entries.filter { $0.date >= startedAt }.map { "\($0.date) [\($0.category.rawValue)] \($0.message)" }
+                                       .map { packaging.metadataPolicy == .keep ? $0 : PrivacyScrub.paths($0) },
                                    posterJPEG: poster)
         do {
             let result = try await Packager.package(exported: exported, source: d.url, streams: sourceStreams, options: packaging,
@@ -1008,18 +1009,19 @@ final class AppModel {
                                            hdr: job.target.isHDR ? (job.delivery == .dolbyVision81 ? "DV" : "HDR10") : "SDR",
                                            codec: codec == .av1 || codec == .av1Pro ? "AV1" : (codec == .vvc ? "VVC" : "HEVC"),
                                            appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev",
-                                           settings: ["source": file.path, "look": preset.look.rawValue, "codec": codec.rawValue,
+                                           settings: ["source": opts.metadataPolicy == .keep ? file.path : file.lastPathComponent, "look": preset.look.rawValue, "codec": codec.rawValue,
                                                       "contentType": kind.rawValue, "preset": job.encodeChoice?.rungLabel ?? "",
                                                       "started": ISO8601DateFormatter().string(from: started)],
                                            qualityLines: ["Quality standard: \(job.qualityTarget?.profile.name ?? "fixed")"],
                                            hdrReport: r?.findings ?? [],
-                                           logLines: LogStore.shared.entries.filter { $0.date >= started }.map { "\($0.date) \($0.message)" },
+                                           logLines: LogStore.shared.entries.filter { $0.date >= started }.map { "\($0.date) \($0.message)" }
+                                               .map { opts.metadataPolicy == .keep ? $0 : PrivacyScrub.paths($0) },
                                            posterJPEG: nil)
                 let packTask = TaskCenter.shared.begin("Packaging \(file.lastPathComponent)", symbol: "shippingbox")
                 let packaged = try await Packager.package(exported: encoded, source: file, streams: streams, options: opts,
                                                           destination: output, facts: facts, progress: ProgressReporter(task: packTask))
                 TaskCenter.shared.finish(packTask)
-                if packaged.video != encoded { try? FileManager.default.removeItem(at: encoded) }
+                if packaged.video != encoded, encoded.standardizedFileURL != file.standardizedFileURL { try? FileManager.default.removeItem(at: encoded) }
                 QueueStore.markDone(file, output: packaged.video)
             }
             status = "Batch finished: \(files.count) files"

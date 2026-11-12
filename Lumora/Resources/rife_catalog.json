@@ -6,7 +6,8 @@
     "pad": 64,
     "url": "https://huggingface.co/Bash2X/RIFE-Models/resolve/main/RIFE_v4.26.zip",
     "notes": "Newest official release. Needs 64-pixel padding. Some testers see extra artifacts in certain scenes compared with 4.25; others find it better. Benchmark on your footage.",
-    "sourcePage": "https://github.com/hzwer/Practical-RIFE#trained-model"
+    "sourcePage": "https://github.com/hzwer/Practical-RIFE#trained-model",
+    "sha256": "c2452dd2b244947d4be580156bbead60d6b72af5736860f7d6b3f99648c9c4cc"
   },
   {
     "id": "4.26.heavy",
@@ -15,7 +16,8 @@
     "pad": 64,
     "url": "https://huggingface.co/Bash2X/RIFE-Models/resolve/main/RIFE_v4.26.heavy.zip",
     "notes": "Larger variant of 4.26. Community results are mixed; slowest of the 4.2x family.",
-    "sourcePage": "https://github.com/hzwer/Practical-RIFE#trained-model"
+    "sourcePage": "https://github.com/hzwer/Practical-RIFE#trained-model",
+    "sha256": "93c0ec3dce359930059c1cc6733cff1d0c075314e30d352864436023bfc13463"
   },
   {
     "id": "4.25",
@@ -24,7 +26,8 @@
     "pad": 32,
     "url": "https://huggingface.co/Bash2X/RIFE-Models/resolve/main/RIFE_v4.25.zip",
     "notes": "The official README's recommended default for most scenes. More flow blocks; noticeably better on anime than earlier versions.",
-    "sourcePage": "https://github.com/hzwer/Practical-RIFE#trained-model"
+    "sourcePage": "https://github.com/hzwer/Practical-RIFE#trained-model",
+    "sha256": "e63d481b7ae5d4a4e6ad7ac5b410ff78f3bf7be3b51b2e38ca8152747abde5b4"
   },
   {
     "id": "4.25.lite",
@@ -33,7 +36,8 @@
     "pad": 32,
     "url": "https://huggingface.co/Bash2X/RIFE-Models/resolve/main/RIFE_v4.25.lite.zip",
     "notes": "Lower-cost version of 4.25. Good for previews, scans and long batches.",
-    "sourcePage": "https://github.com/hzwer/Practical-RIFE#trained-model"
+    "sourcePage": "https://github.com/hzwer/Practical-RIFE#trained-model",
+    "sha256": "e84366c23e0eb1a637a55aad2e4f3442ec2bf4c388043b4aabbf590be289e6e8"
   },
   {
     "id": "4.22",

@@ -285,11 +285,13 @@ enum MetricSuite {
         let p = Process()
         p.executableURL = ToolLocator.url(for: "ffmpeg")
         p.arguments = ["-v", "error", "-f", "yuv4mpegpipe", "-i", "pipe:0"] + ctx.decoderArgs + ["-r", "\(ctx.rate.0)/\(ctx.rate.1)", "-i", distorted.path,
-                       "-lavfi", "[1:v]format=yuv420p10le[d];[0:v]format=yuv420p10le[r];[d][r]xpsnr=stats_file=\(stats.path)",
+                       "-lavfi", "[1:v]format=yuv420p10le[d];[0:v]format=yuv420p10le[r];[d][r]xpsnr=stats_file=\(stats.lastPathComponent)",
                        "-f", "null", "-"]
+        p.currentDirectoryURL = stats.deletingLastPathComponent()      // relative name: nothing to escape in the graph
         let pipe = Pipe()
         p.standardInput = pipe
         p.standardError = FileHandle.nullDevice
+        p.arguments = FFHarden.args("ffmpeg", p.arguments ?? [])
         try p.run()
         try await Task.detached { try reference(pipe.fileHandleForWriting); try pipe.fileHandleForWriting.close() }.value
         await Task.detached { p.waitUntilExit() }.value
@@ -327,6 +329,7 @@ enum MetricSuite {
         let out = Pipe()
         tool.standardOutput = out
         tool.standardError = FileHandle.nullDevice
+        dec.arguments = FFHarden.args("ffmpeg", dec.arguments ?? [])
         try dec.run(); try tool.run()
         try await Task.detached {
             let h = try FileHandle(forWritingTo: URL(fileURLWithPath: ref))
@@ -371,6 +374,7 @@ enum MetricSuite {
         let out = Pipe()
         py.standardOutput = out
         py.standardError = FileHandle.nullDevice
+        dec.arguments = FFHarden.args("ffmpeg", dec.arguments ?? [])
         try dec.run(); try py.run()
         try await Task.detached {
             let h = try FileHandle(forWritingTo: URL(fileURLWithPath: ref))

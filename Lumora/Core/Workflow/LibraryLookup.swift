@@ -1,11 +1,20 @@
 import Foundation
+import Security
 
 /// Optional online lookup (The Movie Database) with your own free API key. Lumora works fully offline without it;
 /// this only fills in title, year, plot, genres and IDs for naming and the NFO.
 enum LibraryLookup {
+    /// Kept in the login Keychain, not in preferences. A key left in preferences by older versions is moved
+    /// across the first time it's read.
     static var apiKey: String {
-        get { UserDefaults.standard.string(forKey: "tmdbKey") ?? "" }
-        set { UserDefaults.standard.set(newValue, forKey: "tmdbKey") }
+        get {
+            if let legacy = UserDefaults.standard.string(forKey: "tmdbKey") {
+                if !legacy.isEmpty { Keychain.set(legacy, account: "tmdb") }
+                UserDefaults.standard.removeObject(forKey: "tmdbKey")
+            }
+            return Keychain.get(account: "tmdb") ?? ""
+        }
+        set { newValue.isEmpty ? Keychain.delete(account: "tmdb") : Keychain.set(newValue, account: "tmdb") }
     }
 
     struct Match: Identifiable, Hashable { var id: Int; var title: String; var year: String; var overview: String; var tv: Bool }
@@ -37,4 +46,30 @@ enum LibraryLookup {
         b.genre = (root["genres"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String }.joined(separator: ", ")
         b.imdbID = (root["imdb_id"] as? String) ?? ((root["external_ids"] as? [String: Any])?["imdb_id"] as? String) ?? ""
     }
+}
+
+/// Minimal generic-password storage in the login Keychain.
+enum Keychain {
+    static let service = "io.github.info-moed.Lumora"
+    private static func query(_ account: String) -> [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
+    }
+    static func get(account: String) -> String? {
+        var q = query(account)
+        q[kSecReturnData as String] = true
+        q[kSecMatchLimit as String] = kSecMatchLimitOne
+        var out: AnyObject?
+        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let d = out as? Data else { return nil }
+        return String(data: d, encoding: .utf8)
+    }
+    static func set(_ value: String, account: String) {
+        let data = Data(value.utf8)
+        if SecItemUpdate(query(account) as CFDictionary, [kSecValueData as String: data] as CFDictionary) == errSecItemNotFound {
+            var q = query(account)
+            q[kSecValueData as String] = data
+            q[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
+            SecItemAdd(q as CFDictionary, nil)
+        }
+    }
+    static func delete(account: String) { SecItemDelete(query(account) as CFDictionary) }
 }

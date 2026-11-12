@@ -28,6 +28,7 @@ enum FileMetrics {
             let pipe = Pipe()
             p.standardOutput = pipe
             p.standardError = FileHandle.nullDevice
+            p.arguments = FFHarden.args("ffmpeg", p.arguments ?? [])
             try p.run()
             while let chunk = try pipe.fileHandleForReading.read(upToCount: 8 << 20), !chunk.isEmpty {
                 try handle.write(contentsOf: chunk)

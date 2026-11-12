@@ -53,7 +53,7 @@ final class AVFoundationFrameSource: FrameSource {
         width = Int(size.width) & ~1
         height = Int(size.height) & ~1
         fps = rate > 0 ? Double(rate) : 24
-        frameCount = max(1, Int((range.duration.seconds * fps).rounded()))
+        frameCount = safeFrameCount(seconds: range.duration.seconds, fps: fps)
     }
 
     func start(at frame: Int, count: Int?) throws {
@@ -98,7 +98,7 @@ final class AVFoundationFrameSource: FrameSource {
         }
         let (tex, cvTex) = pair
         let pts = CMSampleBufferGetPresentationTimeStamp(sample)
-        return DecodedFrame(texture: tex, index: Int((pts.seconds * fps).rounded()), backing: [pb, cvTex])
+        return DecodedFrame(texture: tex, index: safeFrameIndex(seconds: pts.seconds, fps: fps), backing: [pb, cvTex])
     }
 
     func cancel() { reader?.cancelReading() }
@@ -196,7 +196,7 @@ final class FFmpegFrameSource: FrameSource {
         // 16-bit RGB without colour management: the encoded signal, like the AVFoundation path.
         let scale = "scale=\(width):\(height):flags=lanczos+accurate_rnd+full_chroma_int:\(colorFilter)"
         args += ["-vf", scanFilter.map { "\($0),\(scale)" } ?? scale, "-f", "rawvideo", "-pix_fmt", "rgba64le", "-"]
-        p.arguments = args
+        p.arguments = FFHarden.args("ffmpeg", args)
         let pipe = Pipe()
         p.standardOutput = pipe
         p.standardError = FileHandle.nullDevice

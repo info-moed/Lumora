@@ -31,6 +31,14 @@ enum Packager {
         if ext == "mov" { ext = "mp4" }
         let rel = Naming.path(o, original: source.deletingPathExtension().lastPathComponent, facts: factMap)
         let out = destination.appendingPathComponent(rel).appendingPathExtension(ext)
+        // Belt and braces: the finished file must land inside the folder the user chose.
+        let root = destination.standardizedFileURL.resolvingSymlinksInPath().path
+        guard out.standardizedFileURL.path.hasPrefix(root.hasSuffix("/") ? root : root + "/") else {
+            throw LumoraError.unsupported("The file name “\(rel)” would place the file outside the chosen folder.")
+        }
+        guard out.standardizedFileURL.path != source.standardizedFileURL.path else {
+            throw LumoraError.unsupported("The finished file would replace the source file. Choose another folder or name.")
+        }
         try FileManager.default.createDirectory(at: out.deletingLastPathComponent(), withIntermediateDirectories: true)
 
         // Remux with FFmpeg: video from the export, the rest from the source.
@@ -61,10 +69,14 @@ enum Packager {
         case .keep:
             meta += ["-map_metadata", "1"]
         case .removePersonal:
-            meta += ["-map_metadata", "1", "-fflags", "+bitexact"]
-            for key in streams.tags.keys where MetadataPolicy.personalKeys.contains(key.lowercased()) { meta += ["-metadata", "\(key)="] }
-        case .removeAll:
+            // Start from nothing and copy back only known-safe tags.
             meta += ["-map_metadata", "-1", "-fflags", "+bitexact"]
+            for (key, value) in streams.tags.sorted(by: { $0.key < $1.key }) where MetadataPolicy.safeKeys.contains(key.lowercased()) {
+                meta += ["-metadata", "\(key)=\(value)"]
+            }
+            fallthrough
+        case .removeAll:
+            if o.metadataPolicy == .removeAll { meta += ["-map_metadata", "-1", "-fflags", "+bitexact"] }
             // Keep what players need: track languages and the titles of kept tracks.
             for (i, t) in audio.enumerated() {
                 meta += ["-metadata:s:a:\(i)", "language=\(t.language.isEmpty ? "und" : t.language)"]
@@ -74,7 +86,9 @@ enum Packager {
         }
         // Your metadata.
         let b = o.bespoke
-        let pairs: [(String, String)] = [("title", b.title.isEmpty ? (guess["title"] ?? "") : b.title), ("date", b.year), ("description", b.description),
+        // A title already in the file beats a guess from its file name; what you type beats both.
+        let existingTitle = o.metadataPolicy == .removeAll ? nil : streams.tags.first { $0.key.lowercased() == "title" }?.value
+        let pairs: [(String, String)] = [("title", b.title.isEmpty ? (existingTitle ?? guess["title"] ?? "") : b.title), ("date", b.year), ("description", b.description),
                                          ("comment", b.comment), ("genre", b.genre), ("show", b.show), ("season_number", b.season),
                                          ("episode_sort", b.episode), ("episode_id", b.episodeTitle), ("IMDB", b.imdbID), ("TMDB", b.tmdbID)]
             + b.custom.filter { !$0.key.isEmpty }.map { ($0.key, $0.value) }

@@ -48,7 +48,7 @@ final class LogStore {
 
 enum Log {
     private static let loggers = Dictionary(uniqueKeysWithValues: LogCategory.allCases.map {
-        ($0, Logger(subsystem: "com.example.lumora", category: $0.rawValue))
+        ($0, Logger(subsystem: "io.github.info-moed.Lumora", category: $0.rawValue))
     })
     private static let fileQueue = DispatchQueue(label: "lumora.log.file")
     private static let fileHandle: FileHandle? = {

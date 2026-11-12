@@ -1,0 +1,73 @@
+name: CI
+
+# Builds Lumora and runs the test suite:
+# - on every push and pull request (does the code still build and pass?),
+# - every Monday against the newest Homebrew encoders and the newest Xcode 27 on the runner
+#   (does it still work with today's dependencies?),
+# - on demand from the Actions tab.
+# GitHub's macOS runners are virtual machines; tests that need a real GPU or the hardware video encoder skip
+# there with a reason and run in full on real Macs (locally, and via `scripts/deps.sh schedule install`).
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      xcode:
+        description: "Xcode app to use (e.g. Xcode_27.2.app); blank = runner default"
+        required: false
+        default: ""
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build and test (macOS 27, Xcode 27)
+    runs-on: xcode-27
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        if: ${{ github.event.inputs.xcode != '' }}
+        run: sudo xcode-select -s "/Applications/${{ github.event.inputs.xcode }}"
+
+      - name: Toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+
+      - name: Install dependencies (latest Homebrew versions)
+        run: |
+          brew update --quiet
+          brew install xcodegen ffmpeg svt-av1 aom x265 vvenc
+
+      - name: Dependency status
+        run: scripts/deps.sh status
+
+      - name: Verify (encoder flags + build + tests)
+        run: scripts/deps.sh verify
+
+      - name: Show verified versions
+        if: success()
+        run: cat deps.lock
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumora-ci-${{ github.run_number }}
+          path: |
+            build/deps-verify.log
+            build/DerivedData/Logs/Test/*.xcresult
+            deps.lock
+          retention-days: 14
+          if-no-files-found: ignore

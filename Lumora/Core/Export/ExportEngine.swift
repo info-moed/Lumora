@@ -76,6 +76,10 @@ final class ExportEngine {
     // MARK: - Validation
 
     static func validate(_ job: ExportJob) -> String? {
+        if job.outputURL.standardizedFileURL.resolvingSymlinksInPath().path
+            == job.descriptor.url.standardizedFileURL.resolvingSymlinksInPath().path {
+            return "The export would overwrite the source file. Choose a different folder or name."
+        }
         if !job.codec.bitDepths.contains(job.bitDepth) {
             return "\(job.codec.displayName) can't do \(job.bitDepth)-bit. Choose \(job.codec.bitDepths.map { "\($0)-bit" }.joined(separator: " or "))."
         }
@@ -92,6 +96,18 @@ final class ExportEngine {
             return "Slow motion with AV2 isn't supported yet."
         }
         return nil
+    }
+
+    /// An older file at the output path goes to the Trash (recoverable), never straight to deletion, and the
+    /// source itself is never touched.
+    static func clearOutput(_ job: ExportJob) throws {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: job.outputURL.path) else { return }
+        guard job.outputURL.standardizedFileURL.resolvingSymlinksInPath().path
+                != job.descriptor.url.standardizedFileURL.resolvingSymlinksInPath().path else {
+            throw LumoraError.unsupported("The export would overwrite the source file. Choose a different folder or name.")
+        }
+        do { try fm.trashItem(at: job.outputURL, resultingItemURL: nil) } catch { try fm.removeItem(at: job.outputURL) }
     }
 
     // MARK: - Run
@@ -216,10 +232,10 @@ final class ExportEngine {
                     let mkv = tmp.appendingPathComponent("rep\(i)-\(k).mkv")
                     let raw = ["hevc", "266"].contains(u.pathExtension)
                     try ToolLocator.run("ffmpeg", ["-y", "-v", "error"] + (raw ? ["-r", fps] : []) + ["-i", u.path, "-c", "copy", mkv.path])
-                    list.append("file '\(mkv.path)'")
+                    list.append(FFConcat.line(mkv))
                 }
             } else {
-                list.append("file '\(segDir.appendingPathComponent(String(format: "seg%05d.mkv", i)).path)'")
+                list.append(FFConcat.line(segDir.appendingPathComponent(String(format: "seg%05d.mkv", i))))
             }
         }
         let listURL = tmp.appendingPathComponent("list.txt")
@@ -290,7 +306,8 @@ final class ExportEngine {
                 let (process, handle, log) = try await startCLIEncoder(ctx, spec: rungSpec, out: url, tmp: tmp, tag: "cal\(rung.id)\(k)",
                                                                        threads: threads, quality: String(Int(-level)),
                                                                        preset: rung.presetValue, extra: [])
-                try handle.write(contentsOf: Data(frames[0].y4mHeader(fpsNum: ctx.rate.num, fpsDen: ctx.rate.den).utf8))
+                guard let first = frames.first else { throw LumoraError.decodeFailed("No frames rendered for calibration.") }
+                try handle.write(contentsOf: Data(first.y4mHeader(fpsNum: ctx.rate.num, fpsDen: ctx.rate.den).utf8))
                 for f in frames { try f.write(to: handle) }
                 try handle.close()
                 await Task.detached { process.waitUntilExit() }.value
@@ -382,7 +399,7 @@ final class ExportEngine {
             status("Finishing file", 1)
             var result = try await join(ctx, segments: pieces, tmp: tmp)
             if job.delivery == .dolbyVision81 || job.delivery == .hdr10Plus { result = try injectDynamicMetadata(ctx, file: result, tmp: tmp) }
-            if FileManager.default.fileExists(atPath: job.outputURL.path) { try FileManager.default.removeItem(at: job.outputURL) }
+            try Self.clearOutput(job)
             try FileManager.default.moveItem(at: result, to: job.outputURL)
             ExportManifest(output: job.outputURL.path, source: job.descriptor.url.path, codec: job.codec, rateNum: ctx.rate.num,
                            rateDen: ctx.rate.den, frames: ctx.plan.count, delivery: job.delivery,
@@ -425,7 +442,7 @@ final class ExportEngine {
             status("Adding \(job.delivery.displayName) metadata", 1)
             result = try injectDynamicMetadata(ctx, file: result, tmp: tmp)
         }
-        if FileManager.default.fileExists(atPath: job.outputURL.path) { try FileManager.default.removeItem(at: job.outputURL) }
+        try Self.clearOutput(job)
         try FileManager.default.moveItem(at: result, to: job.outputURL)
         return job.outputURL
     }
@@ -845,7 +862,8 @@ final class ExportEngine {
                                                                             tag: url.deletingPathExtension().lastPathComponent,
                                                                             threads: threads, quality: String(Int(-level)))
                 do {
-                    try handle.write(contentsOf: Data(frames[0].y4mHeader(fpsNum: ctx.rate.num, fpsDen: ctx.rate.den).utf8))
+                    guard let first = frames.first else { throw LumoraError.decodeFailed("No frames rendered for this chunk.") }
+                    try handle.write(contentsOf: Data(first.y4mHeader(fpsNum: ctx.rate.num, fpsDen: ctx.rate.den).utf8))
                     for f in frames { try f.write(to: handle) }
                     try handle.close()
                 } catch { process.terminate(); throw error }
@@ -1050,7 +1068,7 @@ final class ExportEngine {
             args += ["-r", "\(ctx.rate.num)/\(ctx.rate.den)", "-i", rawJoined.path]
         } else if segments.count > 1 {
             let list = tmp.appendingPathComponent("list.txt")
-            try segments.map { "file '\($0.path)'" }.joined(separator: "\n").write(to: list, atomically: true, encoding: .utf8)
+            try segments.map(FFConcat.line).joined(separator: "\n").write(to: list, atomically: true, encoding: .utf8)
             args += ["-f", "concat", "-safe", "0", "-i", list.path]
         } else {
             args += ["-i", segments[0].path]
@@ -1145,8 +1163,10 @@ final class ExportEngine {
         let fps = "\(ctx.rate.num)/\(ctx.rate.den)"
         if ext == "mp4" || ext == "mov", ToolLocator.isAvailable("MP4Box") {
             let dv = job.delivery == .dolbyVision81 ? ":dvp=8.1" : ""
-            try ToolLocator.run("MP4Box", ["-add", "\(injected.path):fps=\(Double(ctx.rate.num) / Double(ctx.rate.den))\(dv)",
-                                           "-add", "\(file.path)#audio", "-new", out.path])
+            // MP4Box parses ':' and '#' inside -add arguments, so pass plain names relative to the job folder.
+            func rel(_ u: URL) -> String { u.deletingLastPathComponent().standardizedFileURL == tmp.standardizedFileURL ? u.lastPathComponent : u.path }
+            try ToolLocator.run("MP4Box", ["-add", "\(rel(injected)):fps=\(Double(ctx.rate.num) / Double(ctx.rate.den))\(dv)",
+                                           "-add", "\(rel(file))#audio", "-new", out.path], in: tmp)
         } else if ToolLocator.isAvailable("mkvmerge") {
             let mkv = out.deletingPathExtension().appendingPathExtension("mkv")
             try ToolLocator.run("mkvmerge", ["-o", mkv.path, "--default-duration", "0:\(fps)fps", injected.path, "-D", file.path])

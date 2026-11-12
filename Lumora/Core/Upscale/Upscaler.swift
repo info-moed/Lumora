@@ -58,7 +58,7 @@ final class PreGradeStage {
         self.crop = crop
         self.mode = mode
         let cw = Int(Float(sourceWidth) * crop.z) & ~1, ch = Int(Float(sourceHeight) * crop.w) & ~1
-        if let th = mode.targetHeight, th > ch {
+        if let th = mode.targetHeight, th > ch, ch > 0, cw > 0 {
             outputHeight = th & ~1
             outputWidth = Int((Float(cw) * Float(th) / Float(ch)).rounded()) & ~1
         } else {

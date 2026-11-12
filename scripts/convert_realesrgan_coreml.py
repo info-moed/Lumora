@@ -10,6 +10,12 @@ The tile size must match "tile" in Lumora/Resources/upscale_models.json (Lumora 
 """
 import argparse
 import torch
+# Load checkpoints as plain tensors only: a tampered .pkl/.pth can't run code during unpickling.
+_torch_load = torch.load
+def _weights_only_load(*args, **kwargs):
+    kwargs["weights_only"] = True
+    return _torch_load(*args, **kwargs)
+torch.load = _weights_only_load
 import coremltools as ct
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from realesrgan.archs.srvgg_arch import SRVGGNetCompact

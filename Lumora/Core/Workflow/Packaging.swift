@@ -71,7 +71,11 @@ enum MetadataPolicy: String, CaseIterable, Codable, Identifiable {
         case .removeAll: return "Removes every tag (titles, languages excepted) so only what you write below is in the file."
         }
     }
-    /// Container tags that count as personal.
+    /// Container tags kept by "remove personal details". Everything else is dropped (an allowlist: phone and
+    /// camera makers add new personal tags all the time, so a denylist would leak).
+    static let safeKeys: Set<String> = ["title", "album", "genre", "description", "synopsis", "show", "season_number",
+                                        "episode_sort", "episode_id", "network", "language", "track", "disc"]
+    /// Container tags that count as personal (shown in the UI as what was found).
     static let personalKeys = ["location", "location-eng", "com.apple.quicktime.location.iso6709", "com.apple.quicktime.make",
                                "com.apple.quicktime.model", "com.apple.quicktime.software", "creation_time", "date", "encoder",
                                "encoded_by", "comment", "artist", "author", "copyright", "com.apple.quicktime.author",
@@ -149,7 +153,7 @@ struct PackagingOptions: Codable, Hashable {
 enum Naming {
     /// Builds the relative path (folders + file name, no extension) from a pattern and the facts about the export.
     static func path(_ o: PackagingOptions, original: String, facts: [String: String]) -> String {
-        if !o.outputName.isEmpty { return sanitize(o.outputName) }
+        if !o.outputName.isEmpty { return safeRelativePath(o.outputName) }
         let t = o.naming == .custom ? o.customTemplate : o.naming.template
         var v = facts
         let b = o.bespoke
@@ -165,11 +169,24 @@ enum Naming {
         var out = t
         for (k, val) in v { out = out.replacingOccurrences(of: "{\(k)}", with: val) }
         out = out.replacingOccurrences(of: " ()", with: "").replacingOccurrences(of: "  ", with: " ")
-        return out.split(separator: "/").map { sanitize(String($0).trimmingCharacters(in: .whitespaces)) }.joined(separator: "/")
+        return safeRelativePath(out)
     }
 
+    /// A relative path that can never leave the destination folder: every component is sanitized, and empty,
+    /// "." and ".." components are dropped (titles can come from file names, typing or online lookups).
+    static func safeRelativePath(_ s: String) -> String {
+        let parts = s.split(separator: "/").map { sanitize(String($0)) }.filter { !$0.isEmpty }
+        return parts.isEmpty ? "Untitled" : parts.joined(separator: "/")
+    }
+
+    /// One path component: no reserved or control characters, no leading dots (hidden files, "..").
     static func sanitize(_ s: String) -> String {
-        String(s.map { ":\\?*\"<>|".contains($0) ? "-" : $0 }).trimmingCharacters(in: .whitespaces)
+        var c = String(s.unicodeScalars.map { u -> Character in
+            if u.properties.generalCategory == .control || ":\\?*\"<>|/".unicodeScalars.contains(u) { return "-" }
+            return Character(u)
+        }).trimmingCharacters(in: .whitespaces)
+        while c.hasPrefix(".") { c.removeFirst() }
+        return String(c.prefix(200)).trimmingCharacters(in: .whitespaces)
     }
 
     /// Guesses title / year / season / episode from a file name like "The.Movie.2019.2160p.UHD.mkv" or "Show.S02E05.mkv".
@@ -192,5 +209,14 @@ enum Naming {
         }
         facts["title"] = n.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "  ", with: " ")
         return facts
+    }
+}
+
+/// Removes the home-folder part of paths (which contains the account name) from text written next to a file
+/// when the user asked for personal details to be removed.
+enum PrivacyScrub {
+    static func paths(_ s: String) -> String {
+        s.replacingOccurrences(of: NSHomeDirectory(), with: "~")
+         .replacingOccurrences(of: #"/Users/[^/\s]+"#, with: "/Users/…", options: .regularExpression)
     }
 }

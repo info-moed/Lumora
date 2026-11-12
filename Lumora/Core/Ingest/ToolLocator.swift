@@ -22,7 +22,7 @@ enum ToolLocator {
         guard let exe = url(for: name) else { throw LumoraError.missingTool(name) }
         let p = Process()
         p.executableURL = exe
-        p.arguments = args
+        p.arguments = FFHarden.args(name, args)
         let err = Pipe()
         p.standardOutput = FileHandle.nullDevice
         p.standardError = err
@@ -35,11 +35,12 @@ enum ToolLocator {
 
     /// Runs a tool to completion and returns stdout. Throws with stderr on failure.
     @discardableResult
-    static func run(_ name: String, _ args: [String]) throws -> Data {
+    static func run(_ name: String, _ args: [String], in directory: URL? = nil) throws -> Data {
         guard let exe = url(for: name) else { throw LumoraError.missingTool(name) }
         let p = Process()
         p.executableURL = exe
-        p.arguments = args
+        p.arguments = FFHarden.args(name, args)
+        if let directory { p.currentDirectoryURL = directory }
         let out = Pipe(), err = Pipe()
         p.standardOutput = out
         p.standardError = err
@@ -75,6 +76,27 @@ extension Process {
 
 /// Tool capability checks run external processes. Do them once, off the main thread, at launch, so views
 /// that show "installed / not installed" only ever read cached answers.
+/// Inputs are only ever local files or pipes. Restricting FFmpeg's protocols stops a hostile playlist-style
+/// file (HLS, concat, ffconcat…) from making it fetch other local or remote resources.
+enum FFHarden {
+    static let whitelist = ["-protocol_whitelist", "file,pipe,fd"]
+    static func args(_ tool: String, _ args: [String]) -> [String] {
+        switch tool {
+        case "ffprobe": return whitelist + args
+        case "ffmpeg":
+            var out: [String] = []
+            for a in args { if a == "-i" { out += whitelist }; out.append(a) }
+            return out
+        default: return args
+        }
+    }
+}
+
+/// Quoting for FFmpeg's concat demuxer list files (`file '…'` lines), so paths with apostrophes work.
+enum FFConcat {
+    static func line(_ url: URL) -> String { "file '" + url.path.replacingOccurrences(of: "'", with: "'\\''") + "'" }
+}
+
 enum ToolProbe {
     static func warmUp() {
         DispatchQueue.global(qos: .utility).async {

@@ -18,6 +18,7 @@ final class UISmokeTests: XCTestCase {
     /// Hosts a view in an offscreen window, lets SwiftUI settle, and returns a snapshot.
     @discardableResult
     func render<V: View>(_ view: V, name: String, size: CGSize = CGSize(width: 1440, height: 900)) async throws -> NSBitmapImageRep {
+        try TestHardware.requireGPU()
         let host = NSHostingView(rootView: view.frame(width: size.width, height: size.height))
         host.frame = CGRect(origin: .zero, size: size)
         let window = NSWindow(contentRect: host.frame, styleMask: [.titled, .resizable], backing: .buffered, defer: false)
@@ -37,6 +38,7 @@ final class UISmokeTests: XCTestCase {
     }
 
     func loadedModel() async throws -> AppModel {
+        try TestHardware.requireGPU()
         let model = AppModel()
         model.open(try EndToEndTests.makeClip("sdr.mp4", hdr: false))
         let deadline = Date().addingTimeInterval(60)

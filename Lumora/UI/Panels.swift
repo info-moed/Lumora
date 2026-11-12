@@ -220,6 +220,7 @@ struct ModelLabView: View {
     @Environment(\.openWindow) private var openWindow
     @State private var lab = ModelLab.shared
     @State private var message: String?
+    @State private var confirmConvert: RIFERelease?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -295,6 +296,14 @@ struct ModelLabView: View {
         .padding(18)
         .frame(minWidth: 940, minHeight: 760)
         .onAppear { lab.refresh() }
+        .alert("Run code from this download?",
+               isPresented: Binding(get: { confirmConvert != nil }, set: { if !$0 { confirmConvert = nil } }),
+               presenting: confirmConvert) { r in
+            Button("Convert anyway") { act { try await lab.convert(r) } }
+            Button("Cancel", role: .cancel) {}
+        } message: { r in
+            Text("Converting RIFE \(r.id) runs the Python model code inside its archive on this Mac. This file doesn't match a published checksum (it was imported by hand, or the release has no pinned checksum), so only continue if you trust where it came from.\n\nSHA-256: \(lab.provenance(r)?.sha256 ?? "unknown")")
+        }
     }
 
     @ViewBuilder private func statusView(_ r: RIFERelease) -> some View {
@@ -317,14 +326,19 @@ struct ModelLabView: View {
                     if p.runModal() == .OK, let u = p.url { try? lab.importZip(u, for: r) }
                 }
             case .downloaded:
-                Button("Convert") { act { try await lab.convert(r) } }.disabled(!lab.environmentReady)
+                Button("Convert") { convert(r) }.disabled(!lab.environmentReady)
             case .converted:
-                Button("Reconvert") { act { try await lab.convert(r) } }.disabled(!lab.environmentReady)
+                Button("Reconvert") { convert(r) }.disabled(!lab.environmentReady)
             case .working:
                 EmptyView()
             }
         }
         .controlSize(.small)
+    }
+
+    /// Pinned, verified downloads convert straight away; anything else asks first (it runs code from the archive).
+    private func convert(_ r: RIFERelease) {
+        if lab.provenance(r)?.verified == true { act { try await lab.convert(r) } } else { confirmConvert = r }
     }
 
     private func act(_ f: @escaping () async throws -> Void) {
