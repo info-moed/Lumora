@@ -78,14 +78,23 @@ enum RegressionSet {
         let ctx = MetalContext.shared
         let graded = ctx.makeTexture(width: f.texture.width, height: f.texture.height, format: .rgba16Float)
         let cb = ctx.queue.makeCommandBuffer()!
+        // The viewport is the whole destination: a zero viewport would leave every pixel outside the picture (black).
         r.encodeGrade(cb, source: f.texture, destination: graded,
                       uniforms: UniformBuilder.make(source: color, params: params, target: target, sceneExposureStops: exposure,
-                                                    viewport: .zero, crop: d.crop))
+                                                    viewport: SIMD4<Float>(0, 0, Float(graded.width), Float(graded.height)), crop: d.crop))
         await cb.commitAndWait()
         let small = r.comparable(graded, color: SourceColor(name: "out", transfer: target.kind == .hdr10 ? .pq : (target.kind == .hlg ? .hlg : .bt1886),
                                                            gamut: .rec2020, legalToFull: false, confidence: 1), width: 960)
+        // `comparable` renders into GPU-private memory; copy to a CPU-visible texture before reading it back.
+        let readable = ctx.makeTexture(width: small.width, height: small.height, format: small.pixelFormat,
+                                       usage: [.shaderRead], storage: .shared)
+        let copy = ctx.queue.makeCommandBuffer()!
+        let blit = copy.makeBlitCommandEncoder()!
+        blit.copy(from: small, to: readable)
+        blit.endEncoding()
+        await copy.commitAndWait()
         var buf = [Float](repeating: 0, count: small.width * small.height * 4)      // RGBA, 32-bit float
-        small.getBytes(&buf, bytesPerRow: small.width * 16, from: MTLRegionMake2D(0, 0, small.width, small.height), mipmapLevel: 0)
+        readable.getBytes(&buf, bytesPerRow: small.width * 16, from: MTLRegionMake2D(0, 0, small.width, small.height), mipmapLevel: 0)
         return (Data(bytes: buf, count: buf.count * 4), small.width, small.height)
     }
 
