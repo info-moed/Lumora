@@ -130,7 +130,9 @@ final class AppModel {
     var status = "Open a video, a RAW sequence folder, or a camera RAW file."
     var progress: Double?
     var errorMessage: String?
-    var showExport = false, showAdvisor = false, showReport = false
+    var showExport = false
+    var showAdvisor = false
+    var showReport = false
 
     let chip = ChipProfile.current
     let library = HDRLibrary()
@@ -274,7 +276,7 @@ final class AppModel {
 
     // MARK: Time budget planner
 
-    private func draftJob() -> ExportJob? {
+    func draftJob() -> ExportJob? {
         guard let d = descriptor, let a = analysis, let p = selectedPreset else { return nil }
         var job = ExportJob(descriptor: d, preset: p, analysis: a, delivery: delivery, codec: codec,
                             outputURL: URL(fileURLWithPath: "/tmp/plan"))
@@ -345,7 +347,7 @@ final class AppModel {
             let v = monitor.frameScores.values.map(\.self)
             quality.append(String(format: "Per-frame primary metric: mean %.2f, worst %.2f", v.reduce(0, +) / Double(v.count), v.min() ?? 0))
         }
-        quality += monitor.chunks.map { c in "Chunk \(c.id + 1): \(c.state.rawValue)\(c.score.map { String(format: ", %.2f", $0) } ?? "")" }
+        quality += monitor.chunks.map { c in "Chunk \(c.id + 1): \(c.state.rawValue)\(c.vmafMean.map { String(format: ", VMAF %.2f", $0) } ?? "")" }
         quality += qcEvents.isEmpty ? [] : ["Interpolation: \(qcEvents.count) frames repaired"]
         var settings: [String: Any] = [
             "source": d.url.path, "frames": d.frameCount, "fps": "\(d.fpsNum)/\(d.fpsDen)",
@@ -370,7 +372,7 @@ final class AppModel {
                                    hdr: job.delivery == .dolbyVision81 || job.delivery == .dolbyVision84 ? "DV" : (job.target.isHDR ? "HDR10" : "SDR"),
                                    codec: job.codec == .av1 || job.codec == .av1Pro ? "AV1" : (job.codec == .vvc ? "VVC" : (job.codec == .av2 ? "AV2" : (job.codec.isHardware && job.codec != .hevc ? "ProRes" : "HEVC"))),
                                    appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev",
-                                   settings: settings, qualityLines: quality, hdrReport: report?.findings.map { "\($0.title): \($0.detail)" } ?? [],
+                                   settings: settings, qualityLines: quality, hdrReport: report?.findings ?? [],
                                    logLines: LogStore.shared.entries.filter { $0.date >= startedAt }.map { "\($0.date) [\($0.category.rawValue)] \($0.message)" },
                                    posterJPEG: poster)
         do {
@@ -1010,7 +1012,7 @@ final class AppModel {
                                                       "contentType": kind.rawValue, "preset": job.encodeChoice?.rungLabel ?? "",
                                                       "started": ISO8601DateFormatter().string(from: started)],
                                            qualityLines: ["Quality standard: \(job.qualityTarget?.profile.name ?? "fixed")"],
-                                           hdrReport: r?.findings.map { "\($0.title): \($0.detail)" } ?? [],
+                                           hdrReport: r?.findings ?? [],
                                            logLines: LogStore.shared.entries.filter { $0.date >= started }.map { "\($0.date) \($0.message)" },
                                            posterJPEG: nil)
                 let packTask = TaskCenter.shared.begin("Packaging \(file.lastPathComponent)", symbol: "shippingbox")

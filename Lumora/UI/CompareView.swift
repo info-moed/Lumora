@@ -10,11 +10,15 @@ import AppKit
 final class CompareModel {
     enum Layout: String, CaseIterable { case sideBySide = "Side by side", wipe = "Wipe" }
 
-    var a: SourceDescriptor?, b: SourceDescriptor?
-    var colorsA: [SourceColor] = [], colorsB: [SourceColor] = []
-    var colorA: SourceColor?, colorB: SourceColor?
+    var a: SourceDescriptor?
+    var b: SourceDescriptor?
+    var colorsA: [SourceColor] = []
+    var colorsB: [SourceColor] = []
+    var colorA: SourceColor?
+    var colorB: SourceColor?
     var analysisA: AnalysisResult?
-    var frameA: DecodedFrame?, frameB: DecodedFrame?
+    var frameA: DecodedFrame?
+    var frameB: DecodedFrame?
     var indexB = 0
     var layout: Layout = .sideBySide
     var wipe: Float = 0.5

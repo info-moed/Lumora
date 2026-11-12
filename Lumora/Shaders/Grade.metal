@@ -31,7 +31,7 @@ constant float3x3 kLMStoXYZ = float3x3(float3( 1.2270138511f, -0.0405801784f, -0
                                        float3(-0.5577999807f,  1.1122568696f, -0.4214819784f),
                                        float3( 0.2812561490f, -0.0716766787f,  1.5861632204f));
 
-inline float max3(float a, float b, float c) { return max(a, max(b, c)); }
+// max3/min3 come from the Metal standard library (metal_math).
 
 // Interleaved gradient noise (Jimenez): cheap, well-distributed, no texture needed.
 inline float ign(float2 p, int seed) {
@@ -49,7 +49,6 @@ inline float matchCorrection(float nits, constant GradeUniforms& u) {
     int i = min(int(x), u.matchCurveSize - 2);
     return mix(u.matchCurve[i], u.matchCurve[i + 1], x - float(i));
 }
-inline float min3(float a, float b, float c) { return min(a, min(b, c)); }
 inline float3 cbrtSigned(float3 v) { return sign(v) * pow(abs(v), 1.0f / 3.0f); }
 inline float3 xyzToOklab(float3 xyz) { return kLMStoLab * cbrtSigned(kXYZtoLMS * xyz); }
 inline float3 oklabToXYZ(float3 lab) { float3 l = kLabToLMS * lab; return kLMStoXYZ * (l * l * l); }

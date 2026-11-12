@@ -98,11 +98,11 @@ final class ExportEngine {
 
     private func baseContext(_ job: ExportJob) throws -> Context {
         let d = job.descriptor
-        let (plan, rate) = InterpolationPlanner.plan(sourceFrames: d.frameCount, sourceRate: (d.fpsNum, d.fpsDen),
+        let (fullPlan, rate) = InterpolationPlanner.plan(sourceFrames: d.frameCount, sourceRate: (d.fpsNum, d.fpsDen),
                                                      settings: job.interpolation, analysis: job.analysis)
         let wide = job.target.outputGamut == .rec2020
         let probeStage = try PreGradeStage(sourceWidth: d.width, sourceHeight: d.height, crop: d.crop, mode: job.upscale)
-        var plan = plan
+        var plan = fullPlan
         if let r = job.frameRange { plan = Array(plan[max(0, r.lowerBound)..<min(plan.count, r.upperBound)]) }
         return Context(job: job, plan: plan, rate: rate, meta: nil, levels: nil,
                        width: probeStage.outputWidth, height: probeStage.outputHeight,

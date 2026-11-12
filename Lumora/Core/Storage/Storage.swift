@@ -39,7 +39,7 @@ enum StorageInspector {
            let disk = DADiskCreateFromVolumePath(kCFAllocatorDefault, session, volume as CFURL),
            let desc = DADiskCopyDescription(disk) as? [String: Any] {
             if let proto = desc[kDADiskDescriptionDeviceProtocolKey as String] as? String { info.bus = proto }
-            if let internal = desc[kDADiskDescriptionDeviceInternalKey as String] as? Bool { info.isInternal = internal }
+            if let isInternalDisk = desc[kDADiskDescriptionDeviceInternalKey as String] as? Bool { info.isInternal = isInternalDisk }
             if let bsd = desc[kDADiskDescriptionMediaBSDNameKey as String] as? String { info.isSolidState = solidState(bsd: bsd) }
         }
         return info

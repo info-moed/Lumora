@@ -29,7 +29,6 @@ final class AirPlayPreview {
                 let url = try await ExportEngine().run(job) { _, v in Task { @MainActor in t.progress = v } }
                 let p = AVPlayer(url: url)
                 p.allowsExternalPlayback = true
-                p.usesExternalPlaybackWhileExternalScreenIsActive = true
                 player = p
                 TaskCenter.shared.finish(t)
             } catch {

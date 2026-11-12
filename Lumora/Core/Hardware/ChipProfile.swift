@@ -35,7 +35,7 @@ struct ChipProfile: CustomStringConvertible {
         guard frameCount > 480 else { return 1 }
         if let measured = MacProfile.current?.cliInstances[codec.rawValue], codec.cliKey != nil { return measured }
         switch codec {
-        case .hevc, .h264, .prores422HQ, .prores4444XQ:
+        case .hevc, .prores422HQ, .prores4444XQ:
             return videoEncodeEngines                     // one segment per hardware engine
         case .av1:
             return max(1, cpuCores / 8)                   // SVT-AV1 threads well; 2 instances on 18 cores
@@ -43,6 +43,10 @@ struct ChipProfile: CustomStringConvertible {
             return max(1, cpuCores / 4)                   // VVenC scales less per instance
         case .av2:
             return max(1, cpuCores / 2)                   // AVM reference encoder: many slow instances
+        case .av1Pro:
+            return max(1, cpuCores / 4)                   // libaom: limited row-mt scaling per instance
+        case .hevc12:
+            return max(1, cpuCores / 8)                   // x265 uses its own thread pool well
         }
     }
 

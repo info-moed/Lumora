@@ -31,10 +31,10 @@ final class ModelLab {
     private(set) var choices: [ContentKind: String] = [:]
     var environmentReady = false
 
-    static var root: URL { InterpolationModelSpec.modelsFolder }
-    static var downloads: URL { root.appendingPathComponent("Downloads", isDirectory: true) }
-    static var lab: URL { FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Lumora/ModelLab", isDirectory: true) }
-    static var registry: URL { root.appendingPathComponent("models.json") }
+    nonisolated static var root: URL { InterpolationModelSpec.modelsFolder }
+    nonisolated static var downloads: URL { root.appendingPathComponent("Downloads", isDirectory: true) }
+    nonisolated static var lab: URL { FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Lumora/ModelLab", isDirectory: true) }
+    nonisolated static var registry: URL { root.appendingPathComponent("models.json") }
     private static var choicesURL: URL { root.appendingPathComponent("model-choices.json") }
 
     private init() {
