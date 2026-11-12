@@ -274,7 +274,7 @@ Each type tunes interpolation models, artifact strictness, repeated-frame smooth
 What the sources say, in short:
 
 - **4.25** is the RIFE author's current recommended default for most scenes. It added more flow blocks and markedly improved anime.
-- **4.26** is the newest release. Testers disagree: some report extra artifacts in certain scenes compared with 4.25, others prefer it. It needs 64-pixel padding instead of 32.
+- **4.26** is the newest release. Testers disagree: some report extra artifacts in certain scenes compared with 4.25, others prefer it. Like 4.25 (five flow blocks, the coarsest at 1/16 scale), it needs 64-pixel padding instead of 32.
 - **Lite variants** (4.25 lite, 4.22 lite, 4.17 lite) trade a little quality for speed. They're good for scans and long batches.
 - **Community favorites:** 4.18 and 4.15 for live action, 4.9 as an all-rounder on lighter hardware, 4.6 for anime speed.
 

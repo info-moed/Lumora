@@ -310,8 +310,9 @@ python scripts/convert_rife_coreml.py --rife-dir Practical-RIFE --weights Practi
 cp -R RIFE4.mlpackage RIFE4Flow.mlpackage ~/Library/Application\ Support/Lumora/Models/
 ```
 
-Options: `--max-size` (largest dimension, default 4096), `--mask-is-logit` (if your RIFE version returns raw mask
-logits). Real-ESRGAN: `scripts/convert_realesrgan_coreml.py --model <name> --weights <file.pth>`.
+Options: `--max-size` (largest dimension, default 4096), `--mask-is-probability` (only for a modified IFNet whose
+mask is already 0…1; every RIFE 4.x returns raw mask logits, so a sigmoid is applied by default). The converter checks
+the converted model against PyTorch at a second size before saving it. Real-ESRGAN: `scripts/convert_realesrgan_coreml.py --model <name> --weights <file.pth>`.
 
 ---
 

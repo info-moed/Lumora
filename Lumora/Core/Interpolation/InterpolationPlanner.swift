@@ -62,7 +62,6 @@ struct PlannedFrame: Hashable {
 enum InterpolationPlanner {
     static func plan(sourceFrames n: Int, sourceRate: (num: Int, den: Int), settings: InterpolationSettings,
                      analysis: AnalysisResult?) -> (frames: [PlannedFrame], rate: (num: Int, den: Int)) {
-        let srcFps = Double(sourceRate.num) / Double(sourceRate.den)
         let genRate: (Int, Int)
         let outRate: (Int, Int)
         switch settings.mode {
@@ -75,8 +74,12 @@ enum InterpolationPlanner {
         case .slowMotion(let k):
             genRate = (sourceRate.num * k, sourceRate.den); outRate = sourceRate
         }
-        let genFps = Double(genRate.0) / Double(genRate.1)
-        let count = Int((Double(n - 1) * genFps / srcFps).rounded(.down)) + 1
+        // Exact rational positions: output frame k sits at k * posNum / posDen source frames. (Floating point put
+        // e.g. frame 50 of 2x 23.976 at 24.999… → a generated frame at t = 1 instead of original frame 25, and could
+        // drop the last frame of the count.)
+        let posNum = genRate.1 * sourceRate.num, posDen = genRate.0 * sourceRate.den
+        guard n > 0, posNum > 0, posDen > 0 else { return ([], outRate) }
+        let count = (n - 1) * posDen / posNum + 1
         // Unique frames: repeated frames are skipped so motion is interpolated between real drawings.
         let dupes = settings.smoothDuplicates ? (analysis?.duplicateFrames ?? []) : []
         let keys = (0..<n).filter { !dupes.contains($0) || (analysis?.cutFrames.contains($0) ?? false) }
@@ -84,16 +87,16 @@ enum InterpolationPlanner {
         frames.reserveCapacity(count)
         var ki = 0
         for k in 0..<count {
-            let pos = Double(k) * srcFps / genFps
-            while ki + 1 < keys.count, Double(keys[ki + 1]) <= pos { ki += 1 }
+            let pos = k * posNum                                  // in units of 1/posDen source frames
+            while ki + 1 < keys.count, keys[ki + 1] * posDen <= pos { ki += 1 }
             let a = keys[ki]
             guard ki + 1 < keys.count else {
                 frames.append(PlannedFrame(a: a, b: a, t: 0, kind: .original))
                 continue
             }
             let b = keys[ki + 1]
-            let t = Float((pos - Double(a)) / Double(b - a))
-            if t < 1e-4 {
+            let t = Float(Double(pos - a * posDen) / Double((b - a) * posDen))
+            if pos == a * posDen || t < 1e-4 {
                 frames.append(PlannedFrame(a: a, b: a, t: 0, kind: .original))
                 continue
             }

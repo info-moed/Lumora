@@ -222,6 +222,11 @@ final class ModelLab {
             reporter.update(0.6, detail: "HDR flow model")
             try await shell(python, [script.path, "--rife-dir", work.path, "--weights", trainLog.path, "--flow-output",
                                      "--out", Self.root.appendingPathComponent("\(r.fileStem)-Flow.mlpackage").path])
+            // CoreMLInterpolator compiles a model once and reuses the .mlmodelc next to it; drop the old ones so a
+            // re-converted model is actually the one that runs.
+            for stem in [r.fileStem, "\(r.fileStem)-Flow"] {
+                try? FileManager.default.removeItem(at: Self.root.appendingPathComponent("\(stem).mlmodelc"))
+            }
             try register(r)
             try? FileManager.default.removeItem(at: work)
             Log.notice(.models, "RIFE \(r.id) converted (image + flow)")
@@ -280,9 +285,12 @@ final class ModelLab {
             let out = Pipe()
             p.standardOutput = out
             p.standardError = out
+            // Not waitUntilExit(): it spins this thread's run loop and was seen never to return after the
+            // converter had already exited (conversion "hung" with its output saved).
+            let exited = p.exitSignal()
             try p.run()
             for try await line in out.fileHandleForReading.bytes.lines { Log.debug(.tools, line) }
-            p.waitUntilExit()
+            exited.wait()
             if p.terminationStatus != 0 { throw LumoraError.toolFailed((exe as NSString).lastPathComponent, "exit \(p.terminationStatus) — see the log") }
         }.value
     }

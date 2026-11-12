@@ -120,8 +120,15 @@ final class FrameStream {
     private var nextSourceIndex: Int
     private var cursor: Int
     private var ready: [StreamFrame] = []
-    private var ring: [MTLTexture] = []
+    /// A scratch texture plus everyone who still needs it: this stream while it builds a batch, and each StreamFrame
+    /// handed out (it travels in `backing`) until the export has graded it. A slot is reused only when free.
+    private final class ScratchLease {
+        let texture: MTLTexture
+        init(_ t: MTLTexture) { texture = t }
+    }
+    private var ring: [ScratchLease] = []
     private var ringIndex = 0
+    private var batchLeases: [ScratchLease] = []
     private(set) var events: [QCEvent] = []
 
     /// - proxyUniforms: decode uniforms for the source colour (flow models estimate motion on an SDR-like proxy).
@@ -178,11 +185,30 @@ final class FrameStream {
     }
 
     private func scratch(like t: MTLTexture) -> MTLTexture {
-        if ring.isEmpty || ring[0].width != t.width || ring[0].height != t.height || ring[0].pixelFormat != t.pixelFormat {
-            ring = (0..<32).map { _ in ctx.makeTexture(width: t.width, height: t.height, format: t.pixelFormat) }
+        let first = ring.first?.texture
+        if first == nil || first!.width != t.width || first!.height != t.height || first!.pixelFormat != t.pixelFormat {
+            ring = (0..<32).map { _ in ScratchLease(ctx.makeTexture(width: t.width, height: t.height, format: t.pixelFormat)) }
         }
-        ringIndex = (ringIndex + 1) % ring.count
-        return ring[ringIndex]
+        // A plain round robin handed out textures that frames further down the pipeline (or earlier in the same
+        // 8x batch) were still using once a batch needed more than the ring held.
+        var lease: ScratchLease?
+        for _ in 0..<ring.count {
+            ringIndex = (ringIndex + 1) % ring.count
+            if isKnownUniquelyReferenced(&ring[ringIndex]) { lease = ring[ringIndex]; break }
+        }
+        if lease == nil {                         // every slot is still in use: grow
+            ringIndex += 1
+            ring.insert(ScratchLease(ctx.makeTexture(width: t.width, height: t.height, format: t.pixelFormat)), at: ringIndex)
+            lease = ring[ringIndex]
+        }
+        batchLeases.append(lease!)
+        return lease!.texture
+    }
+
+    /// What a handed-out frame must keep alive: its scratch slot, or the decoded frame it shows.
+    private func keepAlive(_ tex: MTLTexture, _ frames: DecodedFrame...) -> [AnyObject] {
+        if let l = ring.first(where: { $0.texture === tex }) { return [l] }
+        return frames.first { $0.texture === tex }?.backing ?? []
     }
 
     /// Grain-free version of a source frame (cached while it's in the window).
@@ -215,9 +241,10 @@ final class FrameStream {
         case .transitionBlend:
             cursor += 1
             guard let fb = window[p.b] else { return nil }
+            batchLeases.removeAll()
             let dst = scratch(like: fa.texture)
             blend.encode(nil, fa.texture, fb.texture, t: p.t, into: dst)
-            return StreamFrame(texture: dst, outputIndex: cursor - 1, sourceIndex: nearest, backing: [])
+            return StreamFrame(texture: dst, outputIndex: cursor - 1, sourceIndex: nearest, backing: keepAlive(dst))
         case .generated:
             guard let fb = window[p.b] else { cursor += 1; return nil }
             var batch: [(index: Int, t: Float)] = []
@@ -231,6 +258,8 @@ final class FrameStream {
     }
 
     private func generate(_ batch: [(index: Int, t: Float)], a fa: DecodedFrame, b fb: DecodedFrame, pa: Int, pb: Int) throws {
+        batchLeases.removeAll()
+        defer { batchLeases.removeAll() }
         let scene = sceneOf(pa)
         let (engine, route) = engine(forScene: scene)
         // Grain-aware: interpolate the clean picture; grain is put back afterwards from the nearest real frame.
@@ -318,7 +347,8 @@ final class FrameStream {
             if finals[k].fraction > 0 || finals[k].action != .accepted {
                 events.append(QCEvent(outputIndex: item.index, sourceA: pa, t: item.t, badFraction: finals[k].fraction, action: finals[k].action))
             }
-            ready.append(StreamFrame(texture: out, outputIndex: item.index, sourceIndex: item.t < 0.5 ? pa : pb, backing: []))
+            ready.append(StreamFrame(texture: out, outputIndex: item.index, sourceIndex: item.t < 0.5 ? pa : pb,
+                                     backing: keepAlive(out, fa, fb)))
         }
     }
 

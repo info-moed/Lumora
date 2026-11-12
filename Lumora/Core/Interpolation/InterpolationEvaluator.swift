@@ -67,8 +67,11 @@ enum InterpolationEvaluator {
         let uA = UniformBuilder.analysis(source: ca, gridW: 320, gridH: 180), uB = UniformBuilder.analysis(source: cb, gridW: 320, gridH: 180)
         var offsets: [Double] = []
         for f in [0.3, 0.5, 0.7] {
-            let t = a.durationSeconds * f
-            try srcA.start(at: Int(t * a.fps), count: 1)
+            // The time of the original frame actually read (not of the sampling point inside it), or the offset
+            // comes out up to one original frame too early and every later comparison is misaligned.
+            let i = Int(a.durationSeconds * f * a.fps)
+            let t = Double(i) / a.fps
+            try srcA.start(at: i, count: 1)
             guard let fa = try srcA.nextFrame() else { continue }
             let ta = zscore(r.analyze(fa.texture, uniforms: uA, gridWidth: 320).thumbnail)
             let w = Int(b.fps)
@@ -106,9 +109,24 @@ enum InterpolationEvaluator {
             for (k, c) in r.pqHistogram(r.comparable(fa.texture, color: ca, width: width)).enumerated() { hA[k] += Double(c) }
             for (k, c) in r.pqHistogram(r.comparable(fb.texture, color: cb, width: width)).enumerated() { hB[k] += Double(c) }
         }
-        let curve = cdfMatch(hA, hB)
-        let toneMatched = zip(curve, (0..<256).map { Float($0) / 255 }).contains { abs($0 - $1) > 0.02 }
+        // Judge "regraded" only where the original has pixels: across empty histogram bins the fitted curve is flat
+        // by construction, which said "regraded" for any picture with gaps in its histogram. And only apply the
+        // curve when it is needed: its 1/255 steps alone are as large as the duplicate / cross-fade thresholds below.
+        let fitted = cdfMatch(hA, hB)
+        let identity = (0..<256).map { Float($0) / 255 }
+        let toneMatched = fitted.indices.contains { hA[$0] > 0 && abs(fitted[$0] - identity[$0]) > 0.02 }
+        let curve = toneMatched ? fitted : identity
         progress(0.15)
+
+        // A cross-fade made in the original's own encoding (gamma, log, HLG…) isn't a cross-fade in the PQ domain the
+        // comparison runs in: for SDR the two differ by ~25% of the motion, so a plain blend was never called ghosting.
+        let blender = BlendInterpolator()
+        func fadeError(_ a0: MTLTexture, _ a1: MTLTexture, _ B: MTLTexture, t: Float) -> Float {
+            let mix = MetalContext.shared.makeTexture(width: a0.width, height: a0.height, format: a0.pixelFormat)
+            blender.encode(nil, a0, a1, t: t, into: mix)
+            let M = r.toneMatch(r.comparable(mix, color: ca, width: width), curve: curve)
+            return r.blendErrors(M, M, B, t: 0).vsBlend
+        }
 
         // 3. Measure every sampled interval.
         var psnrs: [Float] = [], ssims: [Float] = []
@@ -138,11 +156,14 @@ enum InterpolationEvaluator {
                     let e = r.blendErrors(A0, A1, B, t: Float(f.t))
                     let (fraction, _) = qc.score(a: A0, b: A1, mid: B, sensitivity: 0.5)
                     let seconds = Double(f.index) / b.fps
+                    // A copy matches one neighbour as a whole frame. (The per-pixel nearer-neighbour error is small
+                    // for genuine half-way motion too, which flagged real interpolation as copies.)
+                    let copyError = min(r.blendErrors(A0, A1, B, t: 0).vsBlend, r.blendErrors(A0, A1, B, t: 1).vsBlend)
                     if isCut && e.vsNearest > 0.01 {
                         morphs += 1; flagged.append(Flagged(outputIndex: f.index, seconds: seconds, reason: "Morphs between two different shots"))
-                    } else if e.motion > 0.01 && e.vsNearest < e.motion * 0.08 {
+                    } else if e.motion > 0.01 && copyError < e.motion * 0.08 {
                         dupes += 1; flagged.append(Flagged(outputIndex: f.index, seconds: seconds, reason: "Copy of a real frame (no new motion)"))
-                    } else if e.motion > 0.01 && e.vsBlend < e.motion * 0.12 {
+                    } else if e.motion > 0.01 && min(e.vsBlend, fadeError(a0.texture, a1.texture, B, t: Float(f.t))) < e.motion * 0.12 {
                         ghosts += 1; flagged.append(Flagged(outputIndex: f.index, seconds: seconds, reason: "Cross-fade: ghosting instead of motion"))
                     } else if fraction > 0.02 {
                         artifacts += 1
