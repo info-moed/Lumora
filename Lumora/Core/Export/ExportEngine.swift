@@ -231,7 +231,7 @@ final class ExportEngine {
                     frames: frames, chunkID: -100 - idx, start: chunk.start,
                     sceneStats: job.analysis.scenes[safe: job.analysis.sceneIndex(for: ctx.plan[chunk.start].a)] ?? job.analysis.scenes[0],
                     interpolatedShare: 0.5, kind: job.contentKind, encodeOne: encodeOne, target: target, rate: ctx.rate,
-                    workDir: tmp, threads: threads, codec: job.codec, hdr: job.target.isHDR, stripSyntheticGrain: ctx.grain.strip)
+                    workDir: tmp, threads: threads, codec: job.codec, hdr: job.target.isHDR, hlg: job.target.kind == .hlg, stripSyntheticGrain: ctx.grain.strip)
                 replacements[idx] = pieces.map(\.url)
             } else {
                 let ext = job.codec == .hevc ? "mov" : (EncoderCatalog.shared.spec(for: job.codec.cliKey ?? "")?.ext ?? "bin")
@@ -894,7 +894,7 @@ final class ExportEngine {
                     try await tq.encode(frames: chunk.frames, chunkID: chunk.id, start: chunk.start, sceneStats: scene,
                                         interpolatedShare: share, kind: job.contentKind, encodeOne: encodeOne,
                                         target: target, rate: ctx.rate, workDir: tmp, threads: threads, codec: job.codec,
-                                        hdr: job.target.isHDR, referenceFrames: chunk.reference,
+                                        hdr: job.target.isHDR, hlg: job.target.kind == .hlg, referenceFrames: chunk.reference,
                                         stripSyntheticGrain: ctx.grain.strip)
                 }
                 running += 1
@@ -994,7 +994,7 @@ final class ExportEngine {
                 let pieces = try await TargetQualityEncoder(engine: self).encode(
                     frames: frames, chunkID: -1 - n, start: 0, sceneStats: scene, interpolatedShare: 0, kind: job.contentKind,
                     encodeOne: encodeOne, target: target, rate: ctx.rate, workDir: tmp, threads: threads, codec: job.codec,
-                    hdr: job.target.isHDR)
+                    hdr: job.target.isHDR, hlg: job.target.kind == .hlg)
                 bytes = pieces.reduce(0) { $0 + Int64((try? $1.url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
             } else if job.codec.cliKey != nil || job.codec == .hevc {
                 let level = job.codec == .hevc ? Double(job.quality) * 100

@@ -339,8 +339,28 @@ XPSNR (FFmpeg 7+):
 ffmpeg -i encoded.mkv -i reference.mov -lavfi xpsnr -f null -
 ```
 
-ColorVideoVDP and PU21-PSNR are installed by Model Lab into its Python environment; see
-[`lumora_metrics.py`](https://github.com/info-moed/Lumora/blob/main/Lumora/Resources/lumora_metrics.py) for how Lumora calls them.
+SSIMULACRA 2 (SDR), per frame and pooled, from two Y4M files (the build from `scripts/install-ssimulacra2.sh` reads
+Y4M files and named pipes directly; the crates.io build needs VapourSynth for anything but stdin):
+
+```bash
+ssimulacra2_rs video reference.y4m encoded.y4m --verbose --src-matrix bt709 --dst-matrix bt709 \
+  --src-primaries bt709 --dst-primaries bt709
+```
+
+ColorVideoVDP and PU21-PSNR are installed by Model Lab (Tools → Model Lab → **Install quality metrics**) into its
+Python environment. Lumora's own helper, with the same display models and windows Lumora uses (`--hdr 0` for SDR,
+`pq` for HDR10, `hlg` for HLG):
+
+```bash
+PY="$HOME/Library/Application Support/Lumora/ModelLab/venv/bin/python"
+"$PY" -I Lumora/Resources/lumora_metrics.py --ref reference.y4m --dist encoded.y4m --hdr pq \
+  --total-frames 48 --metrics cvvdp,puPsnr
+```
+
+It prints one JSON line with the scores, the display model, the device (`mps` or `cpu`) and the seconds each part took.
+ColorVideoVDP's own command line works too: `"$(dirname "$PY")/cvvdp" --test encoded.mp4 --ref reference.mp4 --display standard_hdr_pq`.
+See [`lumora_metrics.py`](https://github.com/info-moed/Lumora/blob/main/Lumora/Resources/lumora_metrics.py) for how
+Lumora converts the frames.
 
 ---
 

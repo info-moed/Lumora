@@ -12,4 +12,10 @@ if ! command -v avmenc >/dev/null; then
   mkdir -p "$HOME/.local/bin" && cp /tmp/avm/build/avmenc /tmp/avm/build/avmdec "$HOME/.local/bin/" 2>/dev/null || \
     echo "AVM built in /tmp/avm/build — copy the encoder binary to ~/.local/bin/avmenc"
 fi
+
+# SSIMULACRA 2 (quality metric): its video tool builds from source with Rust; see the script for why not `cargo install`.
+if ! command -v ssimulacra2_rs >/dev/null && ! [ -x "$HOME/.local/bin/ssimulacra2_rs" ]; then
+  command -v cargo >/dev/null || brew install rust
+  bash "$(dirname "$0")/install-ssimulacra2.sh"
+fi
 echo "Done. Formula names can change; if one failed, search 'brew search <name>'."

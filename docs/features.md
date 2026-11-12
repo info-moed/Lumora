@@ -212,28 +212,49 @@ VMAF is fast and well understood, but it was trained on SDR viewing, misses band
 
 | Metric | What it catches | HDR | Speed | Source |
 |---|---|---|---|---|
-| ColorVideoVDP | Human-vision model: luminance, color and motion on a described display (JOD; 10 = identical) | Yes | Slow | `pip install cvvdp` (Model Lab) |
-| PU21-PSNR | Fidelity in perceptually uniform HDR units | Yes | Fast | Same as above |
+| ColorVideoVDP | Human-vision model: luminance, color and motion on a described display (JOD; 10 = identical) | Yes (PQ, HLG) | Slow | Model Lab → **Install quality metrics** (cvvdp 0.5.7) |
+| PU21-PSNR | Fidelity in perceptually uniform HDR units | Yes | Medium | Same as above |
 | XPSNR | Perceptually weighted error | — | Fast | FFmpeg 7+ |
 | VMAF / VMAF NEG | Overall perceptual quality; NEG ignores sharpening | SDR-trained | Fast | libvmaf |
 | CAMBI | Banding added by the encode | PQ-aware | Fast | libvmaf |
 | MS-SSIM, PSNR-HVS | Structure and contrast-weighted error | — | Fast | libvmaf |
 | CIEDE2000 | Color shifts | — | Fast | libvmaf |
-| SSIMULACRA 2 | Psycho-visual fidelity (SDR) | No | Medium | `cargo install ssimulacra2_rs` |
+| SSIMULACRA 2 | Psycho-visual fidelity (SDR) | No | Medium | `scripts/install-ssimulacra2.sh` (builds `ssimulacra2_rs`) |
 | AVQT | Apple's perceptual score (file comparisons) | Yes | Fast | developer.apple.com |
 
 **How the Imperceptible standard works:**
 
-1. A fast metric (VMAF 93) finds the cheapest setting.
-2. The gates must then all pass: ColorVideoVDP ≥ 9.6 JOD, banding added ≤ 1 CAMBI, worst-5% VMAF NEG ≥ 88, ΔE2000 ≤ 1.5, and SSIMULACRA 2 ≥ 85 for SDR.
-3. If a gate fails, quality steps up and everything is re-checked.
+1. A fast metric (VMAF 93) finds the cheapest setting. The fast gates (banding added ≤ 1 CAMBI, worst-5% VMAF NEG
+   ≥ 88, ΔE2000 ≤ 1.5) are checked on every search trial.
+2. The slow perceptual gates then run once, on the encode the search accepted: ColorVideoVDP ≥ 9.6 JOD, and
+   SSIMULACRA 2 ≥ 85 for SDR. PU21-PSNR (reported for HDR) is measured in the same pass.
+3. If a gate fails, quality steps up (hardware HEVC +0.08, CRF/QP encoders 2 steps) and every gate is checked again on
+   the new encode, up to four times. The chunk's failing gates are listed in the encode monitor.
+
+ColorVideoVDP models a display: a 30-inch 4K screen at 200 cd/m² in an office for SDR, and a 1500 cd/m² HDR screen in
+a dim room for HDR10 (PQ) and HLG. It runs on the GPU (MPS) and falls back to the CPU if MPS can't run it.
+
+What it costs, measured on an M3 Max with one 2-second, 1280×534 chunk (hardware HEVC, 48 frames; three runs each, on a shared machine):
+
+| | Search + fast gates only | Imperceptible | Per perceptual check |
+|---|---|---|---|
+| HDR10 (*Sky*, PQ) | 7–10 s | 23–30 s (no gate failed) | 16–22 s |
+| SDR (*Action*) | 8–10 s | 59–73 s (SSIMULACRA 2 failed twice) | 16–20 s |
+
+A perceptual check costs about 5 seconds to start Python and PyTorch, plus about 0.1 s per frame for ColorVideoVDP
+at 1280×534 (about 0.25 s per 1080p frame); SSIMULACRA 2 adds about 0.02 s per frame at that size. With **Fast
+validation** on (the default), ColorVideoVDP scores at most three 1-second windows per chunk and SSIMULACRA 2 every
+second frame, so on a 10-second chunk ColorVideoVDP looks at 3 seconds of frames and SSIMULACRA 2 at half of them. On the SDR clip, SSIMULACRA 2 ≥ 85 was the gate that decided the file size:
+VMAF was already 99.6 at the setting the search chose, SSIMULACRA 2 was 72, and reaching 85 took the file from 1.3 to
+3.5 MB.
 
 This usually lands at a lower bitrate than chasing VMAF 95 alone, while catching the cases VMAF misses.
 
 **Threshold caveats:**
 
 - **ColorVideoVDP:** 9.6 JOD means less than half a just-objectionable difference from identical.
-- **SSIMULACRA 2:** about 90 is "hard to tell apart at normal viewing".
+- **SSIMULACRA 2:** about 90 is "hard to tell apart at normal viewing". It is the strictest of the gates on SDR
+  footage; lower it (Deliver → Quality) if file size matters more than a frame-by-frame match.
 - **XPSNR thresholds** aren't standardized, so XPSNR is report-only by default.
 
 All thresholds are editable in Deliver → Quality.
