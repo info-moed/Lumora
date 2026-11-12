@@ -1078,7 +1078,14 @@ final class ExportEngine {
         } else {
             args += ["-map", "0:v:0"]
         }
-        args += ["-c", "copy", out.path]
+        args += ["-c", "copy"]
+        if carrySource, out.pathExtension.lowercased() == "mkv" {
+            // MP4 text subtitles (tx3g) have no Matroska mapping; SubRip carries the same text.
+            for (i, t) in SourceStreams.probe(job.descriptor.url).subtitles.enumerated() where t.codec == "mov_text" {
+                args += ["-c:s:\(i)", "srt"]
+            }
+        }
+        args.append(out.path)
         try ToolLocator.run("ffmpeg", args)
         return out
     }

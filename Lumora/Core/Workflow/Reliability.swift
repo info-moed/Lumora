@@ -62,6 +62,8 @@ enum PowerState {
 /// "Done" messages: a Mac notification and, if set, a webhook that reaches your phone.
 enum Notifier {
     static func requestPermission() {
+        // Only ask when Mac notifications are switched on; a webhook-only setup never needs the system prompt.
+        guard RunRules.current.notifyMac else { return }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
