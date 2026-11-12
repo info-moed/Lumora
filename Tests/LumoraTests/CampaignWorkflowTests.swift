@@ -1042,9 +1042,9 @@ final class CampaignWorkflowTests: XCTestCase {
             name: "Natural", look: .natural, color: .testSDR, params: GradeParams(), sceneExposures: [], reason: ""),
                             analysis: .empty, delivery: .sdr, codec: .av2, outputURL: try freshDir("av2").appendingPathComponent("x.obu"))
         job.bitDepth = 10
-        XCTAssertEqual(ExportEngine.validate(job), "The avm encoder isn't installed. See README → Encoders.")
+        XCTAssertEqual(ExportEngine.validate(job), "AV2 · AVM reference (experimental) needs the avmenc encoder, which isn't installed. See README → Encoders.")
         do { _ = try await ExportEngine().run(job) { _, _ in }; XCTFail("must not run without the encoder") } catch {
-            XCTAssertEqual(error.localizedDescription, "The avm encoder isn't installed. See README → Encoders.")
+            XCTAssertEqual(error.localizedDescription, "AV2 · AVM reference (experimental) needs the avmenc encoder, which isn't installed. See README → Encoders.")
         }
         XCTAssertFalse(FileManager.default.fileExists(atPath: job.outputURL.path))
     }

@@ -994,12 +994,12 @@ final class CampaignAppFlowTests: XCTestCase {
         let m = try await opened(try Self.clip("sdr"))
         m.codec = .av2; m.bitDepth = 10; m.chroma = .c420; m.delivery = .hdr10
         let problem = try XCTUnwrap(ExportEngine.validate(try job(m)))
-        XCTAssertTrue(problem.contains("avm encoder isn't installed"), problem)
+        XCTAssertTrue(problem.contains("avmenc") && problem.contains("isn't installed"), problem)
         let out = Self.root.appendingPathComponent("av2")
         try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
         m.export(presetIDs: [try XCTUnwrap(m.selectedPresetID)], folder: out)
         try await waitUntil("AV2 export error", timeout: 30) { m.errorMessage != nil }
-        XCTAssertTrue(m.errorMessage!.contains("avm encoder isn't installed"), m.errorMessage!)
+        XCTAssertTrue(m.errorMessage!.contains("avmenc") && m.errorMessage!.contains("isn't installed"), m.errorMessage!)
         XCTAssertEqual(Self.allFiles(in: out), [])
         // The planner and forecast still answer without the encoder.
         XCTAssertNotNil(m.currentForecast())

@@ -1006,6 +1006,7 @@ final class AppModel {
                 Log.notice(.encode, "Batch \(n + 1)/\(files.count): \(file.lastPathComponent) as \(kind.displayName), look \(preset.look.displayName)")
                 job.sourcePeakNits = r?.p999Nits ?? 1000
                 job.filmTexture = filmTexture
+                EncodeMonitor.shared.forecast = nil       // no per-file forecast in batches; never show the previous one
                 let started = Date()
                 let encoded = try await ExportEngine().run(job) { label, v in
                     Task { @MainActor in self.progress = (Double(n) + v) / Double(files.count) }

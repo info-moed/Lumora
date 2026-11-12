@@ -738,6 +738,6 @@ final class CampaignHDRMetadataTests: XCTestCase {
         d.width = 640; d.height = 360; d.frameCount = 48
         let p = PresetCandidate(name: "n", look: .natural, color: .testSDR, params: Look.natural.params, sceneExposures: [0], reason: "")
         let job = ExportJob(descriptor: d, preset: p, analysis: .empty, delivery: .hdr10, codec: .av2, outputURL: Self.url("x.obu"))
-        XCTAssertEqual(ExportEngine.validate(job), "The avm encoder isn't installed. See README → Encoders.")
+        XCTAssertEqual(ExportEngine.validate(job), "AV2 · AVM reference (experimental) needs the avmenc encoder, which isn't installed. See README → Encoders.")
     }
 }

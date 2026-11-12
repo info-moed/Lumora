@@ -413,10 +413,12 @@ final class CampaignCodecTests: XCTestCase {
         XCTAssertTrue(msg(.av1Pro, 10, .c420, .dolbyVision84).contains("Dolby Vision"))
         XCTAssertTrue(msg(.vvc, 10, .c420, .dolbyVision81).contains("Dolby Vision"))
         XCTAssertTrue(msg(.prores422HQ, 10, .c422, .hdr10Plus).contains("HDR10+"))
-        // x265 is HEVC too, so "needs HEVC" would be a confusing reason to reject it.
-        let x265DV = msg(.hevc12, 10, .c420, .dolbyVision81)
-        XCTAssertTrue(x265DV.contains("Dolby Vision"), x265DV)
-        XCTAssertTrue(x265DV.contains("hardware"), "should say it needs the hardware HEVC encoder: \(x265DV)")
+        // x265 carries Dolby Vision 8.1 (dovi_tool injects the RPU after encoding; the output is verified with
+        // dovi_tool in CampaignHDRMetadataTests). 8.4 is HLG-based and comes only from Apple's hardware encoder.
+        XCTAssertEqual(msg(.hevc12, 10, .c420, .dolbyVision81), "<accepted>")
+        let x265DV84 = msg(.hevc12, 10, .c420, .dolbyVision84)
+        XCTAssertTrue(x265DV84.contains("Dolby Vision"), x265DV84)
+        XCTAssertTrue(x265DV84.contains("hardware"), "should point to the hardware HEVC encoder: \(x265DV84)")
         // Slow motion + AV2, and overwriting the source.
         var slow = job(s, codec: .av2, depth: 10, chroma: .c420, delivery: .sdr, out: "v.obu")
         slow.interpolation.mode = .slowMotion(factor: 2)

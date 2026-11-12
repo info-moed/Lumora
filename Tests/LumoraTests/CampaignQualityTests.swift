@@ -624,6 +624,9 @@ final class CampaignQualityTests: XCTestCase {
     func testEncodeMonitorProjectionBlendsForecastAndMeasurement() {
         let m = EncodeMonitor.shared
         m.reset(target: QualityTarget(), chunks: [0..<10, 10..<200], totalFrames: 200)
+        // The forecast belongs to the caller (AppModel sets it just before an export starts; reset happens inside
+        // the export), so reset() keeps it. With no forecast there's no projection.
+        m.forecast = nil
         XCTAssertEqual(m.chunks.map(\.state), [.waiting, .waiting])
         XCTAssertNil(m.projectedBytes)
         m.forecast = SizeForecast(low: 800_000, mid: 1_000_000, high: 1_200_000, videoMid: 1_000_000, otherBytes: 0, sourceBytes: 5_000_000,
