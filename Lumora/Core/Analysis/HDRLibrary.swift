@@ -61,7 +61,13 @@ final class HDRLibrary: ObservableObject {
     }
 
     func add(_ title: HDRTitle) throws {
-        var mine = (try? JSONDecoder().decode([HDRTitle].self, from: Data(contentsOf: userFile))) ?? []
+        var mine: [HDRTitle] = []
+        if let data = try? Data(contentsOf: userFile), !data.isEmpty {
+            // A file that can't be read (e.g. a typo from hand-editing) is never replaced by a one-entry list.
+            do { mine = try JSONDecoder().decode([HDRTitle].self, from: data) } catch {
+                throw LumoraError.unsupported("Your library file \(userFile.lastPathComponent) couldn't be read, so nothing was changed. Fix or remove it, then try again. (\(error.localizedDescription))")
+            }
+        }
         mine.removeAll { $0.id == title.id }
         mine.append(title)
         let enc = JSONEncoder()

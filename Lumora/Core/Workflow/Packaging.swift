@@ -43,9 +43,11 @@ struct SourceStreams: Codable {
             guard type == "audio" || type == "subtitle" else { continue }
             let tags = st["tags"] as? [String: Any] ?? [:]
             let disp = st["disposition"] as? [String: Any] ?? [:]
-            let profile = (st["profile"] as? String ?? "") + " " + (tags["title"] as? String ?? "")
+            // MP4/QuickTime track titles live in the track's "name" box, which FFmpeg reports as "name".
+            let title = tags["title"] as? String ?? tags["name"] as? String ?? ""
+            let profile = (st["profile"] as? String ?? "") + " " + title
             let t = MediaTrack(index: st["index"] as? Int ?? 0, kind: type, codec: st["codec_name"] as? String ?? "?",
-                               language: tags["language"] as? String ?? "", title: tags["title"] as? String ?? "",
+                               language: tags["language"] as? String ?? "", title: title,
                                channels: st["channels"] as? Int ?? 0, isAtmos: profile.localizedCaseInsensitiveContains("atmos"),
                                isDefault: (disp["default"] as? Int ?? 0) == 1, isForced: (disp["forced"] as? Int ?? 0) == 1)
             if type == "audio" { s.audio.append(t) } else { s.subtitles.append(t) }
