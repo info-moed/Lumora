@@ -72,6 +72,48 @@ extension Process {
         terminationHandler = { _ in s.signal() }
         return s
     }
+
+    /// Call before `run()` so `exited()` can await the process. `waitUntilExit()` waits on the calling thread's
+    /// run loop for a termination notice, and on a Swift-concurrency pool thread that notice can be missed, which
+    /// left exports hanging forever after the encoder had already quit.
+    func trackExit() {
+        let waiter = ProcessExitWaiter()
+        objc_setAssociatedObject(self, processExitKey, waiter, .OBJC_ASSOCIATION_RETAIN)
+        terminationHandler = { _ in waiter.fire() }
+    }
+
+    /// Suspends until the process has exited (no thread is blocked). Needs `trackExit()` before `run()`.
+    func exited() async {
+        if let waiter = objc_getAssociatedObject(self, processExitKey) as? ProcessExitWaiter {
+            await waiter.wait()
+        } else {
+            await Task.detached { self.waitUntilExit() }.value
+        }
+    }
+}
+
+private let processExitKey = UnsafeRawPointer(UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1))
+
+private final class ProcessExitWaiter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var done = false
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+
+    func fire() {
+        lock.lock()
+        done = true
+        let w = waiting
+        waiting = []
+        lock.unlock()
+        w.forEach { $0.resume() }
+    }
+
+    func wait() async {
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+            lock.lock()
+            if done { lock.unlock(); c.resume() } else { waiting.append(c); lock.unlock() }
+        }
+    }
 }
 
 /// Tool capability checks run external processes. Do them once, off the main thread, at launch, so views

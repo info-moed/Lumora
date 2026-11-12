@@ -56,6 +56,13 @@ enum Codec: String, CaseIterable, Identifiable, Codable, Hashable {
         default: return [.c420]
         }
     }
+    /// Bit depth × chroma pairs the encoder really accepts. aomenc (libaom 3.15) refuses 12-bit 4:2:2 and 4:4:4
+    /// ("Failed to set chroma subsampling x") although AV1's Professional profile allows them.
+    func supports(bitDepth: Int, chroma: ChromaFormat) -> Bool {
+        guard bitDepths.contains(bitDepth), chromaFormats.contains(chroma) else { return false }
+        if self == .av1Pro, bitDepth == 12, chroma != .c420 { return false }
+        return true
+    }
     /// Key into encoders.json for the software encoders.
     var cliKey: String? {
         switch self {
@@ -67,7 +74,7 @@ enum Codec: String, CaseIterable, Identifiable, Codable, Hashable {
         default: return nil
         }
     }
-    var supportsHDR10Plus: Bool { self == .hevc || self == .hevc12 || self == .av1 }
+    var supportsHDR10Plus: Bool { self == .hevc || self == .hevc12 }   // hdr10plus_tool injects into HEVC only
     var supportsDolbyVision: Bool { self == .hevc }
     var defaultContainer: String {
         switch self {

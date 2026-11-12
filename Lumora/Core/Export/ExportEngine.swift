@@ -86,11 +86,17 @@ final class ExportEngine {
         if !job.codec.chromaFormats.contains(job.chroma) {
             return "\(job.codec.displayName) supports \(job.codec.chromaFormats.map(\.label).joined(separator: ", ")) colour only."
         }
+        if !job.codec.supports(bitDepth: job.bitDepth, chroma: job.chroma) {
+            return "\(job.codec.displayName) can't encode \(job.bitDepth)-bit \(job.chroma.label). Choose 10-bit for 4:2:2 or 4:4:4, or 12-bit 4:2:0."
+        }
         if !job.delivery.supported(by: job.codec) {
-            return "\(job.delivery.displayName) needs HEVC" + (job.delivery == .hdr10Plus ? " (or AV1)." : ".")
+            let able = Codec.allCases.filter { job.delivery.supported(by: $0) }.map(\.displayName)
+            return "\(job.delivery.displayName) isn't available with \(job.codec.displayName). Choose "
+                + able.joined(separator: " or ") + "."
         }
         if !job.codec.available, let key = job.codec.cliKey {
-            return "The \(key) encoder isn't installed. See README → Encoders."
+            let binary = EncoderCatalog.shared.spec(for: key)?.binary ?? key
+            return "\(job.codec.displayName) needs the \(binary) encoder, which isn't installed. See README → Encoders."
         }
         if case .slowMotion = job.interpolation.mode, job.codec == .av2 {
             return "Slow motion with AV2 isn't supported yet."
@@ -224,14 +230,14 @@ final class ExportEngine {
         try ToolLocator.run("ffmpeg", ["-y", "-v", "error", "-i", original.path, "-map", "0:v:0", "-c", "copy", "-f", "segment",
                                        "-segment_frames", cuts, "-reset_timestamps", "1", "-segment_format", "matroska",
                                        segDir.appendingPathComponent("seg%05d.mkv").path])
-        let fps = "\(manifest.rateNum)/\(manifest.rateDen)"
         var list: [String] = []
         for i in manifest.chunks.indices {
             if let urls = replacements[i] {
                 for (k, u) in urls.enumerated() {
                     let mkv = tmp.appendingPathComponent("rep\(i)-\(k).mkv")
                     let raw = ["hevc", "266"].contains(u.pathExtension)
-                    try ToolLocator.run("ffmpeg", ["-y", "-v", "error"] + (raw ? ["-r", fps] : []) + ["-i", u.path, "-c", "copy", mkv.path])
+                    let input = raw ? try Self.wrapRawVideo(u, rate: (manifest.rateNum, manifest.rateDen), in: tmp) : u
+                    try ToolLocator.run("ffmpeg", ["-y", "-v", "error", "-i", input.path, "-c", "copy", mkv.path])
                     list.append(FFConcat.line(mkv))
                 }
             } else {
@@ -310,7 +316,7 @@ final class ExportEngine {
                 try handle.write(contentsOf: Data(first.y4mHeader(fpsNum: ctx.rate.num, fpsDen: ctx.rate.den).utf8))
                 for f in frames { try f.write(to: handle) }
                 try handle.close()
-                await Task.detached { process.waitUntilExit() }.value
+                await process.exited()
                 guard process.terminationStatus == 0 else {
                     throw LumoraError.toolFailed(rungSpec.binary, String((try? String(contentsOf: log, encoding: .utf8))?.suffix(800) ?? ""))
                 }
@@ -397,7 +403,7 @@ final class ExportEngine {
             Log.notice(.encode, "Encoding to VMAF \(t.vmaf) (\(t.pool.rawValue)) for \(job.contentKind.displayName)")
             let pieces = try await runTargetQuality(ctx, tmp: tmp, status: status)
             status("Finishing file", 1)
-            var result = try await join(ctx, segments: pieces, tmp: tmp)
+            var result = try addContainerHDR10Metadata(ctx, file: try await join(ctx, segments: pieces, tmp: tmp), tmp: tmp)
             if job.delivery == .dolbyVision81 || job.delivery == .hdr10Plus { result = try injectDynamicMetadata(ctx, file: result, tmp: tmp) }
             try Self.clearOutput(job)
             try FileManager.default.moveItem(at: result, to: job.outputURL)
@@ -437,7 +443,7 @@ final class ExportEngine {
         }
 
         status("Finishing file", 1)
-        var result = try await join(ctx, segments: segmentFiles, tmp: tmp)
+        var result = try addContainerHDR10Metadata(ctx, file: try await join(ctx, segments: segmentFiles, tmp: tmp), tmp: tmp)
         if job.delivery == .dolbyVision81 || job.delivery == .hdr10Plus {
             status("Adding \(job.delivery.displayName) metadata", 1)
             result = try injectDynamicMetadata(ctx, file: result, tmp: tmp)
@@ -673,7 +679,11 @@ final class ExportEngine {
             "preset": preset ?? job.encodeChoice?.presetValue ?? spec.preset, "quality": quality, "threads": "\(threads)",
             "cp": nums.0, "tc": nums.1, "mc": nums.2,
             "cp_name": names["cp"] ?? "", "tc_name": names["tc"] ?? "", "mc_name": names["mc"] ?? "",
-            "vvenc_hdr": names["vvenc_hdr"] ?? "off",
+            "vvenc_hdr": names["vvenc_hdr"] ?? "off", "vvenc_sdr": names["vvenc_sdr"] ?? "off",
+            // VVenC takes HDR10 static metadata (SEI) only through --additional.
+            "vvenc_additional": kindKey == "pq"
+                ? "MasteringDisplayColourVolume=\(HDRMetadata.vvencMastering(meta)) MaxContentLightLevel=\(max(1, Int(meta.maxCLL))),\(max(1, Int(meta.maxFALL)))"
+                : (names["vvenc_additional"] ?? ""),
             "maxcll": "\(Int(meta.maxCLL))", "maxfall": "\(Int(meta.maxFALL))",
             "svt_mastering": HDRMetadata.svtMastering(meta), "x265_mastering": HDRMetadata.x265Mastering(meta),
             "aom_profile": (job.bitDepth == 12 || job.chroma == .c422) ? "2" : (job.chroma == .c444 ? "1" : "0"),
@@ -705,6 +715,7 @@ final class ExportEngine {
         FileManager.default.createFile(atPath: log.path, contents: nil)
         process.standardError = try FileHandle(forWritingTo: log)
         process.standardOutput = FileHandle.nullDevice
+        process.trackExit()
         if spec.input == "fifo" {
             guard mkfifo(inArg, 0o600) == 0 else { throw LumoraError.unsupported("Couldn't create pipe for \(spec.binary)") }
             try process.run()
@@ -867,7 +878,7 @@ final class ExportEngine {
                     for f in frames { try f.write(to: handle) }
                     try handle.close()
                 } catch { process.terminate(); throw error }
-                await Task.detached { process.waitUntilExit() }.value
+                await process.exited()
                 guard process.terminationStatus == 0 else {
                     throw LumoraError.toolFailed(spec.binary, String((try? String(contentsOf: log, encoding: .utf8))?.suffix(1200) ?? ""))
                 }
@@ -1014,15 +1025,21 @@ final class ExportEngine {
             // If the encoder quit on its own, its log says why; that beats a broken-pipe or cancellation error.
             let exitedByItself = !process.isRunning
             if process.isRunning { process.terminate() }
-            try? await Task.detached { process.waitUntilExit() }.value
-            if exitedByItself, process.terminationStatus != 0 { throw Self.encoderFailure(spec.binary, log: log) }
+            await process.exited()
+            if exitedByItself { throw Self.encoderFailure(spec.binary, log: log) }   // quit before taking every frame
             throw error
         }
         _ = await grader.value
         let events = try await producer.value
         try handle.close()
-        try await Task.detached { process.waitUntilExit() }.value
+        await process.exited()
         guard process.terminationStatus == 0 else { throw Self.encoderFailure(spec.binary, log: log) }
+        // An encoder that "succeeds" without writing pictures (e.g. aomenc two-pass on a pipe) must not pass.
+        let written = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        guard written > 64 || range.isEmpty else {
+            throw LumoraError.toolFailed(spec.binary, "it exited normally but wrote no video (\(written) bytes). "
+                                         + String(((try? String(contentsOf: log, encoding: .utf8)) ?? "").suffix(600)))
+        }
         return events
     }
 
@@ -1065,7 +1082,7 @@ final class ExportEngine {
             let h = try FileHandle(forWritingTo: rawJoined)
             for s in segments { try h.write(contentsOf: try Data(contentsOf: s)) }
             try h.close()
-            args += ["-r", "\(ctx.rate.num)/\(ctx.rate.den)", "-i", rawJoined.path]
+            args += ["-i", try Self.wrapRawVideo(rawJoined, rate: ctx.rate, in: tmp).path]
         } else if segments.count > 1 {
             let list = tmp.appendingPathComponent("list.txt")
             try segments.map(FFConcat.line).joined(separator: "\n").write(to: list, atomically: true, encoding: .utf8)
@@ -1081,6 +1098,28 @@ final class ExportEngine {
         args += ["-c", "copy", out.path]
         try ToolLocator.run("ffmpeg", args)
         return out
+    }
+
+    /// Raw Annex-B HEVC / VVC (x265, VVenC) carries no timestamps. FFmpeg 9 refuses to mux such packets into
+    /// Matroska ("unknown timestamp") and into MP4 it guesses decode-order times and drops the leading frames.
+    /// MP4Box (or mkvmerge, HEVC only) rebuilds presentation times from the picture order counts.
+    static func wrapRawVideo(_ raw: URL, rate: (num: Int, den: Int), in dir: URL) throws -> URL {
+        let base = raw.deletingPathExtension().lastPathComponent + "-ts"
+        if ToolLocator.isAvailable("MP4Box") {
+            let out = dir.appendingPathComponent(base + ".mp4")
+            try? FileManager.default.removeItem(at: out)
+            // MP4Box parses ':' and '#' inside -add arguments, so pass names relative to the folder.
+            let name = raw.deletingLastPathComponent().standardizedFileURL == dir.standardizedFileURL ? raw.lastPathComponent : raw.path
+            try ToolLocator.run("MP4Box", ["-quiet", "-add", "\(name):fps=\(rate.num)/\(rate.den)", "-new", out.lastPathComponent], in: dir)
+            return out
+        }
+        if raw.pathExtension == "hevc", ToolLocator.isAvailable("mkvmerge") {
+            let out = dir.appendingPathComponent(base + ".mkv")
+            try? FileManager.default.removeItem(at: out)
+            try ToolLocator.run("mkvmerge", ["-q", "-o", out.path, "--default-duration", "0:\(rate.num)/\(rate.den)fps", raw.path])
+            return out
+        }
+        throw LumoraError.missingTool("MP4Box")
     }
 
     static func stitch(segments: [URL], audioFrom source: URL?, to out: URL, fileType: AVFileType) async throws {
@@ -1108,6 +1147,29 @@ final class ExportEngine {
             throw LumoraError.unsupported("export session")
         }
         try await session.export(to: out, as: fileType)
+    }
+
+    /// aomenc has no way to write HDR10 static metadata into the AV1 stream, so for Matroska output it goes into
+    /// the container's Colour element (MaxCLL/MaxFALL and the mastering display), which players read instead.
+    private func addContainerHDR10Metadata(_ ctx: Context, file: URL, tmp: URL) throws -> URL {
+        guard ctx.job.codec == .av1Pro, ctx.job.target.kind == .hdr10, let m = ctx.meta,
+              file.pathExtension.lowercased() == "mkv" else { return file }
+        guard ToolLocator.isAvailable("mkvmerge") else {
+            Log.warning(.encode, "libaom AV1 can't carry HDR10 MaxCLL/mastering metadata itself; install mkvmerge (mkvtoolnix) to add it to the .mkv")
+            return file
+        }
+        let p = HDRMetadata.p3
+        func xy(_ v: (Int, Int)) -> String { String(format: "%.5f,%.5f", Double(v.0) / 50000, Double(v.1) / 50000) }
+        let out = tmp.appendingPathComponent("hdr10-static.mkv")
+        try ToolLocator.run("mkvmerge", ["-q", "-o", out.path,
+                                         "--max-content-light", "0:\(Int(m.maxCLL.rounded()))",
+                                         "--max-frame-light", "0:\(Int(m.maxFALL.rounded()))",
+                                         "--max-luminance", "0:\(Int(m.peakNits))",
+                                         "--min-luminance", "0:\(m.minNits)",
+                                         "--chromaticity-coordinates", "0:\(xy(p.r)),\(xy(p.g)),\(xy(p.b))",
+                                         "--white-colour-coordinates", "0:\(xy(p.wp))",
+                                         file.path])
+        return out
     }
 
     // MARK: - HDR10+ / Dolby Vision 8.1 injection (HEVC)

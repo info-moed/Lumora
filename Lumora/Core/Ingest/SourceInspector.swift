@@ -66,7 +66,10 @@ enum SourceInspector {
         }
         let repeated = numbers(after: "Repeated Fields")          // neither, top, bottom
         let multi = numbers(after: "Multi frame detection")       // tff, bff, progressive, undetermined
-        if repeated.count >= 3 {
+        // 3:2 pulldown only exists at 29.97/30 frames per second; a 24/25 fps file is never telecined, and
+        // idet's repeated-field count on such a file is noise (it would wrongly cut the rate to 4/5).
+        let telecineRate = abs(d.fps - 30000.0 / 1001) < 0.05 || abs(d.fps - 30) < 0.05
+        if repeated.count >= 3, telecineRate {
             let total = max(1, repeated.suffix(3).reduce(0, +))
             let rep = repeated.suffix(2).reduce(0, +)
             if Double(rep) / Double(total) > 0.12 { return .inverseTelecine }

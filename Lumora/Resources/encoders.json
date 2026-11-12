@@ -71,6 +71,7 @@
       "-o",
       "{out}",
       "--cpu-used={preset}",
+      "--passes=1",
       "--end-usage=q",
       "--cq-level={quality}",
       "--bit-depth={bits}",
@@ -91,7 +92,7 @@
       },
       "hlg": {
         "cp": "bt2020",
-        "tc": "arib-std-b67",
+        "tc": "hlg",
         "mc": "bt2020ncl"
       },
       "sdr": {
@@ -185,8 +186,8 @@
   },
   "vvenc": {
     "binary": "vvencapp",
-    "input": "fifo",
-    "inputArg": "{fifo}.y4m",
+    "input": "stdin",
+    "inputArg": "-",
     "ext": "266",
     "preset": "medium",
     "qualityBest": 20,
@@ -194,36 +195,44 @@
     "args": [
       "-i",
       "{in}",
+      "--y4m",
       "--preset",
       "{preset}",
       "-q",
       "{quality}",
       "--threads",
       "{threads}",
+      "--sdr",
+      "{vvenc_sdr}",
+      "--hdr",
+      "{vvenc_hdr}",
+      "--additional",
+      "{vvenc_additional}",
       "-o",
       "{out}"
     ],
-    "hdrArgs": [
-      "--hdr",
-      "{vvenc_hdr}"
-    ],
+    "hdrArgs": [],
     "colorNames": {
       "pq": {
         "cp": "",
         "tc": "",
         "mc": "",
+        "vvenc_sdr": "off",
         "vvenc_hdr": "pq_2020"
       },
       "hlg": {
         "cp": "",
         "tc": "",
         "mc": "",
-        "vvenc_hdr": "hlg_2020"
+        "vvenc_sdr": "off",
+        "vvenc_hdr": "hlg_2020",
+        "vvenc_additional": "TransferCharacteristics=18"
       },
       "sdr": {
         "cp": "",
         "tc": "",
         "mc": "",
+        "vvenc_sdr": "sdr_709",
         "vvenc_hdr": "off"
       }
     },
@@ -266,7 +275,7 @@
       },
       "hlg": {
         "cp": "bt2020",
-        "tc": "arib-std-b67",
+        "tc": "hlg",
         "mc": "bt2020ncl"
       },
       "sdr": {
