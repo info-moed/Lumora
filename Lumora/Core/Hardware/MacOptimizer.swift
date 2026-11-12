@@ -288,7 +288,7 @@ final class MacOptimizer {
             try frame.write(to: handle)
         }
         try handle.close()
-        await Task.detached { proc.waitUntilExit() }.value
+        await proc.waitForExit()
     }
 
     // MARK: 5. Memory and pipeline depth from real RAM.

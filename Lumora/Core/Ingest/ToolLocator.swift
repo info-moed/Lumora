@@ -87,8 +87,19 @@ extension Process {
         if let waiter = objc_getAssociatedObject(self, processExitKey) as? ProcessExitWaiter {
             await waiter.wait()
         } else {
-            await Task.detached { self.waitUntilExit() }.value
+            // Not tracked: poll. `isRunning` is reliable on any thread, unlike `waitUntilExit()`.
+            while isRunning {
+                do { try await Task.sleep(nanoseconds: 2_000_000) } catch { usleep(2_000) }   // still wait when cancelled
+            }
         }
+    }
+
+    /// Same as `exited()` (kept for call sites written against this name).
+    func waitForExit() async { await exited() }
+
+    /// Blocking form, for code that is already off the main thread.
+    func blockUntilExit() {
+        while isRunning { usleep(1_000) }
     }
 
     /// `trackExit()` + `run()` in one call, for processes awaited with `exited()`.

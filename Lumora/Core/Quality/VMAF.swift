@@ -45,6 +45,8 @@ enum VMAFRunner {
     }()
     static var available: Bool { backend != .none }
 
+    static var sameCodeValues: String { untagged }   // the same fix, found twice; one filter for both names
+
     /// - writeReference: writes the reference as a 4:2:0 10-bit Y4M stream (header + frames) to the handle.
     /// - using: the backend to run (defaults to the detected one; tests pass `.ffmpegLibvmaf` to exercise the fallback).
     static func score(writeReference: @escaping (FileHandle) throws -> Void, distorted: URL, frameRate: (Int, Int),

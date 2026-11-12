@@ -1091,10 +1091,9 @@ final class AppModel {
                 if p.id == selectedPresetID { p.params = params }
                 let ext = delivery == .dolbyVision81 || delivery == .hdr10Plus ? "mkv"
                         : (codec.defaultContainer == "mov" && d.kind != .avfoundation ? "mkv" : codec.defaultContainer)
-                let name = "\(d.url.deletingPathExtension().lastPathComponent) – \(p.look.displayName) – \(delivery.displayName)"
-                    .replacingOccurrences(of: "/", with: "-")
                 var job = ExportJob(descriptor: d, preset: p, analysis: a, delivery: delivery, codec: codec,
-                                    outputURL: folder.appendingPathComponent(name).appendingPathExtension(ext))
+                                    outputURL: folder.appendingPathComponent(Self.exportFileName(source: d.url, look: p.look,
+                                                                                                 delivery: delivery, ext: ext)))
                 job.peakNits = peakNits
                 job.bitDepth = bitDepth
                 job.chroma = chroma
@@ -1152,6 +1151,16 @@ final class AppModel {
                 }
             }
         }
+    }
+
+    /// "<source name> – <look> – <delivery>.<ext>", the file name an export is written under.
+    nonisolated static func exportFileName(source: URL, look: Look, delivery: DeliveryFormat, ext: String) -> String {
+        // The source name is shortened if needed so the whole name (look, delivery, ".original-fps.mov") still fits
+        // the 255-byte limit; a long emoji or accented source name is legal on disk but would not fit otherwise.
+        let base = Naming.truncated(source.deletingPathExtension().lastPathComponent, maxBytes: 140)
+        let name = "\(base) – \(look.displayName) – \(delivery.displayName)"
+            .replacingOccurrences(of: "/", with: "-")
+        return name + "." + ext
     }
 
     func exportLUT(size: Int) {
