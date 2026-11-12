@@ -81,12 +81,12 @@
     {
       "value": "faster",
       "speed": "fast",
-      "notes": "As veryfast with subme 2. Real-time-ish encodes on strong CPUs."
+      "notes": "As veryfast with subme 2. Real-time-ish encodes on strong CPUs. Lumora's fastest HEVC rung (measured about 1.6x medium's speed, 7% larger)."
     },
     {
       "value": "fast",
       "speed": "fast",
-      "notes": "3 refs; early skip off. Lumora's fastest HEVC 12-bit rung. The anime guide advises against fast for anime."
+      "notes": "3 refs; early skip off. Not on Lumora's ladder: on an M3 Max it was slower than medium (CPU time) and about 3% larger. The anime guide advises against fast for anime."
     },
     {
       "value": "medium",
@@ -175,7 +175,7 @@
       "hdr": false,
       "advanced": false,
       "recommendations": [],
-      "lumora": "EncodeRecipes.supportedFlags() runs `x265 --help` to learn which flags exist; that output omits about 50 flags that --fullhelp lists.",
+      "lumora": "Fallback only: EncodeRecipes.supportedFlags() asks x265 for --fullhelp first and reads --help only when that prints fewer than 20 flags (docs/encoding/tuning-x265.md).",
       "notes": "In 4.3, `--help` prints about 300 lines and `--fullhelp` about 384. Flags such as --y4m, --qcomp, --ipratio, --cbqpoffs, --zones and --scaling-list only show in --fullhelp."
     },
     {
@@ -194,7 +194,7 @@
       "hdr": false,
       "advanced": true,
       "recommendations": [],
-      "lumora": null,
+      "lumora": "EncodeRecipes.supportedFlags() runs `x265 --fullhelp` to learn which flags exist (230 flags on 4.3+1; --help lists 183). `--[no-]name` counts as both forms.",
       "notes": "The captured help file for this entry is identical to `x265 --fullhelp` from 4.3+1."
     },
     {
@@ -384,7 +384,7 @@
       "hdr": false,
       "advanced": false,
       "recommendations": [],
-      "lumora": "encoders.json x265.args: `--y4m` (stdin pipe). Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported.",
+      "lumora": "encoders.json x265.args: `--y4m` (stdin pipe). EncodeRecipes.supportedFlags() probes --fullhelp, which lists it.",
       "notes": ""
     },
     {
@@ -442,7 +442,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "Docs: valid 8-16, YUV only, defaults to the internal depth. Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Docs: valid 8-16, YUV only, defaults to the internal depth. Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--input-csp",
@@ -461,7 +461,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "The online docs also list 4 nv12 and 5 nv16; the 4.3 help shows only 0-3. Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "The online docs also list 4 nv12 and 5 nv16; the 4.3 help shows only 0-3. Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--dolby-vision-profile",
@@ -593,7 +593,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "Docs also accept 0/1/2. Give field size and field rate. Deinterlacing or IVTC before encoding is usually preferable for archival. Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Docs also accept 0/1/2. Give field size and field rate. Deinterlacing or IVTC before encoding is usually preferable for archival. Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--field",
@@ -633,7 +633,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "Only matters when input depth exceeds internal depth. CLI only. Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Only matters when input depth exceeds internal depth. CLI only. Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--copy-pic",
@@ -1062,7 +1062,7 @@
           "source": "https://kokomins.wordpress.com/2019/10/10/anime-encoding-guide-for-x265-and-why-to-never-use-flac/"
         }
       ],
-      "lumora": "encoders.json x265.tunes: grain -> `--tune grain`; anime -> `--tune animation`; screen and default add nothing. EncodeRecipes then appends --psy-rd 2.0 / --psy-rdoq and --aq-mode 3, which override what the tune set (explicit options win over tunes).",
+      "lumora": "Not used. encoders.json x265.tunes maps every content type to nothing; without a plan EncodeRecipes.x265Args appends the content type's base options instead, the same ones the planner always enables. --tune grain cost 37% XPSNR BD-rate and 51% CPU time against them, --tune animation 7% XPSNR (docs/encoding/tuning-x265.md).",
       "notes": "`animation` is not in the 4.3 help list but is accepted (verified: it produces psy-rd 0.40, aq-strength 0.4, deblock 1:1, bframes 6 at medium). An unknown tune aborts with 'preset or tune unrecognized'. The library also contains a 'vmaf' tune name, which changed nothing in this build."
     },
     {
@@ -1224,7 +1224,7 @@
           "source": "https://silentaperture.gitlab.io/mdbook-guide/encoding/x265.html"
         }
       ],
-      "lumora": "EncodeRecipes hevc12 option 'rd6': `--rd 6`, offered for heavy grain and old anime (speedCost 1.25).",
+      "lumora": "EncodeRecipes hevc12 option 'rd6': `--rd 6`, offered for low light (4% smaller) and old anime (7% smaller) at a measured speed cost of 1.78; it saved nothing on heavy grain (docs/encoding/tuning-x265.md).",
       "notes": "Docs: 4 behaves like 3 and 6 like 5. slower/veryslow/placebo already use 6, so Lumora's rd6 option is a no-op on those rungs."
     },
     {
@@ -1270,7 +1270,7 @@
           "source": "https://x265.readthedocs.io/en/master/cli.html"
         }
       ],
-      "lumora": "EncodeRecipes hevc12 option 'psy': `--psy-rd 2.0` (with --psy-rdoq). This overrides --tune grain's 4.0 and --tune animation's 0.4.",
+      "lumora": "EncodeRecipes hevc12 option 'psy' (EncodeRecipes.x265Psy): `--psy-rd 1.0` for live action, CG, fast motion and screen content (measured -2.2% VMAF, -1.9% XPSNR BD-rate with psy-rdoq 1.0), 2.0 for anime and the grainy kinds.",
       "notes": "Only has effect at --rd 3 and above. For 4:4:4 with psy-rd on, chroma QP offsets default to 6 (docs). Sources disagree on the anime value: tune animation uses 0.4, the anime guide 1.0, Lumora 2.0."
     },
     {
@@ -1338,7 +1338,7 @@
           "source": "https://x265.readthedocs.io/en/master/presets.html"
         }
       ],
-      "lumora": "EncodeRecipes hevc12 option 'psy': `--psy-rdoq 1.5`, or 4.0 for grainy kinds. It only works where rdoq-level is 1 or 2, i.e. from preset slow up; on Lumora's fast and medium rungs (rdoq-level 0) it does nothing unless --rdoq-level is also set.",
+      "lumora": "EncodeRecipes hevc12 option 'psy' (EncodeRecipes.x265Psy): 1.0 for live action, CG, fast motion and screen content, 1.5 for anime, 4.0 for heavy grain, low light and old anime (keeps the grain). EncodeRecipes.x265Args drops it on presets up to medium (rdoq-level 0) unless --rdoq-level 1 or 2 is also set; the streams were bit-identical with and without it there.",
       "notes": "Only effective when --rdoq-level is 1 or 2. Docs warn high values can double bitrate and cause ringing. slow/slower/veryslow set 1.0."
     },
     {
@@ -1479,7 +1479,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "Only with --rskip 2. Help lists no value placeholder. Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Only with --rskip 2. Help lists no value placeholder. Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--tskip-fast",
@@ -1500,7 +1500,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "Needs --tskip. Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Needs --tskip. Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--splitrd-skip",
@@ -1521,7 +1521,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--nr-intra",
@@ -1540,7 +1540,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "Output then depends on frame-thread count (each count is still deterministic). Cheap denoising, but a proper pre-filter usually looks better. Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Output then depends on frame-thread count (each count is still deterministic). Cheap denoising, but a proper pre-filter usually looks better. Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--nr-inter",
@@ -1559,7 +1559,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "Same determinism caveat as --nr-intra. Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Same determinism caveat as --nr-intra. Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--ctu-info",
@@ -1683,8 +1683,8 @@
       "hdr": false,
       "advanced": true,
       "recommendations": [],
-      "lumora": null,
-      "notes": "Needs --rd 3+. placebo enables it. Useful for screen content. Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "lumora": "EncodeRecipes hevc12 option 'tskip': `--tskip` for screen content only (probeFlag --tskip, found through --fullhelp). Measured -4.7% VMAF, -11.9% XPSNR BD-rate on the screen clip at no measurable time cost (docs/encoding/tuning-x265.md).",
+      "notes": "Needs --rd 3+. placebo enables it. Useful for screen content. Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--max-merge",
@@ -1741,7 +1741,7 @@
           "source": "https://kokomins.wordpress.com/2019/10/10/anime-encoding-guide-for-x265-and-why-to-never-use-flac/"
         }
       ],
-      "lumora": "EncodeRecipes hevc12 option 'ref': `--ref 6` (speedCost 1.10).",
+      "lumora": "EncodeRecipes hevc12 option 'ref': `--ref 6`, priced at its measured cost (1.12) and saving (0), so the planner leaves it out.",
       "notes": "HEVC caps the decoded picture buffer; with B-pyramid (default) about 6 L0 refs is the practical maximum. Exceeding the limit aborts unless --allow-non-conformance. Levels can lower it automatically."
     },
     {
@@ -1938,7 +1938,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--hme",
@@ -1959,7 +1959,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--hme-search",
@@ -1978,7 +1978,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "Needs --hme. Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Needs --hme. Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--hme-range",
@@ -1997,7 +1997,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "Needs --hme. Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Needs --hme. Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--strong-intra-smoothing",
@@ -2036,7 +2036,7 @@
           "source": "https://kokomins.wordpress.com/2019/10/10/anime-encoding-guide-for-x265-and-why-to-never-use-flac/"
         }
       ],
-      "lumora": "EncodeRecipes hevc12 option 'nosis': `--no-strong-intra-smoothing` (visual-only, offered for every content kind).",
+      "lumora": "EncodeRecipes hevc12 option 'nosis': `--no-strong-intra-smoothing` (visual-only, offered for every content kind). Turning it back on changed nothing measurable on live action.",
       "notes": "Sources split by source sharpness rather than anime vs. live action."
     },
     {
@@ -2291,7 +2291,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "Docs suggest 5 to 15. Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Docs suggest 5 to 15. Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--hist-scenecut",
@@ -2369,7 +2369,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "Docs: only works with --pass 2. Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Docs: only works with --pass 2. Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--masking-strength",
@@ -2388,7 +2388,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "Docs: windows 0-2000 ms, offsets 0-20; example `--scenecut-aware-qp 1 --masking-strength 1000,8,12`. Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Docs: windows 0-2000 ms, offsets 0-20; example `--scenecut-aware-qp 1 --masking-strength 1000,8,12`. Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--scenecut-qp-config",
@@ -2407,7 +2407,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "Works only with --pass 2. CLI only. Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Works only with --pass 2. CLI only. Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--radl",
@@ -2470,7 +2470,7 @@
           "source": "https://silentaperture.gitlab.io/mdbook-guide/encoding/x265.html"
         }
       ],
-      "lumora": "EncodeRecipes hevc12 option 'rclook': `--rc-lookahead 60` (speedCost 1.03).",
+      "lumora": "EncodeRecipes hevc12 option 'rclook': `--rc-lookahead 60`, priced at its measured cost (1.10); saving 2% on anime and 0 elsewhere, so the planner offers it for anime only.",
       "notes": "Values beyond --keyint bring no benefit (docs). placebo uses 60."
     },
     {
@@ -2490,7 +2490,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "Capped at 4 for 720p and 6 for 1080p and disabled below 720p. Presets: 8 up to medium, 4 slow, 1 slower and up. The docs contradict themselves on slower. Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Capped at 4 for 720p and 6 for 1080p and disabled below 720p. Presets: 8 up to medium, 4 slow, 1 slower and up. The docs contradict themselves on slower. Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--lookahead-threads",
@@ -2548,7 +2548,7 @@
           "source": "https://codecs.wiki/docs/encoders/x265"
         }
       ],
-      "lumora": "EncodeRecipes hevc12 option 'bframes': `--bframes 16` for anime kinds, 8 otherwise.",
+      "lumora": "EncodeRecipes hevc12 option 'bframes': `--bframes 16` for anime kinds, 8 otherwise, priced at the measured cost (1.54 / 1.19) and saving (0), so the planner leaves it out; x265's preset value applies.",
       "notes": "Sources disagree on 16 for anime: one guide sets 16, the anime guide says it isn't worth it, and the wiki warns it can cost detail at low CRF. slower and up use 8."
     },
     {
@@ -2575,7 +2575,7 @@
         }
       ],
       "lumora": null,
-      "notes": "Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--b-adapt",
@@ -2641,7 +2641,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "QPs are clamped by --qpmin/--qpmax. K means IDR with closed GOP, otherwise a non-IDR I. Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "QPs are clamped by --qpmin/--qpmax. K means IDR with closed GOP, otherwise a non-IDR I. Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--force-flush",
@@ -2660,7 +2660,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "1 may change frame-type decisions. Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "1 may change frame-type decisions. Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--hrd-concat",
@@ -2728,7 +2728,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "QP 0 is not lossless; use --lossless for that. Help text misspells --pbratio as 'pbration'. Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "QP 0 is not lossless; use --lossless for that. Help text misspells --pbratio as 'pbration'. Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--crf",
@@ -2800,7 +2800,7 @@
         }
       ],
       "lumora": null,
-      "notes": "Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--crf-max",
@@ -2819,7 +2819,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "Help and docs warn it can cause VBV underflows. Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Help and docs warn it can cause VBV underflows. Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--crf-min",
@@ -2838,7 +2838,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--vbv-maxrate",
@@ -3478,7 +3478,7 @@
           "source": "https://x265.readthedocs.io/en/master/presets.html"
         }
       ],
-      "lumora": "EncodeRecipes hevc12 option 'aq3': `--aq-mode 3` for every kind except screen content. It overrides --tune grain's aq-mode 0 for grainy kinds.",
+      "lumora": "EncodeRecipes hevc12 option 'aq3': `--aq-mode 3` for every kind except screen content (which keeps x265's mode 2; modes 3 and 1 cost 13-29% there). Modes 2 and 4 were measured on live action and grain and not adopted (VMAF and XPSNR disagree).",
       "notes": "Sources disagree: 3/4 (guides) vs default 2 (wiki). The docs' case for mode 3 is 8-bit or low-bitrate 10-bit; at 12-bit and low CRF its benefit is less clear (not measured by any source read)."
     },
     {
@@ -3544,7 +3544,7 @@
           "source": "https://codecs.wiki/docs/encoders/x265"
         }
       ],
-      "lumora": null,
+      "lumora": "EncodeRecipes hevc12 option 'aq3' (EncodeRecipes.x265AQStrength): `--aq-strength 0.8` for anime (measured -5.0% VMAF, -1.8% XPSNR BD-rate); x265's 1.0 elsewhere.",
       "notes": "--tune animation sets 0.4; --tune psnr sets 0."
     },
     {
@@ -3606,7 +3606,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "Added in 3.6, improved in 4.2. Forces closed GOP and min-keyint = keyint (verified messages). Experimental. Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Added in 3.6, improved in 4.2. Forces closed GOP and min-keyint = keyint (verified messages). Experimental. Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--qg-size",
@@ -3795,7 +3795,7 @@
         }
       ],
       "lumora": null,
-      "notes": "Docs say it is rarely set by hand. Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Docs say it is rarely set by hand. Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--pbratio",
@@ -3821,7 +3821,7 @@
         }
       ],
       "lumora": null,
-      "notes": "Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--qcomp",
@@ -3853,7 +3853,7 @@
         }
       ],
       "lumora": null,
-      "notes": "Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--qpstep",
@@ -3879,7 +3879,7 @@
         }
       ],
       "lumora": null,
-      "notes": "Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--qpmin",
@@ -3898,7 +3898,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--qpmax",
@@ -3917,7 +3917,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "69 accommodates high bit depths (QP range grows by 6 per extra bit). Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "69 accommodates high bit depths (QP range grows by 6 per extra bit). Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--const-vbv",
@@ -3964,7 +3964,7 @@
         }
       ],
       "lumora": null,
-      "notes": "For 4:4:4 with psy-rd on, defaults to 6 if not set (docs). Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "For 4:4:4 with psy-rd on, defaults to 6 if not set (docs). Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--crqpoffs",
@@ -3990,7 +3990,7 @@
         }
       ],
       "lumora": null,
-      "notes": "Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--scaling-list",
@@ -4009,7 +4009,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "A parse failure aborts the encode (docs). Not commonly used for high-fidelity work; no source read gave a content recommendation. Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "A parse failure aborts the encode (docs). Not commonly used for high-fidelity work; no source read gave a content recommendation. Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--zones",
@@ -4028,7 +4028,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "Forces closed GOP (verified message). Later zones override earlier ones. Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Forces closed GOP (verified message). Later zones override earlier ones. Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--zonefile",
@@ -4085,7 +4085,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "Experimental; process-global (docs). Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Experimental; process-global (docs). Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--max-ausize-factor",
@@ -4155,7 +4155,7 @@
           "source": "https://silentaperture.gitlab.io/mdbook-guide/encoding/x265.html"
         }
       ],
-      "lumora": "EncodeRecipes hevc12 option 'deblock': `--deblock -1:-1` for anime kinds, `-2:-2` otherwise (visual-only).",
+      "lumora": "EncodeRecipes hevc12 option 'deblock': `--deblock -1:-1` for anime kinds, `-2:-2` otherwise (visual-only). -1:-1 and 0:0 were measured on live action and 0:0 on anime and screen; neither saved bits.",
       "notes": "In ffmpeg -x265-params write it as deblock=-1,-1 (colon is the separator there). --tune animation sets 1:1; fastdecode disables it."
     },
     {
@@ -4201,7 +4201,7 @@
           "source": "https://x265.readthedocs.io/en/master/presets.html"
         }
       ],
-      "lumora": "EncodeRecipes hevc12 option 'sao': `--no-sao` for non-anime kinds (visual-only).",
+      "lumora": "EncodeRecipes hevc12 option 'sao': `--no-sao` for non-anime kinds (visual-only). Turning SAO on cost 8% VMAF on live action and 45% on grain, and added banding on screen content.",
       "notes": "Lumora's qualityBest 12 to 30 range spans both sides of the CRF thresholds the sources use. ultrafast/superfast have it off."
     },
     {
@@ -4223,7 +4223,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--limit-sao",
@@ -4256,7 +4256,7 @@
           "source": "https://codecs.wiki/docs/encoders/x265"
         }
       ],
-      "lumora": "EncodeRecipes hevc12 option 'sao': `--limit-sao` for anime kinds (visual-only).",
+      "lumora": "EncodeRecipes hevc12 option 'sao': `--limit-sao` for anime kinds (visual-only); full SAO and SAO off were both measured on the anime clip and not adopted.",
       "notes": ""
     },
     {
@@ -4656,7 +4656,7 @@
           "source": "https://x265.readthedocs.io/en/master/cli.html"
         }
       ],
-      "lumora": "encoders.json x265.hdrArgs: `--hdr10-opt`. For the 12-bit HEVC path this does nothing: this build prints an error and disables hdr10-opt unless the encode is 10-bit 4:2:0 (verified with -D 12).",
+      "lumora": "encoders.json x265.hdrArgs: `--hdr10-opt`; EncodeRecipes.x265Args removes it unless the encode is 10-bit 4:2:0, because x265 disables it with an error otherwise (and still exits 0).",
       "notes": "Verified on 4.3+1: with -D 12 x265 logs 'Recommended Settings for HDR10-opt ... the input video should be 10 bit 4:2:0. Disabling hdr10-opt.' and continues (exit 0)."
     },
     {
@@ -4887,7 +4887,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "Useful for verifying archives decode bit-exactly. Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Useful for verifying archives decode bit-exactly. Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--atc-sei",
@@ -5098,7 +5098,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "CLI only. Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "CLI only. Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--recon-depth",
@@ -5117,7 +5117,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "Docs: currently can't differ from internal depth. Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Docs: currently can't differ from internal depth. Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--recon-y4m-exec",
@@ -5136,7 +5136,7 @@
       "advanced": true,
       "recommendations": [],
       "lumora": null,
-      "notes": "Lumora's EncodeRecipes.supportedFlags() probes `x265 --help`, which is the short help; this flag only appears in `--fullhelp`, so a probeFlag on it would wrongly report it as unsupported."
+      "notes": "Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
       "flag": "--lowpass-dct",

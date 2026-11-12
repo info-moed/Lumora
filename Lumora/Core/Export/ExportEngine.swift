@@ -264,7 +264,8 @@ final class ExportEngine {
         try list.joined(separator: "\n").write(to: listURL, atomically: true, encoding: .utf8)
         let repaired = tmp.appendingPathComponent("repaired." + original.pathExtension)
         try ToolLocator.run("ffmpeg", ["-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", listURL.path, "-i", original.path,
-                                       "-map", "0:v:0", "-map", "1", "-map", "-1:v", "-c", "copy", repaired.path])
+                                       "-map", "0:v:0", "-map", "1", "-map", "-1:v", "-c", "copy"]
+                            + Packager.quickTimeVideoArgs(video: original, outputExtension: repaired.pathExtension) + [repaired.path])
         let backup = original.deletingPathExtension().appendingPathExtension("before-repair." + original.pathExtension)
         try? FileManager.default.removeItem(at: backup)
         try FileManager.default.moveItem(at: original, to: backup)
@@ -743,7 +744,12 @@ final class ExportEngine {
         let tune = planned == nil ? ContentTuning.preset(job.contentKind).encoderTune : "default"
         let process = Process()
         process.executableURL = exe
-        process.arguments = spec.render(values, hdr: job.target.kind == .hdr10, tune: tune) + (planned ?? [])
+        var arguments = spec.render(values, hdr: job.target.kind == .hdr10, tune: tune) + (planned ?? [])
+        if spec.binary == EncodeRecipes.x265Binary {
+            arguments = EncodeRecipes.x265Args(arguments, bits: job.bitDepth, chroma: job.chroma, preset: values["preset"] ?? spec.preset,
+                                               kind: job.contentKind, planned: planned != nil)
+        }
+        process.arguments = arguments
         Log.debug(.tools, "\(spec.binary) \(process.arguments!.joined(separator: " "))")
         let log = tmp.appendingPathComponent("enc-\(tag).log")
         FileManager.default.createFile(atPath: log.path, contents: nil)
@@ -1157,13 +1163,15 @@ final class ExportEngine {
 
         // Everything else: FFmpeg. Raw Annex-B segments (HEVC/VVC) are concatenated first.
         var args = ["-y", "-v", "error"]
+        var video = segments[0]
         if ["hevc", "266"].contains(ext) {
             let rawJoined = tmp.appendingPathComponent("joined_raw.\(ext)")
             FileManager.default.createFile(atPath: rawJoined.path, contents: nil)
             let h = try FileHandle(forWritingTo: rawJoined)
             for s in segments { try h.write(contentsOf: try Data(contentsOf: s)) }
             try h.close()
-            args += ["-i", try Self.wrapRawVideo(rawJoined, rate: ctx.rate, in: tmp).path]
+            video = try Self.wrapRawVideo(rawJoined, rate: ctx.rate, in: tmp)
+            args += ["-i", video.path]
         } else if segments.count > 1 {
             let list = tmp.appendingPathComponent("list.txt")
             try segments.map(FFConcat.line).joined(separator: "\n").write(to: list, atomically: true, encoding: .utf8)
@@ -1176,7 +1184,7 @@ final class ExportEngine {
         } else {
             args += ["-map", "0:v:0"]
         }
-        args += ["-c", "copy"]
+        args += ["-c", "copy"] + Packager.quickTimeVideoArgs(video: video, outputExtension: out.pathExtension)
         if carrySource, out.pathExtension.lowercased() == "mkv" {
             // MP4 text subtitles (tx3g) have no Matroska mapping; SubRip carries the same text.
             for (i, t) in SourceStreams.probe(job.descriptor.url).subtitles.enumerated() where t.codec == "mov_text" {
@@ -1354,7 +1362,8 @@ final class ExportEngine {
             return mkv
         } else {
             try ToolLocator.run("ffmpeg", ["-y", "-v", "error", "-r", fps, "-i", injected.path, "-i", file.path,
-                                           "-map", "0:v:0", "-map", "1", "-map", "-1:v", "-c", "copy", out.path])
+                                           "-map", "0:v:0", "-map", "1", "-map", "-1:v", "-c", "copy"]
+                                + Packager.quickTimeVideoArgs(video: injected, outputExtension: ext) + [out.path])
         }
         return out
     }

@@ -174,14 +174,8 @@
     },
     "tunes": {
       "default": [],
-      "grain": [
-        "--tune",
-        "grain"
-      ],
-      "anime": [
-        "--tune",
-        "animation"
-      ],
+      "grain": [],
+      "anime": [],
       "screen": []
     }
   },

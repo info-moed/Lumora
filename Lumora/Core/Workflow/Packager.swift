@@ -62,6 +62,7 @@ enum Packager {
             outAudio += 1
         }
         let quickTime = ext == "mp4" || ext == "mov"
+        if quickTime { codecArgs += quickTimeVideoArgs(video: exported, outputExtension: ext) }
         let subs = keptSubs.filter { !(ext != "mkv" && $0.isBitmapSubtitle) }
         for t in subs { args += ["-map", "1:\(t.index)"] }
         if quickTime && !subs.isEmpty { codecArgs += ["-c:s", "mov_text"] }
@@ -179,6 +180,26 @@ enum Packager {
         guard let data = try? ToolLocator.run("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name",
                                                           "-of", "default=nw=1:nk=1", url.path]) else { return nil }
         return String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// FFmpeg flags for stream-copying HEVC into MP4 or QuickTime. FFmpeg tags HEVC it copies from Matroska or a raw
+    /// stream as `hev1`, which Apple devices refuse; Apple asks for `hvc1` (HLS authoring spec). And unless
+    /// `-strict unofficial` is given, the MP4 muxer drops the Dolby Vision configuration record (`dvcC`), so the file
+    /// silently plays as plain HDR10 (FFmpeg movenc). `dvh1`/`dvhe` (Dolby Vision without a compatible base layer)
+    /// keep their Dolby Vision tag.
+    static func quickTimeVideoArgs(video: URL, outputExtension: String) -> [String] {
+        guard ["mp4", "mov", "m4v"].contains(outputExtension.lowercased()),
+              let data = try? ToolLocator.run("ffprobe", ["-v", "error", "-select_streams", "v:0",
+                                                          "-show_entries", "stream=codec_name,codec_tag_string",
+                                                          "-of", "default=nw=1", video.path]) else { return [] }
+        var fields: [String: String] = [:]
+        for line in String(decoding: data, as: UTF8.self).split(separator: "\n") {
+            let kv = line.split(separator: "=", maxSplits: 1).map(String.init)
+            if kv.count == 2 { fields[kv[0]] = kv[1].trimmingCharacters(in: .whitespaces) }
+        }
+        guard fields["codec_name"] == "hevc" else { return [] }
+        let tag = ["dvh1", "dvhe"].contains(fields["codec_tag_string"] ?? "") ? "dvh1" : "hvc1"
+        return ["-tag:v", tag, "-strict", "unofficial"]
     }
 }
 
