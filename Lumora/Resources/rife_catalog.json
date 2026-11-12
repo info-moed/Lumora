@@ -1,0 +1,119 @@
+[
+  {
+    "id": "4.26",
+    "released": "2024-09-21",
+    "variant": "standard",
+    "pad": 64,
+    "url": "https://huggingface.co/Bash2X/RIFE-Models/resolve/main/RIFE_v4.26.zip",
+    "notes": "Newest official release. Needs 64-pixel padding. Some testers see extra artifacts in certain scenes compared with 4.25; others find it better. Benchmark on your footage.",
+    "sourcePage": "https://github.com/hzwer/Practical-RIFE#trained-model"
+  },
+  {
+    "id": "4.26.heavy",
+    "released": "2024-09-21",
+    "variant": "heavy",
+    "pad": 64,
+    "url": "https://huggingface.co/Bash2X/RIFE-Models/resolve/main/RIFE_v4.26.heavy.zip",
+    "notes": "Larger variant of 4.26. Community results are mixed; slowest of the 4.2x family.",
+    "sourcePage": "https://github.com/hzwer/Practical-RIFE#trained-model"
+  },
+  {
+    "id": "4.25",
+    "released": "2024-09-19",
+    "variant": "standard",
+    "pad": 32,
+    "url": "https://huggingface.co/Bash2X/RIFE-Models/resolve/main/RIFE_v4.25.zip",
+    "notes": "The official README's recommended default for most scenes. More flow blocks; noticeably better on anime than earlier versions.",
+    "sourcePage": "https://github.com/hzwer/Practical-RIFE#trained-model"
+  },
+  {
+    "id": "4.25.lite",
+    "released": "2024-10-20",
+    "variant": "lite",
+    "pad": 32,
+    "url": "https://huggingface.co/Bash2X/RIFE-Models/resolve/main/RIFE_v4.25.lite.zip",
+    "notes": "Lower-cost version of 4.25. Good for previews, scans and long batches.",
+    "sourcePage": "https://github.com/hzwer/Practical-RIFE#trained-model"
+  },
+  {
+    "id": "4.22",
+    "released": "2024-08-08",
+    "variant": "standard",
+    "pad": 32,
+    "url": null,
+    "notes": "Earlier 4.2x generation; often clean on softer, older animation.",
+    "sourcePage": "https://github.com/hzwer/Practical-RIFE#trained-model"
+  },
+  {
+    "id": "4.22.lite",
+    "released": "2024-08-08",
+    "variant": "lite",
+    "pad": 32,
+    "url": null,
+    "notes": "Fast 4.22 variant.",
+    "sourcePage": "https://github.com/hzwer/Practical-RIFE#trained-model"
+  },
+  {
+    "id": "4.21",
+    "released": "2024-08-04",
+    "variant": "standard",
+    "pad": 32,
+    "url": null,
+    "notes": "Predecessor of 4.22.",
+    "sourcePage": "https://github.com/hzwer/Practical-RIFE#trained-model"
+  },
+  {
+    "id": "4.18",
+    "released": "2024",
+    "variant": "standard",
+    "pad": 32,
+    "url": null,
+    "notes": "Community favourite for live action; heavier to run.",
+    "sourcePage": "https://github.com/hzwer/Practical-RIFE#trained-model"
+  },
+  {
+    "id": "4.17",
+    "released": "2024-05-24",
+    "variant": "standard",
+    "pad": 32,
+    "url": null,
+    "notes": "Adds a FILM-style gram loss; strong all-round.",
+    "sourcePage": "https://github.com/hzwer/Practical-RIFE#trained-model"
+  },
+  {
+    "id": "4.17.lite",
+    "released": "2024-05-24",
+    "variant": "lite",
+    "pad": 32,
+    "url": null,
+    "notes": "Fast 4.17 variant.",
+    "sourcePage": "https://github.com/hzwer/Practical-RIFE#trained-model"
+  },
+  {
+    "id": "4.15",
+    "released": "2024",
+    "variant": "standard",
+    "pad": 32,
+    "url": null,
+    "notes": "Well regarded for live action.",
+    "sourcePage": "https://github.com/hzwer/Practical-RIFE#trained-model"
+  },
+  {
+    "id": "4.9",
+    "released": "2023",
+    "variant": "standard",
+    "pad": 32,
+    "url": null,
+    "notes": "Community 'all-rounder' for lighter hardware.",
+    "sourcePage": "https://github.com/hzwer/Practical-RIFE#trained-model"
+  },
+  {
+    "id": "4.6",
+    "released": "2023",
+    "variant": "standard",
+    "pad": 32,
+    "url": null,
+    "notes": "Long-time anime community favourite; very fast. Older and less accurate on complex live-action motion.",
+    "sourcePage": "https://github.com/hzwer/Practical-RIFE#trained-model"
+  }
+]

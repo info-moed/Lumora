@@ -1,0 +1,26 @@
+[
+  {
+    "id": "realesrgan-x4plus",
+    "displayName": "Real-ESRGAN x4plus (live action)",
+    "file": "RealESRGAN_x4plus.mlpackage",
+    "input": "input", "output": "output", "scale": 4, "tile": 256,
+    "license": "BSD-3-Clause (xinntao/Real-ESRGAN)",
+    "notes": "Convert with scripts/convert_realesrgan_coreml.py --model x4plus"
+  },
+  {
+    "id": "realesrgan-x2plus",
+    "displayName": "Real-ESRGAN x2plus (1080p → 4K)",
+    "file": "RealESRGAN_x2plus.mlpackage",
+    "input": "input", "output": "output", "scale": 2, "tile": 384,
+    "license": "BSD-3-Clause (xinntao/Real-ESRGAN)",
+    "notes": "Convert with scripts/convert_realesrgan_coreml.py --model x2plus"
+  },
+  {
+    "id": "realesr-animevideov3",
+    "displayName": "Real-ESRGAN AnimeVideo v3 (animation, fast)",
+    "file": "RealESR_AnimeVideoV3.mlpackage",
+    "input": "input", "output": "output", "scale": 4, "tile": 384,
+    "license": "BSD-3-Clause (xinntao/Real-ESRGAN)",
+    "notes": "Convert with scripts/convert_realesrgan_coreml.py --model animevideov3"
+  }
+]

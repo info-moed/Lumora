@@ -1,0 +1,285 @@
+{
+  "_comment": "Software encoder command lines. Placeholders in {braces} are filled by CLIEncoder. Verify flags against each tool's --help for the version you install; tools change options between releases. 'tunes' are appended per content type (Real life / Heavy grain / Anime / Screen).",
+  "svtav1": {
+    "binary": "SvtAv1EncApp",
+    "input": "stdin",
+    "inputArg": "stdin",
+    "ext": "ivf",
+    "preset": "4",
+    "qualityBest": 16,
+    "qualityWorst": 40,
+    "args": [
+      "-i",
+      "{in}",
+      "-b",
+      "{out}",
+      "--preset",
+      "{preset}",
+      "--crf",
+      "{quality}",
+      "--input-depth",
+      "{bits}",
+      "--color-primaries",
+      "{cp}",
+      "--transfer-characteristics",
+      "{tc}",
+      "--matrix-coefficients",
+      "{mc}",
+      "--color-range",
+      "0",
+      "--lp",
+      "{threads}"
+    ],
+    "hdrArgs": [
+      "--mastering-display",
+      "{svt_mastering}",
+      "--content-light",
+      "{maxcll},{maxfall}"
+    ],
+    "colorNames": {},
+    "tunes": {
+      "default": [],
+      "grain": [
+        "--film-grain",
+        "10",
+        "--film-grain-denoise",
+        "0"
+      ],
+      "anime": [
+        "--tune",
+        "0",
+        "--enable-tf",
+        "0"
+      ],
+      "screen": [
+        "--scm",
+        "1"
+      ]
+    }
+  },
+  "aomenc": {
+    "binary": "aomenc",
+    "input": "stdin",
+    "inputArg": "-",
+    "ext": "ivf",
+    "preset": "4",
+    "qualityBest": 14,
+    "qualityWorst": 40,
+    "args": [
+      "{in}",
+      "--ivf",
+      "-o",
+      "{out}",
+      "--cpu-used={preset}",
+      "--end-usage=q",
+      "--cq-level={quality}",
+      "--bit-depth={bits}",
+      "--input-bit-depth={bits}",
+      "--profile={aom_profile}",
+      "--threads={threads}",
+      "--row-mt=1",
+      "--color-primaries={cp_name}",
+      "--transfer-characteristics={tc_name}",
+      "--matrix-coefficients={mc_name}"
+    ],
+    "hdrArgs": [],
+    "colorNames": {
+      "pq": {
+        "cp": "bt2020",
+        "tc": "smpte2084",
+        "mc": "bt2020ncl"
+      },
+      "hlg": {
+        "cp": "bt2020",
+        "tc": "arib-std-b67",
+        "mc": "bt2020ncl"
+      },
+      "sdr": {
+        "cp": "bt709",
+        "tc": "bt709",
+        "mc": "bt709"
+      }
+    },
+    "tunes": {
+      "default": [],
+      "grain": [
+        "--denoise-noise-level=10"
+      ],
+      "anime": [],
+      "screen": [
+        "--tune-content=screen"
+      ]
+    }
+  },
+  "x265": {
+    "binary": "x265",
+    "input": "stdin",
+    "inputArg": "-",
+    "ext": "hevc",
+    "preset": "slow",
+    "qualityBest": 12,
+    "qualityWorst": 30,
+    "args": [
+      "--input",
+      "{in}",
+      "--y4m",
+      "--output",
+      "{out}",
+      "--preset",
+      "{preset}",
+      "--crf",
+      "{quality}",
+      "--output-depth",
+      "{bits}",
+      "--profile",
+      "{x265_profile}",
+      "--pools",
+      "{threads}",
+      "--range",
+      "limited",
+      "--colorprim",
+      "{cp_name}",
+      "--transfer",
+      "{tc_name}",
+      "--colormatrix",
+      "{mc_name}"
+    ],
+    "hdrArgs": [
+      "--hdr10",
+      "--hdr10-opt",
+      "--repeat-headers",
+      "--master-display",
+      "{x265_mastering}",
+      "--max-cll",
+      "{maxcll},{maxfall}"
+    ],
+    "colorNames": {
+      "pq": {
+        "cp": "bt2020",
+        "tc": "smpte2084",
+        "mc": "bt2020nc"
+      },
+      "hlg": {
+        "cp": "bt2020",
+        "tc": "arib-std-b67",
+        "mc": "bt2020nc"
+      },
+      "sdr": {
+        "cp": "bt709",
+        "tc": "bt709",
+        "mc": "bt709"
+      }
+    },
+    "tunes": {
+      "default": [],
+      "grain": [
+        "--tune",
+        "grain"
+      ],
+      "anime": [
+        "--tune",
+        "animation"
+      ],
+      "screen": []
+    }
+  },
+  "vvenc": {
+    "binary": "vvencapp",
+    "input": "fifo",
+    "inputArg": "{fifo}.y4m",
+    "ext": "266",
+    "preset": "medium",
+    "qualityBest": 20,
+    "qualityWorst": 40,
+    "args": [
+      "-i",
+      "{in}",
+      "--preset",
+      "{preset}",
+      "-q",
+      "{quality}",
+      "--threads",
+      "{threads}",
+      "-o",
+      "{out}"
+    ],
+    "hdrArgs": [
+      "--hdr",
+      "{vvenc_hdr}"
+    ],
+    "colorNames": {
+      "pq": {
+        "cp": "",
+        "tc": "",
+        "mc": "",
+        "vvenc_hdr": "pq_2020"
+      },
+      "hlg": {
+        "cp": "",
+        "tc": "",
+        "mc": "",
+        "vvenc_hdr": "hlg_2020"
+      },
+      "sdr": {
+        "cp": "",
+        "tc": "",
+        "mc": "",
+        "vvenc_hdr": "off"
+      }
+    },
+    "tunes": {
+      "default": [],
+      "grain": [],
+      "anime": [],
+      "screen": []
+    }
+  },
+  "avm": {
+    "binary": "avmenc",
+    "input": "stdin",
+    "inputArg": "-",
+    "ext": "obu",
+    "preset": "5",
+    "qualityBest": 80,
+    "qualityWorst": 200,
+    "args": [
+      "{in}",
+      "--obu",
+      "-o",
+      "{out}",
+      "--cpu-used={preset}",
+      "--end-usage=q",
+      "--qp={quality}",
+      "--bit-depth={bits}",
+      "--input-bit-depth={bits}",
+      "--threads={threads}",
+      "--color-primaries={cp_name}",
+      "--transfer-characteristics={tc_name}",
+      "--matrix-coefficients={mc_name}"
+    ],
+    "hdrArgs": [],
+    "colorNames": {
+      "pq": {
+        "cp": "bt2020",
+        "tc": "smpte2084",
+        "mc": "bt2020ncl"
+      },
+      "hlg": {
+        "cp": "bt2020",
+        "tc": "arib-std-b67",
+        "mc": "bt2020ncl"
+      },
+      "sdr": {
+        "cp": "bt709",
+        "tc": "bt709",
+        "mc": "bt709"
+      }
+    },
+    "tunes": {
+      "default": [],
+      "grain": [],
+      "anime": [],
+      "screen": []
+    }
+  }
+}

@@ -1,0 +1,5 @@
+Lumora.xcodeproj/
+build/
+DerivedData/
+.DS_Store
+Lumora/Info.plist
