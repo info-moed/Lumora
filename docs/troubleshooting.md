@@ -1,3 +1,8 @@
+---
+title: Troubleshooting
+nav_order: 9
+---
+
 # Troubleshooting
 
 Find your symptom below. If nothing here helps, [open an issue](https://github.com/info-moed/Lumora/issues) with:

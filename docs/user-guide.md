@@ -1,3 +1,8 @@
+---
+title: User guide
+nav_order: 4
+---
+
 # User guide
 
 How to use every part of Lumora. If you haven't installed it yet, start with [Getting started](getting-started.md).
@@ -5,7 +10,7 @@ For the theory behind the settings, see [HDR and video basics](hdr-basics.md); f
 each feature, see the [Feature reference](features.md).
 
 > Some features described here are written but not yet verified end to end. Check
-> [Project status](../README.md#project-status) before relying on one for important work.
+> [Project status](https://github.com/info-moed/Lumora/blob/main/README.md#project-status) before relying on one for important work.
 
 ---
 

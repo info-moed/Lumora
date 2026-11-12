@@ -52,9 +52,9 @@ Lumora picks the settings and tells you why. **Pro mode** exposes every control.
 | Mac | Apple silicon (M1 or later) | Intel Macs are not supported. Tuned for M5 / M5 Pro / M5 Max; tested on an M3 Max. |
 | macOS | **27.0 or later** | The deployment target is 27.0. |
 | Xcode | **27 or later** | Free from the Mac App Store. Only needed to build. |
-| XcodeGen | any recent | `brew install xcodegen`. Generates the Xcode project from `project.yml`. |
-| FFmpeg | recommended | `brew install ffmpeg`. Reads files AVFoundation can't (MKV and more), joins segments, carries audio/subtitles. |
-| Software encoders | optional | Only for AV1, VVC, AV2 and 12-bit HEVC. See [Getting started → encoders](docs/getting-started.md#step-5-optional-install-the-extra-encoders). |
+| [XcodeGen](https://formulae.brew.sh/formula/xcodegen) | any recent | `brew install xcodegen`. Generates the Xcode project from `project.yml`. |
+| [FFmpeg](https://formulae.brew.sh/formula/ffmpeg) | recommended | `brew install ffmpeg`. Reads files AVFoundation can't (MKV and more), joins segments, carries audio/subtitles. |
+| Software encoders | optional | Only for AV1, VVC, AV2 and 12-bit HEVC: [`svt-av1`](https://formulae.brew.sh/formula/svt-av1), [`aom`](https://formulae.brew.sh/formula/aom), [`x265`](https://formulae.brew.sh/formula/x265), [`vvenc`](https://formulae.brew.sh/formula/vvenc). HDR metadata tools: [`dovi_tool`](https://formulae.brew.sh/formula/dovi_tool), [`hdr10plus_tool`](https://formulae.brew.sh/formula/hdr10plus_tool), [`gpac`](https://formulae.brew.sh/formula/gpac), [`mkvtoolnix`](https://formulae.brew.sh/formula/mkvtoolnix). Quality metrics: [`libvmaf`](https://formulae.brew.sh/formula/libvmaf). See [Getting started → encoders](docs/getting-started.md#step-5-optional-install-the-extra-encoders). |
 
 Hardware HEVC and ProRes exports need nothing beyond macOS.
 

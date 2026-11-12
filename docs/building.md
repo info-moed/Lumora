@@ -1,3 +1,8 @@
+---
+title: Building from source
+nav_order: 6
+---
+
 # Building from source
 
 Everything about turning the source into an app: the project generator, `xcodebuild`, configurations, signing,
@@ -44,7 +49,7 @@ sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 
 ## Project generation (XcodeGen)
 
-The Xcode project is **generated** from [`project.yml`](../project.yml) and is not committed (it's in
+The Xcode project is **generated** from [`project.yml`](https://github.com/info-moed/Lumora/blob/main/project.yml) and is not committed (it's in
 `.gitignore`). Regenerate it whenever you add, remove or rename files, or change `project.yml`:
 
 ```bash
@@ -173,7 +178,7 @@ Lumora finds each helper tool (FFmpeg, encoders, metadata tools) in this order:
 2. `Lumora.app/Contents/Resources/bin/<name>` (bundled copies).
 3. `/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin`, `~/bin`.
 
-A build phase runs [`scripts/bundle-tools.sh`](../scripts/bundle-tools.sh), which copies tools into
+A build phase runs [`scripts/bundle-tools.sh`](https://github.com/info-moed/Lumora/blob/main/scripts/bundle-tools.sh), which copies tools into
 `Contents/Resources/bin` **only if they are self-contained**, i.e. they link nothing outside macOS itself. Homebrew
 builds link Homebrew libraries, so the script skips them and prints a note like:
 
@@ -226,7 +231,7 @@ xcodebuild -project Lumora.xcodeproj -scheme Lumora -derivedDataPath build/Deriv
 
 **Headless by design.** The tests run inside the app (a "hosted" test bundle). When Lumora detects XCTest it starts
 with no windows, no Dock icon and no focus change, so a test run never interrupts whoever is using the Mac. See
-`LumoraMain` in [`Lumora/App/LumoraApp.swift`](../Lumora/App/LumoraApp.swift).
+`LumoraMain` in [`Lumora/App/LumoraApp.swift`](https://github.com/info-moed/Lumora/blob/main/Lumora/App/LumoraApp.swift).
 
 **Test artifacts.** End-to-end clips, outputs and UI snapshots are written to `$TMPDIR/LumoraE2E-<pid>/` (snapshots
 in its `screens/` subfolder). Open the most recent one:

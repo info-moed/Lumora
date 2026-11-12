@@ -1,3 +1,8 @@
+---
+title: HDR and video basics
+nav_order: 3
+---
+
 # HDR and video basics
 
 A plain-English primer on the terms Lumora uses. Ten minutes here makes every setting in the app make sense. No math

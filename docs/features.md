@@ -1,15 +1,20 @@
+---
+title: Feature reference
+nav_order: 5
+---
+
 # Feature reference
 
 Everything Lumora does, where it lives in the code, and the reasoning behind each choice. New to Lumora? Start with
 [Getting started](getting-started.md). Want to know what has actually been tested? See
-[Project status](../README.md#project-status).
+[Project status](https://github.com/info-moed/Lumora/blob/main/README.md#project-status).
 
 Some sections describe features that are written but not yet verified end to end; the status table in the README is
 the source of truth. Items marked **VERIFY** depend on details that couldn't be confirmed without specific hardware,
 SDKs or tool versions.
 
-Related: [COMPARISON.md](../COMPARISON.md) compares Lumora with other tools feature by feature, and
-[CHANGELOG.md](../CHANGELOG.md) lists everything in each version.
+Related: [COMPARISON.md](https://github.com/info-moed/Lumora/blob/main/COMPARISON.md) compares Lumora with other tools feature by feature, and
+[CHANGELOG.md](https://github.com/info-moed/Lumora/blob/main/CHANGELOG.md) lists everything in each version.
 
 ---
 

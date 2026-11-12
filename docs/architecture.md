@@ -1,3 +1,8 @@
+---
+title: Architecture
+nav_order: 8
+---
+
 # Architecture
 
 How Lumora is put together: the big picture, the frame pipeline, concurrency, the GPU side, and where to make common

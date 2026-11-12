@@ -1,3 +1,8 @@
+---
+title: Command line
+nav_order: 7
+---
+
 # Command-line guide
 
 For people comfortable in Terminal: everything about Lumora you can drive, configure, inspect or automate from the
@@ -30,7 +35,7 @@ repeating them.
 
 ## Keeping dependencies up to date
 
-[`scripts/deps.sh`](../scripts/deps.sh) manages every external tool Lumora uses, and proves Lumora still works after
+[`scripts/deps.sh`](https://github.com/info-moed/Lumora/blob/main/scripts/deps.sh) manages every external tool Lumora uses, and proves Lumora still works after
 an update.
 
 | Command | What it does |
@@ -192,7 +197,7 @@ With `verboseLogging` on, every encoder command line is logged under `tools`, so
 
 ## Encoder recipes (`encoders.json`)
 
-Software encoders are driven by [`Lumora/Resources/encoders.json`](../Lumora/Resources/encoders.json). Each entry:
+Software encoders are driven by [`Lumora/Resources/encoders.json`](https://github.com/info-moed/Lumora/blob/main/Lumora/Resources/encoders.json). Each entry:
 
 ```json
 "svtav1": {
@@ -224,7 +229,7 @@ Placeholders filled at run time:
 
 The file is a bundle resource, so **rebuild after editing it**, then run `scripts/deps.sh verify` to confirm every
 flag is accepted by your installed encoders. The extra "efficiency" options chosen by the time-budget planner live in
-[`EncodeRecipes.swift`](../Lumora/Core/Quality/EncodeRecipes.swift); Lumora only offers those your encoder lists in its
+[`EncodeRecipes.swift`](https://github.com/info-moed/Lumora/blob/main/Lumora/Core/Quality/EncodeRecipes.swift); Lumora only offers those your encoder lists in its
 `--help`.
 
 ---
@@ -233,8 +238,8 @@ flag is accepted by your installed encoders. The extra "efficiency" options chos
 
 Models live in `~/Library/Application Support/Lumora/Models/`.
 
-- Bundled descriptions: [`interpolation_models.json`](../Lumora/Resources/interpolation_models.json) and
-  [`upscale_models.json`](../Lumora/Resources/upscale_models.json).
+- Bundled descriptions: [`interpolation_models.json`](https://github.com/info-moed/Lumora/blob/main/Lumora/Resources/interpolation_models.json) and
+  [`upscale_models.json`](https://github.com/info-moed/Lumora/blob/main/Lumora/Resources/upscale_models.json).
 - Your own: `~/Library/Application Support/Lumora/Models/models.json`, same format; entries with the same `id`
   replace bundled ones.
 
@@ -314,7 +319,7 @@ ffmpeg -i encoded.mkv -i reference.mov -lavfi xpsnr -f null -
 ```
 
 ColorVideoVDP and PU21-PSNR are installed by Model Lab into its Python environment; see
-[`lumora_metrics.py`](../Lumora/Resources/lumora_metrics.py) for how Lumora calls them.
+[`lumora_metrics.py`](https://github.com/info-moed/Lumora/blob/main/Lumora/Resources/lumora_metrics.py) for how Lumora calls them.
 
 ---
 
@@ -438,7 +443,7 @@ rm -rf ~/Library/Application\ Support/Lumora
 
 ## Continuous integration
 
-[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on GitHub's `xcode-27` runner (macOS 27, Apple
+[`.github/workflows/ci.yml`](https://github.com/info-moed/Lumora/blob/main/.github/workflows/ci.yml) runs on GitHub's `xcode-27` runner (macOS 27, Apple
 silicon):
 
 - on every push and pull request,
@@ -450,7 +455,7 @@ It runs `scripts/deps.sh status` and `scripts/deps.sh verify`, and uploads the l
 verified `deps.lock` as an artifact. The `xcode-27` runner currently provides a GPU and the hardware video encoder,
 so the whole suite runs there. On a machine without them, those tests **skip** with a reason instead of failing; the
 weekly local check (`scripts/deps.sh schedule install`) covers them on a real Mac.
-[Dependabot](../.github/dependabot.yml) keeps the workflow's actions current.
+[Dependabot](https://github.com/info-moed/Lumora/blob/main/.github/dependabot.yml) keeps the workflow's actions current.
 
 Run the same check locally before pushing:
 

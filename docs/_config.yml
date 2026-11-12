@@ -1,0 +1,30 @@
+title: Lumora
+description: Grade, convert and rebuild video between SDR and HDR on a Mac — HDR10, HLG, Dolby Vision; HEVC, ProRes, AV1, VVC; frame interpolation; quality-target encoding.
+url: https://info-moed.github.io
+baseurl: /Lumora
+remote_theme: just-the-docs/just-the-docs@v0.12.0
+plugins:
+  - jekyll-remote-theme
+  - jekyll-relative-links
+  - jekyll-optional-front-matter
+  - jekyll-seo-tag
+relative_links:
+  enabled: true
+  collections: false
+color_scheme: dark
+search_enabled: true
+heading_anchors: true
+back_to_top: true
+back_to_top_text: "Back to top"
+aux_links:
+  "Lumora on GitHub": "https://github.com/info-moed/Lumora"
+aux_links_new_tab: false
+gh_edit_link: true
+gh_edit_link_text: "Edit this page on GitHub"
+gh_edit_repository: "https://github.com/info-moed/Lumora"
+gh_edit_branch: "main"
+gh_edit_source: docs
+gh_edit_view_mode: "tree"
+footer_content: "Lumora is open source under the <a href=\"https://github.com/info-moed/Lumora/blob/main/LICENSE\">MIT license</a>."
+exclude:
+  - "*.sh"

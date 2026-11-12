@@ -1,9 +1,14 @@
+---
+title: Getting started
+nav_order: 2
+---
+
 # Getting started
 
 This guide assumes **no prior experience** with Terminal, Xcode or HDR video. It takes you from a fresh Mac to your
 first converted video. Plan on 30–60 minutes, mostly waiting for downloads.
 
-If you already know your way around, the [Quick start in the README](../README.md#quick-start) is five commands.
+If you already know your way around, the [Quick start in the README](https://github.com/info-moed/Lumora/blob/main/README.md#quick-start) is five commands.
 
 ---
 
@@ -89,8 +94,8 @@ sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 ## Step 4: Install Homebrew and the basic tools
 
 [Homebrew](https://brew.sh) is the standard way to install command-line tools on a Mac. Lumora uses it to get
-**XcodeGen** (which creates the Xcode project) and **FFmpeg** (which reads many video formats and joins the
-finished file together).
+[**XcodeGen**](https://formulae.brew.sh/formula/xcodegen) (which creates the Xcode project) and [**FFmpeg**](https://formulae.brew.sh/formula/ffmpeg) (which reads many video
+formats and joins the finished file together).
 
 1. Check whether you already have Homebrew:
 
@@ -126,11 +131,11 @@ Skip this if you only want HEVC (H.265) or ProRes files. Install it if you want:
 
 | You want | Install |
 |---|---|
-| **AV1** files (smaller, modern players) | `svt-av1` (and `aom` for the 12-bit / 4:4:4 "AV1 Pro" option) |
-| **12-bit HEVC** | `x265` |
-| **H.266 / VVC** | `vvenc` |
-| **Quality targets** (encode to "looks identical") | `libvmaf` |
-| **Dolby Vision / HDR10+** metadata | `dovi_tool`, `hdr10plus_tool`, `gpac` (MP4Box), `mkvtoolnix` |
+| **AV1** files (smaller, modern players) | [`svt-av1`](https://formulae.brew.sh/formula/svt-av1) (and [`aom`](https://formulae.brew.sh/formula/aom) for the 12-bit / 4:4:4 "AV1 Pro" option) |
+| **12-bit HEVC** | [`x265`](https://formulae.brew.sh/formula/x265) |
+| **H.266 / VVC** | [`vvenc`](https://formulae.brew.sh/formula/vvenc) |
+| **Quality targets** (encode to "looks identical") | [`libvmaf`](https://formulae.brew.sh/formula/libvmaf) |
+| **Dolby Vision / HDR10+** metadata | [`dovi_tool`](https://formulae.brew.sh/formula/dovi_tool), [`hdr10plus_tool`](https://formulae.brew.sh/formula/hdr10plus_tool), [`gpac`](https://formulae.brew.sh/formula/gpac) (MP4Box), [`mkvtoolnix`](https://formulae.brew.sh/formula/mkvtoolnix) |
 
 Install all of them at once with the included script (run it from the Lumora folder after Step 6):
 
