@@ -39,6 +39,36 @@ enum HDRMetadata {
             + "L(\(Int(s.peakNits * 10000)),\(Int(s.minNits * 10000)))"
     }
 
+    /// MP4Box `-hdr` file: mdcv + clli boxes for track 1 (the video), same units as the HEVC SEI.
+    static func mp4BoxHDRXML(_ s: Static, trackID: Int = 1) -> String {
+        let a = UInt16(min(65535, s.maxCLL.rounded())), b = UInt16(min(65535, s.maxFALL.rounded()))
+        return """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <HDR>
+        <Track id="\(trackID)">
+        <mdcv display_primaries_0_x="\(p3.g.0)" display_primaries_0_y="\(p3.g.1)" display_primaries_1_x="\(p3.b.0)" \
+        display_primaries_1_y="\(p3.b.1)" display_primaries_2_x="\(p3.r.0)" display_primaries_2_y="\(p3.r.1)" \
+        white_point_x="\(p3.wp.0)" white_point_y="\(p3.wp.1)" max_display_mastering_luminance="\(UInt32(s.peakNits * 10000))" \
+        min_display_mastering_luminance="\(UInt32(s.minNits * 10000))"/>
+        <clli max_content_light_level="\(a)" max_pic_average_light_level="\(b)"/>
+        </Track>
+        </HDR>
+
+        """
+    }
+
+    /// mkvmerge track options for the Matroska Colour/MasteringMetadata elements (chromaticities as fractions).
+    static func mkvmergeStaticArgs(_ s: Static, track: Int) -> [String] {
+        func f(_ v: Int) -> String { String(format: "%.4f", Double(v) / 50000) }
+        let t = "\(track):"
+        return ["--chromaticity-coordinates", t + [p3.r.0, p3.r.1, p3.g.0, p3.g.1, p3.b.0, p3.b.1].map(f).joined(separator: ","),
+                "--white-colour-coordinates", t + f(p3.wp.0) + "," + f(p3.wp.1),
+                "--max-luminance", t + "\(Int(s.peakNits))",
+                "--min-luminance", t + "\(s.minNits)",
+                "--max-content-light", t + "\(Int(min(65535, s.maxCLL.rounded())))",
+                "--max-frame-light", t + "\(Int(min(65535, s.maxFALL.rounded())))"]
+    }
+
     static func pqCode12(_ nits: Float) -> Int {
         let m1: Float = 0.1593017578125, m2: Float = 78.84375
         let c1: Float = 0.8359375, c2: Float = 18.8515625, c3: Float = 18.6875
@@ -48,12 +78,12 @@ enum HDRMetadata {
 
     struct Shot { var start: Int; var duration: Int; var maxNits: Float; var avgNits: Float }
 
-    /// Input for `dovi_tool generate` (profile 8.1, CM v4.0): one L1 block per shot from measured light levels.
-    /// VERIFY against the dovi_tool "generate" documentation for the version you install.
-    static func doviGeneratorJSON(frames: Int, shots: [Shot], s: Static) throws -> Data {
+    /// Input for `dovi_tool generate` (profile 8.1 or 8.4, CM v4.0): one L1 block per shot from measured light levels.
+    /// Checked against dovi_tool 2.3 (CampaignHDRMetadataTests).
+    static func doviGeneratorJSON(frames: Int, shots: [Shot], s: Static, profile: String = "8.1") throws -> Data {
         let json: [String: Any] = [
             "cm_version": "V40",
-            "profile": "8.1",
+            "profile": profile,
             "length": frames,
             "level6": ["max_display_mastering_luminance": Int(s.peakNits),
                        "min_display_mastering_luminance": Int(s.minNits * 10000),

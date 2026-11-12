@@ -67,8 +67,10 @@ enum Codec: String, CaseIterable, Identifiable, Codable, Hashable {
         default: return nil
         }
     }
-    var supportsHDR10Plus: Bool { self == .hevc || self == .hevc12 || self == .av1 }
-    var supportsDolbyVision: Bool { self == .hevc }
+    /// HDR10+ and Dolby Vision RPUs are written into the HEVC bitstream (hdr10plus_tool / dovi_tool edit HEVC only),
+    /// so AV1 files carry HDR10 static metadata only.
+    var supportsHDR10Plus: Bool { self == .hevc || self == .hevc12 }
+    var supportsDolbyVision: Bool { self == .hevc || self == .hevc12 }
     var defaultContainer: String {
         switch self {
         case .prores422HQ, .prores4444XQ, .hevc: return "mov"
@@ -122,7 +124,8 @@ enum DeliveryFormat: String, CaseIterable, Identifiable, Codable, Hashable {
     func supported(by codec: Codec) -> Bool {
         switch self {
         case .hdr10Plus: return codec.supportsHDR10Plus
-        case .dolbyVision81, .dolbyVision84: return codec.supportsDolbyVision
+        case .dolbyVision81: return codec.supportsDolbyVision
+        case .dolbyVision84: return codec == .hevc   // made by Apple's hardware encoder for HLG
         default: return true
         }
     }

@@ -105,6 +105,13 @@ enum SourceInspector {
             }
             let atoms = ext[kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms as String] as? [String: Any] ?? [:]
             d.isDolbyVision = ["dvh1", "dvhe", "dav1"].contains(d.codec) || atoms.keys.contains { $0 == "dvcC" || $0 == "dvvC" }
+            // Dolby Vision decoder configuration record: version major, minor, then profile (7 bits), level (6),
+            // rpu / el / bl present flags. The profile decides whether the original can be kept (never profile 5).
+            if let record = (atoms["dvcC"] ?? atoms["dvvC"] ?? atoms["dvwC"]) as? Data, record.count >= 4 {
+                let b = [UInt8](record.prefix(4))
+                d.dvProfile = Int(b[2] >> 1)
+                d.dvHasEnhancementLayer = (b[3] >> 1) & 1 == 1
+            }
         }
         for item in try await asset.load(.metadata) {
             if item.identifier == .quickTimeMetadataMake { d.make = try? await item.load(.stringValue) }

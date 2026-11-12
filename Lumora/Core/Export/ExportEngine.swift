@@ -87,7 +87,10 @@ final class ExportEngine {
             return "\(job.codec.displayName) supports \(job.codec.chromaFormats.map(\.label).joined(separator: ", ")) colour only."
         }
         if !job.delivery.supported(by: job.codec) {
-            return "\(job.delivery.displayName) needs HEVC" + (job.delivery == .hdr10Plus ? " (or AV1)." : ".")
+            switch job.delivery {
+            case .dolbyVision84: return "\(job.delivery.displayName) needs the hardware HEVC encoder."
+            default: return "\(job.delivery.displayName) needs HEVC (hardware or x265)."
+            }
         }
         if !job.codec.available, let key = job.codec.cliKey {
             return "The \(key) encoder isn't installed. See README → Encoders."
@@ -398,7 +401,7 @@ final class ExportEngine {
             let pieces = try await runTargetQuality(ctx, tmp: tmp, status: status)
             status("Finishing file", 1)
             var result = try await join(ctx, segments: pieces, tmp: tmp)
-            if job.delivery == .dolbyVision81 || job.delivery == .hdr10Plus { result = try injectDynamicMetadata(ctx, file: result, tmp: tmp) }
+            if Self.needsMetadataPass(job.delivery) { result = try injectDynamicMetadata(ctx, file: result, tmp: tmp) }
             try Self.clearOutput(job)
             try FileManager.default.moveItem(at: result, to: job.outputURL)
             ExportManifest(output: job.outputURL.path, source: job.descriptor.url.path, codec: job.codec, rateNum: ctx.rate.num,
@@ -438,7 +441,7 @@ final class ExportEngine {
 
         status("Finishing file", 1)
         var result = try await join(ctx, segments: segmentFiles, tmp: tmp)
-        if job.delivery == .dolbyVision81 || job.delivery == .hdr10Plus {
+        if Self.needsMetadataPass(job.delivery) {
             status("Adding \(job.delivery.displayName) metadata", 1)
             result = try injectDynamicMetadata(ctx, file: result, tmp: tmp)
         }
@@ -446,6 +449,10 @@ final class ExportEngine {
         try FileManager.default.moveItem(at: result, to: job.outputURL)
         return job.outputURL
     }
+
+    /// Deliveries whose metadata lives in the HEVC bitstream and the container's Dolby Vision record: they get a
+    /// final Annex-B pass (inject or keep the RPUs / HDR10+ SEI) and a remux that signals them.
+    static func needsMetadataPass(_ d: DeliveryFormat) -> Bool { [.dolbyVision81, .dolbyVision84, .hdr10Plus].contains(d) }
 
     /// Splits the output into roughly equal parts, snapped to scene cuts so every segment starts on a
     /// fresh shot (clean keyframes, no visible seams).
@@ -1065,7 +1072,16 @@ final class ExportEngine {
             let h = try FileHandle(forWritingTo: rawJoined)
             for s in segments { try h.write(contentsOf: try Data(contentsOf: s)) }
             try h.close()
-            args += ["-r", "\(ctx.rate.num)/\(ctx.rate.den)", "-i", rawJoined.path]
+            if ext == "hevc", ToolLocator.isAvailable("mkvmerge") {
+                // FFmpeg can't timestamp raw HEVC with B-frames: Matroska refuses the packets ("unknown timestamp")
+                // and MP4 silently drops frames. mkvmerge derives the timestamps; FFmpeg then copies from that.
+                let wrapped = tmp.appendingPathComponent("joined_raw.mkv")
+                try ToolLocator.run("mkvmerge", ["-q", "-o", wrapped.path, "--default-duration",
+                                                 "0:\(ctx.rate.num)/\(ctx.rate.den)fps", rawJoined.path])
+                args += ["-i", wrapped.path]
+            } else {
+                args += ["-r", "\(ctx.rate.num)/\(ctx.rate.den)", "-i", rawJoined.path]
+            }
         } else if segments.count > 1 {
             let list = tmp.appendingPathComponent("list.txt")
             try segments.map(FFConcat.line).joined(separator: "\n").write(to: list, atomically: true, encoding: .utf8)
@@ -1134,18 +1150,35 @@ final class ExportEngine {
                 shots[shots.count - 1].avgNits = max(shots[shots.count - 1].avgNits, av)
             }
         }
-        let injected = tmp.appendingPathComponent("video_dyn.hevc")
+        var injected = tmp.appendingPathComponent("video_dyn.hevc")
         let decision = DolbyVisionRetimer.decide(source: job.descriptor, look: job.preset.look, passthrough: job.preset.params.passthrough,
                                                  codec: job.codec, delivery: job.delivery)
         var retimed: URL?
         if decision == .retimeOriginal {
-            retimed = try? DolbyVisionRetimer.retime(source: job.descriptor.url, mapping: DolbyVisionRetimer.sourceFrames(for: ctx.plan),
-                                                     cropped: job.descriptor.crop != UniformBuilder.fullFrame, workDir: tmp)
-            if retimed == nil { Log.warning(.encode, "Couldn't retime the original Dolby Vision; generating new metadata instead") }
+            do {
+                retimed = try DolbyVisionRetimer.retime(source: job.descriptor.url, mapping: DolbyVisionRetimer.sourceFrames(for: ctx.plan),
+                                                        cropped: job.descriptor.crop != UniformBuilder.fullFrame, workDir: tmp)
+            } catch {
+                Log.warning(.encode, "Couldn't retime the original Dolby Vision (\(error.localizedDescription)); generating new metadata instead")
+            }
         } else if case .generateNew(let why) = decision {
             Log.notice(.encode, "Generating new Dolby Vision metadata because \(why)")
         }
-        if let retimed {
+        if job.delivery == .dolbyVision84 {
+            // Apple's encoder writes the 8.4 RPUs into the HLG stream itself; only the container record is missing.
+            // Should it not have (another OS or encoder), generate them as for 8.1.
+            let found = tmp.appendingPathComponent("vt-rpu.bin")
+            if (try? ToolLocator.run("dovi_tool", ["extract-rpu", "-i", annexB.path, "-o", found.path])) != nil,
+               ((try? DolbyVisionRetimer.frameCount(of: found)) ?? 0) > 0 {
+                injected = annexB
+            } else {
+                Log.warning(.encode, "The hardware encoder wrote no Dolby Vision 8.4 metadata; generating it instead")
+                let gen = tmp.appendingPathComponent("dovi_gen.json"), rpu = tmp.appendingPathComponent("rpu.bin")
+                try HDRMetadata.doviGeneratorJSON(frames: ctx.plan.count, shots: shots, s: meta, profile: "8.4").write(to: gen)
+                try ToolLocator.run("dovi_tool", ["generate", "-j", gen.path, "-o", rpu.path])
+                try ToolLocator.run("dovi_tool", ["inject-rpu", "-i", annexB.path, "--rpu-in", rpu.path, "-o", injected.path])
+            }
+        } else if let retimed {
             try ToolLocator.run("dovi_tool", ["inject-rpu", "-i", annexB.path, "--rpu-in", retimed.path, "-o", injected.path])
         } else if job.delivery == .dolbyVision81 {
             let gen = tmp.appendingPathComponent("dovi_gen.json"), rpu = tmp.appendingPathComponent("rpu.bin")
@@ -1157,19 +1190,31 @@ final class ExportEngine {
             try HDRMetadata.hdr10PlusJSON(frames: ctx.plan.count, shots: shots).write(to: json)
             try ToolLocator.run("hdr10plus_tool", ["inject", "-i", annexB.path, "-j", json.path, "-o", injected.path])
         }
-        // Remux with the audio/subtitles already in `file`.
+        // Remux with the audio/subtitles already in `file`. A raw HEVC stream only carries the HDR10 mastering display
+        // and light levels when the encoder wrote them as SEI (x265 does; VideoToolbox puts them in the container
+        // only), so they are restated to the muxer.
         let ext = job.outputURL.pathExtension.lowercased()
         let out = tmp.appendingPathComponent("final.\(ext)")
         let fps = "\(ctx.rate.num)/\(ctx.rate.den)"
+        let staticMeta = job.target.kind == .hdr10 ? meta : nil
         if ext == "mp4" || ext == "mov", ToolLocator.isAvailable("MP4Box") {
-            let dv = job.delivery == .dolbyVision81 ? ":dvp=8.1" : ""
+            let dv = job.delivery == .dolbyVision81 ? ":dvp=8.1" : (job.delivery == .dolbyVision84 ? ":dvp=8.4" : "")
             // MP4Box parses ':' and '#' inside -add arguments, so pass plain names relative to the job folder.
             func rel(_ u: URL) -> String { u.deletingLastPathComponent().standardizedFileURL == tmp.standardizedFileURL ? u.lastPathComponent : u.path }
-            try ToolLocator.run("MP4Box", ["-add", "\(rel(injected)):fps=\(Double(ctx.rate.num) / Double(ctx.rate.den))\(dv)",
-                                           "-add", "\(rel(file))#audio", "-new", out.path], in: tmp)
+            var args = ["-add", "\(rel(injected)):fps=\(Double(ctx.rate.num) / Double(ctx.rate.den))\(dv)"]
+            let audio = try? ToolLocator.run("ffprobe", ["-v", "error", "-select_streams", "a", "-show_entries", "stream=index",
+                                                         "-of", "csv=p=0", file.path])
+            if audio.map({ !$0.isEmpty }) ?? true { args += ["-add", "\(rel(file))#audio"] }   // "#audio" fails on a silent file
+            if let staticMeta {
+                try HDRMetadata.mp4BoxHDRXML(staticMeta).write(to: tmp.appendingPathComponent("hdr.xml"), atomically: true, encoding: .utf8)
+                args += ["-hdr", "hdr.xml"]
+            }
+            try ToolLocator.run("MP4Box", args + ["-new", out.path], in: tmp)
         } else if ToolLocator.isAvailable("mkvmerge") {
             let mkv = out.deletingPathExtension().appendingPathExtension("mkv")
-            try ToolLocator.run("mkvmerge", ["-o", mkv.path, "--default-duration", "0:\(fps)fps", injected.path, "-D", file.path])
+            try ToolLocator.run("mkvmerge", ["-o", mkv.path, "--default-duration", "0:\(fps)fps"]
+                                + (staticMeta.map { HDRMetadata.mkvmergeStaticArgs($0, track: 0) } ?? [])
+                                + [injected.path, "-D", file.path])
             return mkv
         } else {
             try ToolLocator.run("ffmpeg", ["-y", "-v", "error", "-r", fps, "-i", injected.path, "-i", file.path,

@@ -38,7 +38,12 @@ enum DolbyVisionRetimer {
         defer { try? FileManager.default.removeItem(at: hevc) }
         // Mode 2: convert to profile 8.1 (drops the enhancement layer's reference, keeps all dynamic metadata and trims).
         try ToolLocator.run("dovi_tool", ["-m", "2", "extract-rpu", "-i", hevc.path, "-o", rpu.path])
-        let sourceCount = (mapping.max() ?? 0) + 1
+        // Work from the RPU's real length: frames past the last one the output uses must be removed too, and an RPU
+        // shorter than the frames the output needs can't be lined up at all.
+        let sourceCount = try frameCount(of: rpu)
+        guard let last = mapping.max(), let first = mapping.min(), first >= 0, last < sourceCount else {
+            throw LumoraError.unsupported("The original Dolby Vision covers \(sourceCount) frames, but the output needs source frame \(mapping.max() ?? -1).")
+        }
 
         // Pass 1: remove source frames no output frame uses (and reset the active area if we cropped).
         var counts = [Int](repeating: 0, count: sourceCount)
@@ -67,13 +72,23 @@ enum DolbyVisionRetimer {
             current = out
         }
         // Verify the frame count before trusting it.
-        let info = String(decoding: try ToolLocator.run("dovi_tool", ["info", "-i", current.path, "-s"]), as: UTF8.self)
-        if let n = info.split(whereSeparator: { !$0.isNumber }).compactMap({ Int($0) }).first(where: { $0 > 1 }), n != mapping.count {
+        let n = try frameCount(of: current)
+        if n != mapping.count {
             Log.warning(.encode, "Retimed RPU has \(n) frames, expected \(mapping.count)")
             throw LumoraError.unsupported("Dolby Vision retiming produced the wrong frame count.")
         }
         Log.notice(.encode, "Dolby Vision retimed: \(sourceCount) source frames → \(mapping.count) output frames (removed \(unused.count), \(dups.count) duplications)\(cropped ? ", active area reset" : "")")
         return current
+    }
+
+    /// Number of frames in a binary RPU file ("Frames: N" in `dovi_tool info --summary`).
+    static func frameCount(of rpu: URL) throws -> Int {
+        let info = String(decoding: try ToolLocator.run("dovi_tool", ["info", "-i", rpu.path, "-s"]), as: UTF8.self)
+        guard let line = info.split(separator: "\n").first(where: { $0.trimmingCharacters(in: .whitespaces).hasPrefix("Frames:") }),
+              let n = Int(line.split(separator: ":").last?.trimmingCharacters(in: .whitespaces) ?? "") else {
+            throw LumoraError.unsupported("Couldn't read the Dolby Vision frame count.")
+        }
+        return n
     }
 
     private static func ranges(_ v: [Int]) -> [ClosedRange<Int>] {
