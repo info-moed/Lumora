@@ -20,7 +20,7 @@ Machine-readable data: [`data/svtav1.json`](data/svtav1.json). Every option belo
 
 ## HDR
 
-Feed a 10-bit Y4M (or raw YUV with --input-depth 10) that is already PQ or HLG encoded; SVT-AV1 does not convert transfer functions or bit depth. Signal the color description with --color-primaries 9 (bt2020), --transfer-characteristics 16 (smpte2084, HDR10/PQ) or 18 (hlg), --matrix-coefficients 9 (bt2020-ncl) and --color-range 0 (studio). For HDR10, add static metadata with --mastering-display 'G(x,y)B(x,y)R(x,y)WP(x,y)L(max,min)' where the luminance values are plain nits (floats), and --content-light MaxCLL,MaxFALL as integers. --chroma-sample-position topleft (colocated) follows the official HDR example and the usual siting of BT.2020 UHD masters. HLG normally needs only the color description. The stand-alone CLI has no HDR10+ or Dolby Vision input; FFmpeg's libsvtav1 wrapper can pass through Dolby Vision RPUs (-dolbyvision) and copies mastering/CLL side data when it is present on the input stream.
+Feed a 10-bit Y4M (or raw YUV with `--input-depth` 10) that is already PQ or HLG encoded; SVT-AV1 does not convert transfer functions or bit depth. Signal the color description with `--color-primaries` 9 (bt2020), `--transfer-characteristics` 16 (smpte2084, HDR10/PQ) or 18 (hlg), `--matrix-coefficients` 9 (bt2020-ncl) and `--color-range` 0 (studio). For HDR10, add static metadata with `--mastering-display` 'G(x,y)B(x,y)R(x,y)WP(x,y)L(max,min)' where the luminance values are plain nits (floats), and `--content-light` MaxCLL,MaxFALL as integers. `--chroma-sample-position` topleft (colocated) follows the official HDR example and the usual siting of BT.2020 UHD masters. HLG normally needs only the color description. The stand-alone CLI has no HDR10+ or Dolby Vision input; FFmpeg's libsvtav1 wrapper can pass through Dolby Vision RPUs (-dolbyvision) and copies mastering/CLL side data when it is present on the input stream.
 
 **Flags involved:** `--input-depth`, `--color-primaries`, `--transfer-characteristics`, `--matrix-coefficients`, `--color-range`, `--chroma-sample-position`, `--mastering-display`, `--content-light`, `--color-help`
 
@@ -32,13 +32,13 @@ SvtAv1EncApp -i master_pq_10bit.y4m -b out.ivf --preset 4 --crf 27 --input-depth
 
 **Pitfalls:**
 
-- Luminance values in --mastering-display are nits as decimals (L(1000,0.0001)), not the 0.0001-cd/m2 integer units x265 uses; primaries are written G, B, R, then white point.
-- --input-depth only accepts 8 or 10 and describes the input file as well as the output; an 8-bit pipe cannot become a real HDR encode, and there is no 12-bit or 4:2:2/4:4:4 support in this build (use libaom for those).
-- --luminance-qp-bias assumes a gamma-like signal; the Codec Wiki parameter study says to use it only on SDR and HLG, not on PQ (HDR10) material.
-- Mainline variance boost curves are not PQ-aware; the PQ-tuned curve (--variance-boost-curve 3) exists only in the svt-av1-hdr fork, so do not copy fork command lines into mainline.
+- Luminance values in `--mastering-display` are nits as decimals (L(1000,0.0001)), not the 0.0001-cd/m2 integer units x265 uses; primaries are written G, B, R, then white point.
+- `--input-depth` only accepts 8 or 10 and describes the input file as well as the output; an 8-bit pipe cannot become a real HDR encode, and there is no 12-bit or 4:2:2/4:4:4 support in this build (use libaom for those).
+- `--luminance-qp-bias` assumes a gamma-like signal; the Codec Wiki parameter study says to use it only on SDR and HLG, not on PQ (HDR10) material.
+- Mainline variance boost curves are not PQ-aware; the PQ-tuned curve (`--variance-boost-curve` 3) exists only in the svt-av1-hdr fork, so do not copy fork command lines into mainline.
 - The IVF output carries the color description in the AV1 sequence header and HDR10 static metadata in metadata OBUs; when remuxing, check that the container also gets matching color tags, since some muxers do not derive them from the bitstream.
-- --content-light 0,0 means unknown; supply real MaxCLL/MaxFALL when you have measured them.
-- No --hdr10plus-json or --dolby-vision-rpu in the installed mainline CLI (those are svt-av1-hdr fork options); dynamic metadata must be handled by FFmpeg (-dolbyvision) or added at mux time.
+- `--content-light` 0,0 means unknown; supply real MaxCLL/MaxFALL when you have measured them.
+- No `--hdr10plus-json` or `--dolby-vision-rpu` in the installed mainline CLI (those are svt-av1-hdr fork options); dynamic metadata must be handled by FFmpeg (-dolbyvision) or added at mux time.
 - FFmpeg's -crf for libsvtav1 is an integer 0-63; fractional or >63 CRF needs -svtav1-params crf=..., and -svtav1-params is parsed last so it overrides FFmpeg-level color fields.
 - HDR sources are often 4K or larger: v4.3.0 caps random-access encodes at preset 9 at 4K and above, and rejects presets 4 and below above 4K (for example 8K).
 
@@ -53,25 +53,25 @@ SvtAv1EncApp -i master_pq_10bit.y4m -b out.ivf --preset 4 --crf 27 --input-depth
 | 3 | Slow; about 1.5x faster than preset 2 (v2.2 tests) | About 17.08% worse than -1 in v3.0; there is a large efficiency step between 2 and 3, and preset 4 is close behind 3. |
 | 4 | Moderate; roughly 2x faster than preset 2 in v1.8 tests; there is a large speed jump from 4 to 5 | About 22.41% worse than -1 in v3.0, but very close to preset 3. Widely used as the balance point (Codec Wiki deep dives; Streaming Learning Center measured 98.92% of the best VMAF at 3.5% of the encode time on v1.4). Lumora's default. Above 4K (for example 8K), v4.3.0 rejects presets 4 and below for video encodes (all-intra excepted) because of memory use. |
 | 5 | Moderately fast; much faster than 4 | In v3.0 about 44% faster than in v2.0 but about 4.5% less efficient (worse on gaming clips). Good start of the 'fast but still good' range. |
-| 6 | Fast | v3.0 about 47% faster than v2.0 at 8.8% lower efficiency. Codec Wiki suggests 6 or 8 if 4 is too slow. Highest preset that does not print the film-grain compute-overhead warning (the warning fires above preset 6 when --film-grain is on). |
+| 6 | Fast | v3.0 about 47% faster than v2.0 at 8.8% lower efficiency. Codec Wiki suggests 6 or 8 if 4 is too slow. Highest preset that does not print the film-grain compute-overhead warning (the warning fires above preset 6 when `--film-grain` is on). |
 | 7 | Fast | v3.0 about 68% faster than v2.0 for about 11.6% efficiency loss; preset 8 sometimes matches or beats it. |
 | 8 | Fast (library default) | Codec Wiki considers 8 the last truly usable preset in v3.0 and found it occasionally equal to 6 by W-VMAF. Film grain above preset 6 triggers a compute-overhead warning. |
 | 9 | Very fast | Codec Wiki saw non-monotonic, inconsistent quality at low CRF for 9 and 10. In v4.3.0 random-access encodes at 4K and above are capped to preset 9. |
-| 10 | Very fast | Outside --rtc, v4.3.0 warns that M10 and faster are meant for automation tooling and may show artifacts. Not recommended for quality work. |
+| 10 | Very fast | Outside `--rtc`, v4.3.0 warns that M10 and faster are meant for automation tooling and may show artifacts. Not recommended for quality work. |
 | 11 | Fastest random-access (VOD) preset in v4.3.0 | Speed/testing use only. The v3.0 changelog speaks of a max of M10; the v4.3.0 source clamps random-access presets above 11 to 11, so whether 11 differs from 10 for VOD was not verified. |
-| 12 | Same as 11 for VOD | Mapped to M11 with a warning in random-access mode (v4.3.0 source); distinct only with --rtc. |
-| 13 | Same as 11 for VOD; fastest RTC preset | Mapped to M11 in random access; with --rtc it is labeled experimental and meant for speed evaluation. |
+| 12 | Same as 11 for VOD | Mapped to M11 with a warning in random-access mode (v4.3.0 source); distinct only with `--rtc`. |
+| 13 | Same as 11 for VOD; fastest RTC preset | Mapped to M11 in random access; with `--rtc` it is labeled experimental and meant for speed evaluation. |
 
 ## Rate control
 
 | Mode | Flags | Notes |
 |---|---|---|
-| CRF (constant rate factor) | --rc 0 --crf <1-70> (0.25 steps) | Default and recommended for home/archival use. Equivalent to --rc 0 --aq-mode 2 --qp x. Values above 63 use the extended quarter-step range added in v4.0. |
+| CRF (constant rate factor) | --rc 0 --crf <1-70> (0.25 steps) | Default and recommended for home/archival use. Equivalent to `--rc` 0 `--aq-mode` 2 `--qp` x. Values above 63 use the extended quarter-step range added in v4.0. |
 | CQP (fixed quantizer) | --cqp <1-70> or --rc 0 --aq-mode 0 --qp <1-63> | Turns adaptive QP off; useful for experiments and per-frame QP files, less efficient for real encodes. |
 | Capped CRF | --rc 0 --crf <n> --mbr <kbps> [--mbr-overshoot-pct] | Quality-targeted encode with a bitrate ceiling, useful for streaming ladders. |
 | Multi-pass CRF | --passes 2 --rc 0 --crf <n> [--stats file] | The project says extra passes in CRF mainly help corner cases such as high motion; usually not critical. |
-| VBR one-pass | --rc 1 --tbr <kbps> [--lookahead] | Targets an average bitrate; less efficient than CRF; rate tolerance via --undershoot-pct/--overshoot-pct. |
-| VBR two-pass | --passes 2 --rc 1 --tbr <kbps> --stats file (or --pass 1 / --pass 2) | Best way to hit a file size; --gop-constraint-rc 1 matches rate per GOP when GOP > 119 frames. |
+| VBR one-pass | --rc 1 --tbr <kbps> [--lookahead] | Targets an average bitrate; less efficient than CRF; rate tolerance via `--undershoot-pct`/--overshoot-pct. |
+| VBR two-pass | --passes 2 --rc 1 --tbr <kbps> --stats file (or --pass 1 / --pass 2) | Best way to hit a file size; `--gop-constraint-rc` 1 matches rate per GOP when GOP > 119 frames. |
 | CBR | --rc 2 --tbr <kbps> [--buf-sz --buf-initial-sz --buf-optimal-sz] (usually with --pred-struct 1 or --rtc) | Always single pass; for real-time/low-delay streaming. Variance boost is disabled automatically in CBR. |
 
 ## Recipes
@@ -156,7 +156,7 @@ Sources: [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Com
 --preset 4 --crf 30 --input-depth 10 --film-grain 10 --film-grain-denoise 0 --enable-variance-boost 1 --variance-boost-strength 2 --enable-tf 0
 ```
 
-Grainy animation can use levels up to about 10; turning TF off keeps more of the source grain; the animation deep dive found TF-off results clip dependent, so compare against --tf-strength 1.
+Grainy animation can use levels up to about 10; turning TF off keeps more of the source grain; the animation deep dive found TF-off results clip dependent, so compare against `--tf-strength` 1.
 
 Sources: [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/CommonQuestions.md), [source](https://codecs.wiki/blog/svt-av1-deep-dive)
 
@@ -316,7 +316,7 @@ Only the installed mainline v4.3.0 options are documented above. Options that lo
 | [`--width`](#width) | 4-16384 | 0 | Frame width for raw YUV input; taken from the header for Y4M. |  |  |
 | [`--height`](#height) | 4-8704 | 0 | Frame height for raw YUV input; taken from the header for Y4M. |  |  |
 | [`--forced-max-frame-width`](#forced-max-frame-width) | 4-16384 | 0 | Declares a larger maximum frame width in the sequence header than the first frame has, so later frames can change resolution. |  |  |
-| [`--forced-max-frame-height`](#forced-max-frame-height) | 4-8704 | 0 | Height counterpart of --forced-max-frame-width. |  |  |
+| [`--forced-max-frame-height`](#forced-max-frame-height) | 4-8704 | 0 | Height counterpart of `--forced-max-frame-width`. |  |  |
 | [`--frames`](#frames) | 0: until EOF, 1-(2^63)-1 | 0 | Number of frames to encode. |  |  |
 | [`--skip`](#skip) | 0: don't skip, 1-(2^63)-1 | 0 | Skips this many input frames before encoding starts. |  |  |
 | [`--nb`](#nb) | -1: no buffering, 1-(2^31)-1 | -1 | Loads n frames into memory up front and encodes only those, removing input I/O from speed measurements. |  |  |
@@ -324,7 +324,7 @@ Only the installed mainline v4.3.0 options are documented above. Options that lo
 | [`--fps-num`](#fps-num) | 0-2^32-1 | 60000 | Frame-rate numerator for raw input; Y4M supplies it. |  |  |
 | [`--fps-denom`](#fps-denom) | 0-2^32-1 | 1000 | Frame-rate denominator; use 1001 for NTSC-style rates such as 24000/1001. |  |  |
 | [`--inj`](#inj) | 0-1 | 0 | Feeds pictures to the library at a fixed rate to simulate a live source. |  |  |
-| [`--inj-frm-rt`](#inj-frm-rt) | 0-240 | 60 | Picture rate used by the injector when --inj 1 is set. |  |  |
+| [`--inj-frm-rt`](#inj-frm-rt) | 0-240 | 60 | Picture rate used by the injector when `--inj` 1 is set. |  |  |
 
 ### Rate control
 
@@ -333,11 +333,11 @@ Only the installed mainline v4.3.0 options are documented above. Options that lo
 | [`--rc`](#rc) | 0: CRF or CQP (if --aq-mode 0), 1: VBR, 2: CBR | 0 | Selects the rate-control family: quality-targeted, average-bitrate, or constant-bitrate. |  |  |
 | [`--qp`](#qp) | 1-63 | 35 | Base quantizer. |  |  |
 | [`--crf`](#crf) | 1-70, in 0.25 steps | 35 | Constant rate factor: the main quality dial. |  | ✓ |
-| [`--cqp`](#cqp) | 1-70, in 0.25 steps | 35 | Constant quantizer with adaptive QP off, using the same extended scale as --crf. |  |  |
+| [`--cqp`](#cqp) | 1-70, in 0.25 steps | 35 | Constant quantizer with adaptive QP off, using the same extended scale as `--crf`. |  |  |
 | [`--tbr`](#tbr) | 1-100000 (kbps) | 7000 | Target bitrate for VBR and CBR. |  |  |
 | [`--mbr`](#mbr) | 1-100000 (kbps) | 0 | Maximum bitrate for capped CRF: keeps CRF quality targeting but limits peaks. |  |  |
-| [`--use-q-file`](#use-q-file) | 0-1 | 0 | Replaces the encoder's own per-picture QP choice with values read from --qpfile. |  |  |
-| [`--qpfile`](#qpfile) | text file, one QP per line | not stated | File of per-picture QP values used when --use-q-file 1 is set. |  |  |
+| [`--use-q-file`](#use-q-file) | 0-1 | 0 | Replaces the encoder's own per-picture QP choice with values read from `--qpfile`. |  |  |
+| [`--qpfile`](#qpfile) | text file, one QP per line | not stated | File of per-picture QP values used when `--use-q-file` 1 is set. |  |  |
 | [`--max-qp`](#max-qp) | 1-63 | 63 | Highest quantizer (worst quality) VBR/CBR may use. |  |  |
 | [`--min-qp`](#min-qp) | 1-63 | 1 | Lowest quantizer (best quality) VBR/CBR may use, preventing waste on easy scenes. |  |  |
 | [`--aq-mode`](#aq-mode) | 0: off, 1: variance based using AV1 segments, 2: deltaq pred efficiency | 2 | Adaptive quantization inside a frame. |  |  |
@@ -354,7 +354,7 @@ Only the installed mainline v4.3.0 options are documented above. Options that lo
 | [`--lambda-scale-factors`](#lambda-scale-factors) | comma list of integers per SvtAv1FrameUpdateType (value/128 = scale) | 128,128,..,128 | Scales the rate-distortion lambda for each frame-update type; above 128 favors fewer bits, below favors quality. |  |  |
 | [`--undershoot-pct`](#undershoot-pct) | 0-100 | 25 (varies by rate control) | How far below the target bitrate VBR/CBR may fall before correcting. |  |  |
 | [`--overshoot-pct`](#overshoot-pct) | 0-100 | 25 (varies by rate control) | How far above the target bitrate VBR/CBR may go before correcting. |  |  |
-| [`--mbr-overshoot-pct`](#mbr-overshoot-pct) | 0-100 | 50 | Allowed overshoot above --mbr in capped CRF. |  |  |
+| [`--mbr-overshoot-pct`](#mbr-overshoot-pct) | 0-100 | 50 | Allowed overshoot above `--mbr` in capped CRF. |  |  |
 | [`--max-intra-bitrate-pct`](#max-intra-bitrate-pct) | percentage, 0 disables | 300 | Caps the size of intra frames as a percentage of the per-frame target. |  |  |
 | [`--max-inter-bitrate-pct`](#max-inter-bitrate-pct) | percentage, 0 disables | 0 | Caps the size of inter frames as a percentage of the per-frame target. |  |  |
 | [`--gop-constraint-rc`](#gop-constraint-rc) | 0-1 | 0 | Makes VBR hit the target within each GOP instead of only over the whole file. |  |  |
@@ -430,7 +430,7 @@ Only the installed mainline v4.3.0 options are documented above. Options that lo
 
 | Flag | Values | Default | What it does | HDR | Lumora |
 |---|---|---|---|---|---|
-| [`--color-help`](#color-help) | none (switch) | not stated | Prints the color-metadata appendix: the numeric and named values for primaries, transfer, matrix, range and chroma position, and the syntax of --mastering-display and --content-light. | ✓ |  |
+| [`--color-help`](#color-help) | none (switch) | not stated | Prints the color-metadata appendix: the numeric and named values for primaries, transfer, matrix, range and chroma position, and the syntax of `--mastering-display` and `--content-light`. | ✓ |  |
 | [`--input-depth`](#input-depth) | 8, 10 | 8 | Bit depth of the input file and of the output bitstream. | ✓ | ✓ |
 | [`--color-primaries`](#color-primaries) | 0-12, 22 (1 bt709, 2 unspecified, 9 bt2020, 12 smpte432 ...; names accepted) | 2 | Signals the color primaries of the content in the sequence header. | ✓ | ✓ |
 | [`--transfer-characteristics`](#transfer-characteristics) | 0-22 (1 bt709, 13 srgb, 16 smpte2084/PQ, 18 hlg ...; names accepted) | 2 | Signals the transfer function (gamma, PQ or HLG). | ✓ | ✓ |
@@ -484,7 +484,7 @@ Only the installed mainline v4.3.0 options are documented above. Options that lo
 | [`--stat-file`](#stat-file) | file path | not stated | Writes per-picture PSNR and SSIM to a file. |  |  |
 | [`--progress`](#progress) | 0: none, 1: default, 2: detailed | 1 | Controls how much progress output the app prints while encoding. |  |  |
 | [`--no-progress`](#no-progress) | 1: same as --progress 0, 0: same as --progress 1 | 0 | Shortcut to silence progress printing. |  |  |
-| [`--enable-stat-report`](#enable-stat-report) | 0-1 | 0 | Computes PSNR and SSIM against the source and prints a summary at the end (and per frame with --stat-file). |  |  |
+| [`--enable-stat-report`](#enable-stat-report) | 0-1 | 0 | Computes PSNR and SSIM against the source and prints a summary at the end (and per frame with `--stat-file`). |  |  |
 
 ### Other
 
@@ -525,7 +525,7 @@ Source video. Y4M carries width, height, frame rate and bit depth in its header;
 |---|---|---|---|
 | HDR | `10-bit y4m on stdin` | Y4M passes dimensions, rate and depth automatically, avoiding the 60 fps / 8-bit defaults that apply to raw YUV. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Parameters.md) |
 
-**In Lumora:** Always '-i stdin': Lumora pipes Y4M frames into the encoder (encoders.json svtav1.args, input 'stdin').
+**In Lumora:** Always '`-i` stdin': Lumora pipes Y4M frames into the encoder (encoders.json svtav1.args, input 'stdin').
 
 **Notes:** SVT-AV1 does no color or scaling conversion; whatever is piped in is what is encoded.
 
@@ -549,7 +549,7 @@ Lets the app memory-map a regular input file instead of reading it with normal f
 
 Where the compressed bitstream is written. The extension picks IVF or raw OBU; IVF is used otherwise.
 
-**In Lumora:** '-b {out}' with extension 'ivf'; Lumora muxes the IVF afterwards.
+**In Lumora:** '`-b` {out}' with extension 'ivf'; Lumora muxes the IVF afterwards.
 
 <a id="ivf"></a>
 
@@ -559,7 +559,7 @@ Where the compressed bitstream is written. The extension picks IVF or raw OBU; I
 
 Forces IVF container output regardless of file extension.
 
-**Notes:** Raw OBU output (--obu) and this explicit switch were added in v4.2.0.
+**Notes:** Raw OBU output (`--obu`) and this explicit switch were added in v4.2.0.
 
 <a id="obu"></a>
 
@@ -613,7 +613,7 @@ Frame width for raw YUV input; taken from the header for Y4M.
 
 Frame height for raw YUV input; taken from the header for Y4M.
 
-**Notes:** Note -h is height, not help.
+**Notes:** Note `-h` is height, not help.
 
 <a id="forced-max-frame-width"></a>
 
@@ -631,7 +631,7 @@ Declares a larger maximum frame width in the sequence header than the first fram
 
 **Type:** int · **Values:** 4-8704 · **Default:** 0 · advanced
 
-Height counterpart of --forced-max-frame-width.
+Height counterpart of `--forced-max-frame-width`.
 
 <a id="frames"></a>
 
@@ -683,7 +683,7 @@ Frame-rate numerator for raw input; Y4M supplies it. Affects rate control, keyin
 
 **Effect:** quality ± via rate control · speed none · size ± in VBR/CBR
 
-**Notes:** The separate --fps option was removed in v4.0; rates below 1 fps are rejected.
+**Notes:** The separate `--fps` option was removed in v4.0; rates below 1 fps are rejected.
 
 <a id="fps-denom"></a>
 
@@ -713,7 +713,7 @@ Feeds pictures to the library at a fixed rate to simulate a live source.
 
 **Type:** int · **Values:** 0-240 · **Default:** 60 · advanced
 
-Picture rate used by the injector when --inj 1 is set.
+Picture rate used by the injector when `--inj` 1 is set.
 
 **Effect:** quality none · speed caps throughput · size none
 
@@ -733,7 +733,7 @@ Selects the rate-control family: quality-targeted, average-bitrate, or constant-
 |---|---|---|---|
 | archive | `0 (with --crf)` | CRF gives the best quality per file size when no bitrate target is needed. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/CommonQuestions.md) |
 
-**Notes:** Lumora relies on the default (0) and passes --crf.
+**Notes:** Lumora relies on the default (0) and passes `--crf`.
 
 <a id="qp"></a>
 
@@ -745,7 +745,7 @@ Base quantizer. In CQP it is the fixed level; in CRF it is the starting point th
 
 **Effect:** quality - as it rises · speed slightly + as it rises · size smaller as it rises
 
-**Notes:** --crf and --cqp are the friendlier forms with quarter steps and a range up to 70.
+**Notes:** `--crf` and `--cqp` are the friendlier forms with quarter steps and a range up to 70.
 
 <a id="crf"></a>
 
@@ -762,7 +762,7 @@ Constant rate factor: the main quality dial. Lower values mean higher quality an
 | anime | `relatively high CRF (with low film-grain)` | The project notes 2D animation looks good at higher CRF than live action because it is easy to compress. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/CommonQuestions.md) |
 | live action | `raise CRF a little when enabling variance boost` | Variance boost adds bits to flat areas; Codec Wiki suggests compensating with a higher CRF. | [source](https://codecs.wiki/blog/svt-av1-fourth-deep-dive-p2) |
 
-**In Lumora:** '--crf {quality}'; Lumora's target-quality search moves within qualityBest 16 to qualityWorst 40.
+**In Lumora:** '`--crf` {quality}'; Lumora's target-quality search moves within qualityBest 16 to qualityWorst 40.
 
 **Notes:** Values above 63 and quarter steps come from the extended CRF added in v4.0 (from SVT-AV1-PSY); v4.3.0 fixed a bitrate inversion at fractional values above 63. No authoritative source gives a universal CRF table; pick by metric targeting.
 
@@ -772,7 +772,7 @@ Constant rate factor: the main quality dial. Lower values mean higher quality an
 
 **Type:** float · **Values:** 1-70, in 0.25 steps · **Default:** 35 · advanced
 
-Constant quantizer with adaptive QP off, using the same extended scale as --crf.
+Constant quantizer with adaptive QP off, using the same extended scale as `--crf`.
 
 **Effect:** quality less consistent than CRF · speed ≈ · size usually larger than CRF at equal quality
 
@@ -810,11 +810,11 @@ Maximum bitrate for capped CRF: keeps CRF quality targeting but limits peaks.
 
 **Type:** bool · **Values:** 0-1 · **Default:** 0 · advanced
 
-Replaces the encoder's own per-picture QP choice with values read from --qpfile.
+Replaces the encoder's own per-picture QP choice with values read from `--qpfile`.
 
 **Effect:** quality depends on file · speed ≈ · size depends on file
 
-**Notes:** The help text refers to '--qp-file' but the real option is --qpfile.
+**Notes:** The help text refers to '`--qp-file`' but the real option is `--qpfile`.
 
 <a id="qpfile"></a>
 
@@ -822,7 +822,7 @@ Replaces the encoder's own per-picture QP choice with values read from --qpfile.
 
 **Type:** path · **Values:** text file, one QP per line · **Default:** not stated · advanced
 
-File of per-picture QP values used when --use-q-file 1 is set.
+File of per-picture QP values used when `--use-q-file` 1 is set.
 
 **Effect:** quality depends on file · speed ≈ · size depends on file
 
@@ -864,7 +864,7 @@ Adaptive quantization inside a frame. Mode 2 adjusts quality per superblock by h
 |---|---|---|---|
 | live action | `2` | Codec Wiki found mode 2 the most efficient and fastest; mode 0 hurt SSIMULACRA2 on nearly every clip. | [source](https://codecs.wiki/blog/svt-av1-deep-dive) |
 
-**Notes:** Variance boost is turned off automatically with --aq-mode 1.
+**Notes:** Variance boost is turned off automatically with `--aq-mode` 1.
 
 <a id="use-fixed-qindex-offsets"></a>
 
@@ -876,7 +876,7 @@ Uses user-supplied qindex offsets per frame type and temporal layer instead of t
 
 **Effect:** quality depends on offsets · speed ≈ · size depends on offsets
 
-**Notes:** Works with --rc 0; set --hierarchical-levels before the offset lists.
+**Notes:** Works with `--rc` 0; set `--hierarchical-levels` before the offset lists.
 
 <a id="key-frame-qindex-offset"></a>
 
@@ -1018,7 +1018,7 @@ How far above the target bitrate VBR/CBR may go before correcting.
 
 **Effect:** quality ± · speed none · size rate accuracy
 
-**Notes:** The FAQ mentions a --bias-pct option for VBR flexibility; it is not in this build's help.
+**Notes:** The FAQ mentions a `--bias-pct` option for VBR flexibility; it is not in this build's help.
 
 <a id="mbr-overshoot-pct"></a>
 
@@ -1026,7 +1026,7 @@ How far above the target bitrate VBR/CBR may go before correcting.
 
 **Type:** int · **Values:** 0-100 · **Default:** 50 · advanced
 
-Allowed overshoot above --mbr in capped CRF.
+Allowed overshoot above `--mbr` in capped CRF.
 
 **Effect:** quality + when higher · speed none · size peaks
 
@@ -1146,7 +1146,7 @@ Region-of-interest map that shifts QP per 64x64 block per picture, for steering 
 
 **Effect:** quality + where offsets are negative · speed ≈ · size ±
 
-**Notes:** Overrides variance AQ segments when --aq-mode 1 is also on.
+**Notes:** Overrides variance AQ segments when `--aq-mode` 1 is also on.
 
 <a id="pass"></a>
 
@@ -1158,7 +1158,7 @@ Runs one pass of a manual multi-pass encode, writing (pass 1) or reading (pass 2
 
 **Effect:** quality + rate allocation in VBR · speed - (two runs) · size accurate targeting
 
-**Notes:** Pass 2 is only for VBR; both passes need --stats.
+**Notes:** Pass 2 is only for VBR; both passes need `--stats`.
 
 <a id="stats"></a>
 
@@ -1218,9 +1218,9 @@ Main speed/efficiency dial. Lower presets enable more coding tools and search ha
 | speed | `6 or 8` | Suggested when preset 4 is too slow; 8 is the last preset Codec Wiki considers fully usable in v3.0. | [source](https://codecs.wiki/blog/svt-av1-fourth-deep-dive-p1) |
 | streaming/small size | `3-6 (0 for very high view counts)` | Streaming Learning Center found 3-6 the useful VOD range on v1.4 and only very popular titles justify preset 0. | [source](https://streaminglearningcenter.com/encoding/choosing-a-preset-for-svt-av1-and-libaom-av1.html) |
 
-**In Lumora:** '--preset {preset}', default '4'. EncodeRecipes AV1 ladder offers presets 10, 8, 6, 5, 4, 3, 2, 1, 0 (seed speed/saving relative to 10), then continues into libaom cpu-used 4-0. MacOptimizer benchmarks a fast preset to choose the instance count.
+**In Lumora:** '`--preset` {preset}', default '4'. EncodeRecipes AV1 ladder offers presets 10, 8, 6, 5, 4, 3, 2, 1, 0 (seed speed/saving relative to 10), then continues into libaom cpu-used 4-0. MacOptimizer benchmarks a fast preset to choose the instance count.
 
-**Notes:** v4.3.0 source: random-access presets above 11 map to 11; 4K+ random access caps at 9 (so Lumora's preset 10 rung equals preset 9 at 4K); still-image (--avif) caps at 9; --rtc only allows 7-13. Presets were renumbered in v2.3.0 and v3.0.0, so older preset numbers do not translate one-to-one. Film grain above preset 6 prints a compute-overhead warning. Above 4K resolution, presets 4 and below are rejected for video (all-intra excepted).
+**Notes:** v4.3.0 source: random-access presets above 11 map to 11; 4K+ random access caps at 9 (so Lumora's preset 10 rung equals preset 9 at 4K); still-image (`--avif`) caps at 9; `--rtc` only allows 7-13. Presets were renumbered in v2.3.0 and v3.0.0, so older preset numbers do not translate one-to-one. Film grain above preset 6 prints a compute-overhead warning. Above 4K resolution, presets 4 and below are rejected for video (all-intra excepted).
 
 <a id="rtc"></a>
 
@@ -1279,7 +1279,7 @@ Maximum distance between key frames. Longer GOPs save bits; shorter ones help se
 | archive | `5s-10s` | The FAQ notes home users prefer 5-10 second GOPs; Codec Wiki suggests about 10x the frame rate. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/CommonQuestions.md) |
 | streaming/small size | `about 1s (e.g. 24 at 24 fps)` | VOD commonly uses ~1 second GOPs for seeking and packet-loss recovery. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/CommonQuestions.md) |
 
-**Notes:** SVT-AV1 never inserts keyframes at scene cuts; chunk-based tools (or Lumora's segments) supply them. The 's' suffix works in SvtAv1EncApp but not in FFmpeg's -g. svt-av1-hdr's -2 means ~10 s.
+**Notes:** SVT-AV1 never inserts keyframes at scene cuts; chunk-based tools (or Lumora's segments) supply them. The 's' suffix works in SvtAv1EncApp but not in FFmpeg's `-g`. svt-av1-hdr's -2 means ~10 s.
 
 <a id="irefresh-type"></a>
 
@@ -1296,7 +1296,7 @@ Whether periodic intra refreshes are full key frames (closed GOP) or forward key
 | live action | `2` | Codec Wiki advises closed GOP because open-GOP support is incomplete. | [source](https://codecs.wiki/docs/encoders/SVT-AV1) |
 | heavy grain | `1 (unconfirmed)` | The animation deep dive saw open GOP tie or win at high CRF and guessed it might help very grainy content, but flagged this as unconfirmed. | [source](https://codecs.wiki/blog/svt-av1-deep-dive) |
 
-**Notes:** Forward key frames force --hierarchical-levels 4 (v4.3.0) and are rejected with CBR.
+**Notes:** Forward key frames force `--hierarchical-levels` 4 (v4.3.0) and are rejected with CBR.
 
 <a id="scd"></a>
 
@@ -1322,9 +1322,9 @@ Extra future frames analyzed beyond what the mini-GOP, temporal filter and rate 
 
 **Effect:** quality small + when larger · speed small - · size slightly smaller
 
-**In Lumora:** Optional 'Deeper look-ahead': '--lookahead 120'.
+**In Lumora:** Optional 'Deeper look-ahead': '`--lookahead` 120'.
 
-**Notes:** v4.3.0 fixed nondeterministic output with --lookahead 0.
+**Notes:** v4.3.0 fixed nondeterministic output with `--lookahead` 0.
 
 <a id="hierarchical-levels"></a>
 
@@ -1372,7 +1372,7 @@ Uses a shorter mini-GOP right after each key frame, so playback can start and se
 
 **Effect:** quality slight - · speed none · size slight +
 
-**Notes:** CRF/CQP only; must not exceed --hierarchical-levels.
+**Notes:** CRF/CQP only; must not exceed `--hierarchical-levels`.
 
 <a id="enable-dg"></a>
 
@@ -1471,7 +1471,7 @@ Lowers the QP of darker frames in proportion to how dark they are, to fight dark
 | low light | `10-50 (test), SDR or HLG only` | Codec Wiki's BD-rate figures improved most on anime and got worse on live action and gaming clips; the author suggests testing values such as 10, 30 and 50, considers values below 50 safe, and says it is not suited to PQ. | [source](https://codecs.wiki/blog/svt-av1-fourth-deep-dive-p2) |
 | HDR | `0 for PQ (HDR10)` | Frame-average luma does not map to perceived darkness the same way on PQ; the study restricts the feature to SDR and HLG. | [source](https://codecs.wiki/blog/svt-av1-fourth-deep-dive-p2) |
 
-**In Lumora:** Optional 'Brighter handling of dark scenes': '--luminance-qp-bias 25', recommended for real life, heavy grain, low light and old anime regardless of output transfer. For HDR10 (PQ) exports this contradicts the Codec Wiki guidance and should be gated off.
+**In Lumora:** Optional 'Brighter handling of dark scenes': '`--luminance-qp-bias` 25', recommended for real life, heavy grain, low light and old anime regardless of output transfer. For HDR10 (PQ) exports this contradicts the Codec Wiki guidance and should be gated off.
 
 **Notes:** Documented since v3.0.2. The svt-av1-hdr fork has its own PQ-aware variants.
 
@@ -1490,7 +1490,7 @@ Biases the deblocking filter and rate-distortion decisions toward a softer (nega
 | live action | `0 or 1-2` | Codec Wiki saw consistent small gains or neutral results at +1/+2 and frequent losses at +4 and above. | [source](https://codecs.wiki/blog/svt-av1-fourth-deep-dive-p2) |
 | anime | `1-2` | The animated test clip (Sol Levante) benefited from positive sharpness while gaming clips did not. | [source](https://codecs.wiki/blog/svt-av1-fourth-deep-dive-p2) |
 
-**In Lumora:** Optional 'Sharper fine detail' / 'Crisper line art': '--sharpness 1' (2 for anime), marked visual-only.
+**In Lumora:** Optional 'Sharper fine detail' / 'Crisper line art': '`--sharpness` 1' (2 for anime), marked visual-only.
 
 **Notes:** Tunes 3 and 4 force sharpness 7. The svt-av1-hdr fork defaults to 1.
 
@@ -1512,9 +1512,9 @@ Chooses what the encoder optimizes for: subjective sharpness (VQ), PSNR, SSIM, s
 | archive | `3 for still images only` | Parameters.md marks IQ as still-image only. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Parameters.md) |
 | streaming/small size | `5 when VMAF is the delivery metric` | Added in v4.2.0 targeting about 15% VMAF BD-rate gain at a small PSNR cost. The encoder warns that it applies unsharp-mask pre-processing, so higher VMAF may not mean higher fidelity. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/CHANGELOG.md) |
 
-**In Lumora:** '--tune 0' in the encoders.json anime tune (with --enable-tf 0); otherwise the default (1).
+**In Lumora:** '`--tune` 0' in the encoders.json anime tune (with `--enable-tf` 0); otherwise the default (1).
 
-**Notes:** Tune numbers differ between projects: SVT-AV1-PSY's tune 3 was 'subjective SSIM', mainline's tune 3 is IQ; svt-av1-hdr adds tune 6 (film grain). Low delay forces tune 0 to 1. Tune 5 (VMAF) arrived in v4.2.0; tune 4 (MS-SSIM) is also post-v4.0, but the changelog does not name its release. v4.3.0 validation: tunes 2-5 accept only CRF (--rc 0); tune 3 (IQ) is rejected with random access, so it is for --avif/all-intra (low delay is experimental); tunes 2 and 4 reject low delay; tune 5 needs random access.
+**Notes:** Tune numbers differ between projects: SVT-AV1-PSY's tune 3 was 'subjective SSIM', mainline's tune 3 is IQ; svt-av1-hdr adds tune 6 (film grain). Low delay forces tune 0 to 1. Tune 5 (VMAF) arrived in v4.2.0; tune 4 (MS-SSIM) is also post-v4.0, but the changelog does not name its release. v4.3.0 validation: tunes 2-5 accept only CRF (`--rc` 0); tune 3 (IQ) is rejected with random access, so it is for `--avif`/all-intra (low delay is experimental); tunes 2 and 4 reject low delay; tune 5 needs random access.
 
 <a id="scm"></a>
 
@@ -1530,7 +1530,7 @@ Screen-content mode: enables palette and intra block copy tools for text, UI and
 |---|---|---|---|
 | screen content | `1 (or keep 2/3 for mixed sources)` | Mode 1 forces block copy and palette tools on; modes 2 and 3 detect it per content. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Parameters.md) |
 
-**In Lumora:** '--scm 1' for the screen-content kind (encoders.json screen tune and EncodeRecipes 'Screen-content tools').
+**In Lumora:** '`--scm` 1' for the screen-content kind (encoders.json screen tune and EncodeRecipes 'Screen-content tools').
 
 **Notes:** Mode 3 was added in v4.0 from SVT-AV1-PSY; v4.3.0 runs it on I-frames only in multi-threaded mode. Tune 3 forces mode 3.
 
@@ -1550,9 +1550,9 @@ Variance-based adaptive quantization: gives low-contrast superblocks (skies, ski
 | low light | `1` | The appendix targets night, foggy and overexposed scenes specifically. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Appendix-Variance-Boost.md) |
 | HDR | `1 (mainline curves are SDR-tuned)` | Still helpful on flat areas, but only the svt-av1-hdr fork has a PQ-specific curve. | [source](https://github.com/juliobbv-p/svt-av1-hdr) |
 
-**In Lumora:** Optional 'Protect flat and dark areas': '--enable-variance-boost 1'.
+**In Lumora:** Optional 'Protect flat and dark areas': '`--enable-variance-boost` 1'.
 
-**Notes:** Automatically disabled with CBR and with --aq-mode 1. Forced on by tunes 3 and 4. Default on in svt-av1-hdr.
+**Notes:** Automatically disabled with CBR and with `--aq-mode` 1. Forced on by tunes 3 and 4. Default on in svt-av1-hdr.
 
 <a id="variance-boost-strength"></a>
 
@@ -1658,9 +1658,9 @@ Strength of the motion-compensated temporal filter used to build alt-ref frames.
 | live action | `1` | Codec Wiki found 1 or lower removes keyframe blocking/smoothing issues, gains flatten below 2, and 4 performs very poorly. | [source](https://codecs.wiki/blog/svt-av1-fourth-deep-dive-p2) |
 | heavy grain | `1 (or --enable-tf 0)` | Weaker temporal filtering preserves real grain; the PSY-derived forks default to 1. | [source](https://github.com/juliobbv-p/svt-av1-hdr) |
 
-**In Lumora:** '--tf-strength 1' ('Gentle temporal filter') for content that is neither anime nor grainy.
+**In Lumora:** '`--tf-strength` 1' ('Gentle temporal filter') for content that is neither anime nor grainy.
 
-**Notes:** In tune 0 the key-frame filter strength is offset too. The fork-only --kf-tf-strength does not exist in mainline. v4.0.1 fixed the default shown in the help.
+**Notes:** In tune 0 the key-frame filter strength is offset too. The fork-only `--kf-tf-strength` does not exist in mainline. v4.0.1 fixed the default shown in the help.
 
 <a id="enable-tf"></a>
 
@@ -1677,9 +1677,9 @@ Builds temporally filtered alt-ref frames. They improve compression, but the fil
 | anime | `0 (clip dependent)` | The animation deep dive found turning TF off can slightly improve efficiency at high quality and speeds things up, depending on the clip. | [source](https://codecs.wiki/blog/svt-av1-deep-dive) |
 | heavy grain | `0 with high --ac-bias` | Recommended by the SVT-AV1 psychovisual appendix for grain retention. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Parameters.md) |
 
-**In Lumora:** '--enable-tf 0' in the encoders.json anime tune and as the 'No temporal smoothing' option for anime and grainy kinds.
+**In Lumora:** '`--enable-tf` 0' in the encoders.json anime tune and as the 'No temporal smoothing' option for anime and grainy kinds.
 
-**Notes:** Codec Wiki's v3.0 study found TF-off competitive with low --tf-strength but sometimes slightly worse; Minecraft-like content did worse.
+**Notes:** Codec Wiki's v3.0 study found TF-off competitive with low `--tf-strength` but sometimes slightly worse; Minecraft-like content did worse.
 
 <a id="enable-kf-tf"></a>
 
@@ -1691,7 +1691,7 @@ Applies the temporal filter to key frames as well.
 
 **Effect:** quality off keeps keyframe texture · speed slight + off · size slight + off
 
-**Notes:** New in v4.2.0. Forks expose a separate --kf-tf-strength instead.
+**Notes:** New in v4.2.0. Forks expose a separate `--kf-tf-strength` instead.
 
 <a id="film-grain"></a>
 
@@ -1699,7 +1699,7 @@ Applies the temporal filter to key frames as well.
 
 **Type:** int · **Values:** 0: off, 1-50: denoising level · **Default:** 0
 
-Enables film-grain synthesis: the encoder estimates a grain model and signals it so the decoder adds matching synthetic grain. The number sets how strongly grain is analyzed (and removed, with --film-grain-denoise 1).
+Enables film-grain synthesis: the encoder estimates a grain model and signals it so the decoder adds matching synthetic grain. The number sets how strongly grain is analyzed (and removed, with `--film-grain-denoise` 1).
 
 **Effect:** quality keeps grain look; too high stacks noise or removes fine detail · speed slight - · size much smaller on grainy sources
 
@@ -1712,9 +1712,9 @@ Enables film-grain synthesis: the encoder estimates a grain model and signals it
 | old anime | `up to about 10` | Grainy (film-era) animation can use higher levels up to around 10. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/CommonQuestions.md) |
 | CGI | `0` | If the 3D animation has no grain, leaving it off is faster and avoids losing fine detail. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/CommonQuestions.md) |
 
-**In Lumora:** encoders.json 'grain' tune: '--film-grain 10 --film-grain-denoise 0'. EncodeRecipes option: '--film-grain 12' (heavy grain), 4 (anime/old anime) or 8 (others) with '--film-grain-denoise 1', recommended for heavy grain, old anime and low light. Dropped when a measured --fgs-table is used.
+**In Lumora:** encoders.json 'grain' tune: '`--film-grain` 10 `--film-grain-denoise` 0'. EncodeRecipes option: '`--film-grain` 12' (heavy grain), 4 (anime/old anime) or 8 (others) with '`--film-grain-denoise` 1', recommended for heavy grain, old anime and low light. Dropped when a measured `--fgs-table` is used.
 
-**Notes:** Above preset 6 the encoder warns of significant compute overhead (Lumora's ladder includes presets 8 and 10). Lumora's level for old anime (4) is lower than the FAQ's 'up to ~10' for grainy animation. --adaptive-film-grain (default on) adapts the synthesis block size to resolution.
+**Notes:** Above preset 6 the encoder warns of significant compute overhead (Lumora's ladder includes presets 8 and 10). Lumora's level for old anime (4) is lower than the FAQ's 'up to ~10' for grainy animation. `--adaptive-film-grain` (default on) adapts the synthesis block size to resolution.
 
 <a id="film-grain-denoise"></a>
 
@@ -1729,12 +1729,12 @@ Chooses whether the encoder also removes the grain from the picture it codes. Wi
 | For | Value | Why | Source |
 |---|---|---|---|
 | archive | `0 (with a verified level)` | The FAQ says disabling source denoising can give higher fidelity if the level is checked by eye or high-fidelity metrics, warning that too high a level then stacks noise. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/CommonQuestions.md) |
-| heavy grain | `0` | Codec Wiki recommends plain --film-grain without denoise in most cases because denoising always removes fine detail. | [source](https://codecs.wiki/docs/encoders/SVT-AV1) |
+| heavy grain | `0` | Codec Wiki recommends plain `--film-grain` without denoise in most cases because denoising always removes fine detail. | [source](https://codecs.wiki/docs/encoders/SVT-AV1) |
 | streaming/small size | `1` | The FAQ says removing the grain and replacing it with synthetic grain is where the large efficiency gains come from. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/CommonQuestions.md) |
 
-**In Lumora:** 0 in the encoders.json grain tune, 1 in the EncodeRecipes grain option (the two paths disagree). Removed when --fgs-table is used; Lumora then denoises the frames itself.
+**In Lumora:** 0 in the encoders.json grain tune, 1 in the EncodeRecipes grain option (the two paths disagree). Removed when `--fgs-table` is used; Lumora then denoises the frames itself.
 
-**Notes:** Default changed to 0 (from SVT-AV1-PSY). Ignored with a warning when --film-grain is 0. With --fgs-table the app disables encoder denoising.
+**Notes:** Default changed to 0 (from SVT-AV1-PSY). Ignored with a warning when `--film-grain` is 0. With `--fgs-table` the app disables encoder denoising.
 
 <a id="fgs-table"></a>
 
@@ -1748,11 +1748,11 @@ Supplies a pre-computed AV1 film-grain table instead of the encoder's own estima
 
 | For | Value | Why | Source |
 |---|---|---|---|
-| heavy grain | `a table measured from the film, fed with a denoised input` | With a table the encoder does not denoise (the app turns --film-grain off), so the input must already be clean or grain doubles. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/v4.3.0/Source/App/app_config.c) |
+| heavy grain | `a table measured from the film, fed with a denoised input` | With a table the encoder does not denoise (the app turns `--film-grain` off), so the input must already be clean or grain doubles. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/v4.3.0/Source/App/app_config.c) |
 
-**In Lumora:** 'Grain measured from this film': '--fgs-table {grain_table}' written by GrainTable.write (one E entry 0..INT64_MAX, seed 7391, lag 0, scaling_shift 11, 10 luma points, no chroma). Lumora strips --film-grain/--film-grain-denoise and denoises the frames itself. That layout satisfies the v4.3.0 parser (seed <= 65535, lag <= 3, <= 14 luma points, one cCb/cCr coefficient at lag 0).
+**In Lumora:** 'Grain measured from this film': '`--fgs-table` {grain_table}' written by GrainTable.write (one E entry 0..INT64_MAX, seed 7391, lag 0, scaling_shift 11, 10 luma points, no chroma). Lumora strips `--film-grain`/--film-grain-denoise and denoises the frames itself. That layout satisfies the v4.3.0 parser (seed <= 65535, lag <= 3, <= 14 luma points, one cCb/cCr coefficient at lag 0).
 
-**Notes:** v4.3.0 added timed tables (multiple time ranges) and per-picture grain via the API; earlier builds used the table more simply, so multi-entry tables may behave differently on older versions. Seeds advance per picture. Frame timing comes from --fps-num/--fps-denom, so raw input needs a correct rate. Same format as libaom's --film-grain-table.
+**Notes:** v4.3.0 added timed tables (multiple time ranges) and per-picture grain via the API; earlier builds used the table more simply, so multi-entry tables may behave differently on older versions. Seeds advance per picture. Frame timing comes from `--fps-num`/--fps-denom, so raw input needs a correct rate. Same format as libaom's `--film-grain-table`.
 
 <a id="adaptive-film-grain"></a>
 
@@ -1778,7 +1778,7 @@ Chooses the block size the grain model is estimated from based on resolution, wh
 
 **Type:** bool · **Values:** none (switch) · **Default:** not stated · **HDR-relevant**
 
-Prints the color-metadata appendix: the numeric and named values for primaries, transfer, matrix, range and chroma position, and the syntax of --mastering-display and --content-light.
+Prints the color-metadata appendix: the numeric and named values for primaries, transfer, matrix, range and chroma position, and the syntax of `--mastering-display` and `--content-light`.
 
 **Notes:** Listed twice in the help (Options and Color Description sections); it is one switch.
 
@@ -1797,7 +1797,7 @@ Bit depth of the input file and of the output bitstream. SVT-AV1 does not change
 | HDR | `10` | The FAQ notes HDR video is normally encoded at 10 bits; feed a 10-bit pipe so PQ/HLG gradients are not cut to 8 bits. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/CommonQuestions.md) |
 | live action | `10 (even from 8-bit sources)` | Codec Wiki recommends 10-bit output for efficiency; the project FAQ says it reduces rounding and banding at a small (~5%) size cost. The two sources disagree on whether it saves or costs bits. | [source](https://codecs.wiki/docs/encoders/SVT-AV1) |
 
-**In Lumora:** '--input-depth {bits}' from the export's bit depth (12-bit and 4:2:2/4:4:4 go to the libaom av1Pro path).
+**In Lumora:** '`--input-depth` {bits}' from the export's bit depth (12-bit and 4:2:2/4:4:4 go to the libaom av1Pro path).
 
 **Notes:** Disagreement noted: Codec Wiki says 10-bit is more efficient, the SVT-AV1 FAQ describes a ~5% size cost for slightly better fidelity.
 
@@ -1815,7 +1815,7 @@ Signals the color primaries of the content in the sequence header. Only a label:
 |---|---|---|---|
 | HDR | `9 (bt2020)` | HDR10 and HLG use BT.2020/BT.2100 primaries, as in the official HDR example. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Parameters.md) |
 
-**In Lumora:** '--color-primaries {cp}': 1 for SDR, 9 for PQ and HLG targets.
+**In Lumora:** '`--color-primaries` {cp}': 1 for SDR, 9 for PQ and HLG targets.
 
 **Notes:** Default 2 means unspecified; players then guess, usually BT.709.
 
@@ -1833,7 +1833,7 @@ Signals the transfer function (gamma, PQ or HLG). This is what tells players a s
 |---|---|---|---|
 | HDR | `16 (smpte2084) for HDR10, 18 (hlg) for HLG` | Listed values for PQ and HLG in the color appendix. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Parameters.md) |
 
-**In Lumora:** '--transfer-characteristics {tc}': 1 SDR, 16 HDR10, 18 HLG.
+**In Lumora:** '`--transfer-characteristics` {tc}': 1 SDR, 16 HDR10, 18 HLG.
 
 **Notes:** In the svt-av1-hdr fork, 16 also switches variance boost to its PQ curve automatically; mainline has no such link.
 
@@ -1851,7 +1851,7 @@ Signals the RGB-to-YUV matrix used to make the input.
 |---|---|---|---|
 | HDR | `9 (bt2020-ncl)` | Matches BT.2100 YCbCr used by HDR10/HLG. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Parameters.md) |
 
-**In Lumora:** '--matrix-coefficients {mc}': 1 SDR, 9 HDR.
+**In Lumora:** '`--matrix-coefficients` {mc}': 1 SDR, 9 HDR.
 
 <a id="color-range"></a>
 
@@ -1863,7 +1863,7 @@ Signals limited (16-235 style) or full range samples.
 
 **Effect:** quality none (mismatch = crushed or washed-out levels) · speed none · size none
 
-**In Lumora:** Always '--color-range 0' (studio).
+**In Lumora:** Always '`--color-range` 0' (studio).
 
 **Notes:** HDR10 deliverables are normally studio range.
 
@@ -1897,7 +1897,7 @@ Writes SMPTE ST 2086 mastering-display metadata (display primaries, white point,
 |---|---|---|---|
 | HDR | `G(0.2650,0.6900)B(0.1500,0.0600)R(0.6800,0.3200)WP(0.3127,0.3290)L(1000,0.0001) for a P3-D65 1000-nit master` | Same syntax and coordinate set as the official example; luminance is given directly in nits. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Parameters.md) |
 
-**In Lumora:** '--mastering-display {svt_mastering}' on HDR10 exports only: HDRMetadata.svtMastering always writes P3-D65 primaries and L(peak nits as integer, min nits).
+**In Lumora:** '`--mastering-display` {svt_mastering}' on HDR10 exports only: HDRMetadata.svtMastering always writes P3-D65 primaries and L(peak nits as integer, min nits).
 
 **Notes:** Unlike x265, no 50000/10000 scaling. Out-of-range values are clipped. Lumora assumes a P3 mastering display for every HDR10 job, which is the common case but not universal.
 
@@ -1915,7 +1915,7 @@ Writes CTA-861.3 content light level metadata: brightest pixel (MaxCLL) and brig
 |---|---|---|---|
 | HDR | `measured MaxCLL,MaxFALL (e.g. 1000,400)` | Format given in the color appendix; real values let displays tone-map well. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Parameters.md) |
 
-**In Lumora:** '--content-light {maxcll},{maxfall}' on HDR10 exports, from the measured or target metadata (0,0 when unknown).
+**In Lumora:** '`--content-light` {maxcll},{maxfall}' on HDR10 exports, from the measured or target metadata (0,0 when unknown).
 
 ### Analysis and motion search
 
@@ -1941,7 +1941,7 @@ Allows intra block copy (copying an already-coded area of the same frame), mainl
 
 **Effect:** quality + on screen content · speed - when used · size smaller on screen content
 
-**Notes:** New in v4.2.0; still gated by --scm decisions and presets.
+**Notes:** New in v4.2.0; still gated by `--scm` decisions and presets.
 
 ### Partitioning and transforms
 
@@ -1960,7 +1960,7 @@ Turns on quantization matrices so high-frequency coefficients are quantized more
 | archive | `1` | Codec Wiki found QMs improve efficiency at high quality with no real speed cost. | [source](https://codecs.wiki/blog/svt-av1-deep-dive) |
 | live action | `1` | Recommended by the Codec Wiki SVT-AV1 page. | [source](https://codecs.wiki/docs/encoders/SVT-AV1) |
 
-**In Lumora:** Optional 'Quantization matrices' choice: '--enable-qm 1 --qm-min 4', offered for every content type except screen content.
+**In Lumora:** Optional 'Quantization matrices' choice: '`--enable-qm` 1 `--qm-min` 4', offered for every content type except screen content.
 
 **Notes:** Tunes 3 (IQ) and 4 (MS-SSIM) force QMs on with levels 4-10. The svt-av1-hdr fork enables QMs by default.
 
@@ -1980,7 +1980,7 @@ Steepest (least flat) luma quantization matrix allowed; lower values mean strong
 | heavy grain | `keep higher (default 8)` | Codec Wiki advises against qm-min 0 for extremely heavy grain. | [source](https://codecs.wiki/docs/encoders/SVT-AV1) |
 | archive | `4` | The encoder's own IQ and MS-SSIM tunes pick 4 as the floor (v4.3.0 source), a middle ground between 0 and 8. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/v4.3.0/Source/Lib/Globals/enc_handle.c) |
 
-**In Lumora:** '--qm-min 4' with the QM option.
+**In Lumora:** '`--qm-min` 4' with the QM option.
 
 **Notes:** The SVT-AV1 docs say lower levels lower bitrate with slightly worse quality in CRF, more so at low CRF; community tests saw net efficiency gains. Sources disagree on the best floor (0 vs 4); test on your content.
 
@@ -1998,7 +1998,7 @@ Flattest luma matrix allowed (15 = flat). The encoder maps each frame's qindex i
 |---|---|---|---|
 | live action | `15` | Codec Wiki says leave the maximum alone. | [source](https://codecs.wiki/docs/encoders/SVT-AV1) |
 
-**Notes:** Must be >= --qm-min or the encoder errors.
+**Notes:** Must be >= `--qm-min` or the encoder errors.
 
 <a id="chroma-qm-min"></a>
 
@@ -2108,11 +2108,11 @@ Level of parallelism, not a thread count. Higher levels create more threads and 
 
 | For | Value | Why | Source |
 |---|---|---|---|
-| speed | `lower level per instance (e.g. 3-4) with several instances pinned to separate cores` | The docs show running parallel encodes with a modest --lp each; since output is unchanged, chunked parallel instances scale better than one encode on many cores. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Parameters.md) |
+| speed | `lower level per instance (e.g. 3-4) with several instances pinned to separate cores` | The docs show running parallel encodes with a modest `--lp` each; since output is unchanged, chunked parallel instances scale better than one encode on many cores. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Parameters.md) |
 
-**In Lumora:** '--lp {threads}' where threads = cpuCores (single encode / repair) or cpuCores / instances (segmented exports). Because --lp is a level, values above 6 are clamped to 6 with a warning (v4.3.0 enc_handle.c), so every Lumora instance runs at maximum parallelism and memory. Mapping cores to levels the way the library's auto mode does (1 core -> 1, 2 -> 2, up to 5 -> 3, up to 11 -> 4, up to 23 -> 5, more -> 6) would match the intent.
+**In Lumora:** '`--lp` {threads}' where threads = cpuCores (single encode / repair) or cpuCores / instances (segmented exports). Because `--lp` is a level, values above 6 are clamped to 6 with a warning (v4.3.0 enc_handle.c), so every Lumora instance runs at maximum parallelism and memory. Mapping cores to levels the way the library's auto mode does (1 core -> 1, 2 -> 2, up to 5 -> 3, up to 11 -> 4, up to 23 -> 5, more -> 6) would match the intent.
 
-**Notes:** Replaced the old thread-count meaning (--lp as logical processors) in v2.3.0/v3.0.0. Docs mention a --pin option, but it is not in this build's help.
+**Notes:** Replaced the old thread-count meaning (`--lp` as logical processors) in v2.3.0/v3.0.0. Docs mention a `--pin` option, but it is not in this build's help.
 
 <a id="tile-rows"></a>
 
@@ -2145,7 +2145,7 @@ Splits frames into tile columns so multi-threaded decoders can work in parallel.
 | archive | `1 for 1080p+, 2 for 4K+` | Codec Wiki measured large decode-speed gains with negligible efficiency cost in most clips. | [source](https://codecs.wiki/blog/svt-av1-fourth-deep-dive-p2) |
 | speed | `2 (decode)` | The FAQ suggests tiles to help slow software decoders, warning that many tiles can cause visible artifacts. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/CommonQuestions.md) |
 
-**Notes:** The encoder prints a reminder to consider --fast-decode when tiles are used for decode speed. Tiles are switched off when superres or resize is enabled (v4.3.0 warns). Codec Wiki's v3.0 tests also treat 0 as the default.
+**Notes:** The encoder prints a reminder to consider `--fast-decode` when tiles are used for decode speed. Tiles are switched off when superres or resize is enabled (v4.3.0 warns). Codec Wiki's v3.0 tests also treat 0 as the default.
 
 ### Logging and statistics
 
@@ -2169,7 +2169,7 @@ Writes the decoder-side reconstructed frames as raw YUV, useful for metric check
 
 **Effect:** quality none · speed - (extra I/O) · size none
 
-**Notes:** v4.3.0 fixed recon output changing the deblocking search, so older builds could produce slightly different bitstreams with -o.
+**Notes:** v4.3.0 fixed recon output changing the deblocking search, so older builds could produce slightly different bitstreams with `-o`.
 
 <a id="stat-file"></a>
 
@@ -2177,7 +2177,7 @@ Writes the decoder-side reconstructed frames as raw YUV, useful for metric check
 
 **Type:** path · **Values:** file path · **Default:** not stated · advanced
 
-Writes per-picture PSNR and SSIM to a file. Only works together with --enable-stat-report 1.
+Writes per-picture PSNR and SSIM to a file. Only works together with `--enable-stat-report` 1.
 
 **Effect:** quality none · speed - (metric computation) · size none
 
@@ -2205,7 +2205,7 @@ Shortcut to silence progress printing.
 
 **Type:** bool · **Values:** 0-1 · **Default:** 0 · advanced
 
-Computes PSNR and SSIM against the source and prints a summary at the end (and per frame with --stat-file).
+Computes PSNR and SSIM against the source and prints a summary at the end (and per frame with `--stat-file`).
 
 **Effect:** quality none · speed - (metric cost) · size none
 
@@ -2247,7 +2247,7 @@ AV1 bitstream profile to signal. Main covers 8/10-bit 4:2:0, which is all this b
 
 AV1 tier, which sets the allowed maximum bitrate for a given level.
 
-**Notes:** v4.3.0 fixed --tier being ignored when writing the sequence header; older builds always wrote main.
+**Notes:** v4.3.0 fixed `--tier` being ignored when writing the sequence header; older builds always wrote main.
 
 <a id="level"></a>
 

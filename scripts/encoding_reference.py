@@ -76,6 +76,19 @@ def generic(value, depth=3):
     return f"{value}\n"
 
 
+FLAG = re.compile(r"(?<![`\w/-])(--?[A-Za-z][\w-]*(?:=[^\s,;)`]+)?)(?![`\w])")
+
+
+def code_flags(text):
+    """Show command-line flags in prose as code, so they're copyable and never typeset as dashes."""
+    if not isinstance(text, str):
+        return text
+    parts = re.split(r"(`[^`]*`)", text)
+    return "".join(p if p.startswith("`") else FLAG.sub(lambda m: f"`{m.group(1)}`" if m.group(1).startswith("--")
+                                                         or re.match(r"^-[A-Za-z]$", m.group(1)) else m.group(1), p)
+                   for p in parts)
+
+
 def render_page(d, nav_order):
     L = []
     L.append(f"---\ntitle: {d['name']}\nparent: Encoding settings\nnav_order: {nav_order}\n---\n")
@@ -88,7 +101,7 @@ def render_page(d, nav_order):
     if d.get("homebrew"):
         meta.append(f"**Homebrew:** [`{d['homebrew']}`](https://formulae.brew.sh/formula/{d['homebrew']})")
     L.append(" · ".join(meta) + "\n")
-    L.append(f"{d.get('summary', '')}\n")
+    L.append(f"{code_flags(d.get('summary', ''))}\n")
     if d.get("bitDepths") or d.get("chroma"):
         L.append(f"**Bit depths:** {cell(d.get('bitDepths'))} · **Chroma:** {cell(d.get('chroma'))}\n")
     L.append("Machine-readable data: [`data/" + d["key"] + ".json`](data/" + d["key"] + ".json). Every option below is "
@@ -101,18 +114,18 @@ def render_page(d, nav_order):
     hdr = d.get("hdr") or {}
     L.append("## HDR\n")
     if hdr.get("summary"):
-        L.append(f"{hdr['summary']}\n")
+        L.append(f"{code_flags(hdr['summary'])}\n")
     if hdr.get("flags"):
         L.append("**Flags involved:** " + ", ".join(f"`{f}`" for f in hdr["flags"]) + "\n")
     if hdr.get("example"):
         L.append("**Example (HDR10):**\n\n```bash\n" + hdr["example"].strip() + "\n```\n")
     if hdr.get("pitfalls"):
-        L.append("**Pitfalls:**\n\n" + "\n".join(f"- {p}" for p in hdr["pitfalls"]) + "\n")
+        L.append("**Pitfalls:**\n\n" + "\n".join(f"- {code_flags(p)}" for p in hdr["pitfalls"]) + "\n")
 
     L.append("## Presets\n")
-    L.append(table(d.get("presets") or [], ["value", "speed", "notes"], ["Preset", "Speed", "Notes"]) or "None.\n")
+    L.append(table([{**r, "notes": code_flags(r.get("notes"))} for r in d.get("presets") or []], ["value", "speed", "notes"], ["Preset", "Speed", "Notes"]) or "None.\n")
     L.append("## Rate control\n")
-    L.append(table(d.get("rateControl") or [], ["mode", "flags", "notes"], ["Mode", "Flags", "Notes"]) or "None.\n")
+    L.append(table([{**r, "notes": code_flags(r.get("notes"))} for r in d.get("rateControl") or []], ["mode", "flags", "notes"], ["Mode", "Flags", "Notes"]) or "None.\n")
 
     L.append("## Recipes\n")
     for r in d.get("recipes") or []:
@@ -122,7 +135,7 @@ def render_page(d, nav_order):
         if r.get("args"):
             L.append("```bash\n" + str(r["args"]).strip() + "\n```\n")
         if r.get("why"):
-            L.append(f"{r['why']}\n")
+            L.append(f"{code_flags(r['why'])}\n")
         if r.get("sources"):
             L.append("Sources: " + ", ".join(link(s) for s in r["sources"]) + "\n")
 
@@ -147,7 +160,7 @@ def render_page(d, nav_order):
         for o in by_cat[cat]:
             first = re.split(r"(?<=[.!?])\s", o.get("description") or "", maxsplit=1)[0]
             L.append(f"| [`{cell(o['flag'])}`](#{slug(o['flag'])}) | {cell(o.get('values'))} | {cell(o.get('default'))} | "
-                     f"{cell(first)} | {'✓' if o.get('hdr') else ''} | {'✓' if o.get('lumora') else ''} |")
+                     f"{cell(code_flags(first))} | {'✓' if o.get('hdr') else ''} | {'✓' if o.get('lumora') else ''} |")
         L.append("")
 
     L.append("## Options in detail\n")
@@ -167,7 +180,7 @@ def render_page(d, nav_order):
                 facts.append("advanced")
             L.append(" · ".join(facts) + "\n")
             if o.get("description"):
-                L.append(f"{o['description']}\n")
+                L.append(f"{code_flags(o['description'])}\n")
             e = o.get("effect") or {}
             if any(e.get(k) not in (None, "", "none") for k in ("quality", "speed", "size")):
                 L.append(f"**Effect:** quality {cell(e.get('quality'))} · speed {cell(e.get('speed'))} · "
@@ -176,12 +189,12 @@ def render_page(d, nav_order):
             if recs:
                 L.append("| For | Value | Why | Source |\n|---|---|---|---|")
                 for r in recs:
-                    L.append(f"| {cell(r.get('for'))} | `{cell(r.get('value'))}` | {cell(r.get('why'))} | {link(r.get('source'))} |")
+                    L.append(f"| {cell(r.get('for'))} | `{cell(r.get('value'))}` | {cell(code_flags(r.get('why')))} | {link(r.get('source'))} |")
                 L.append("")
             if o.get("lumora"):
-                L.append(f"**In Lumora:** {o['lumora']}\n")
+                L.append(f"**In Lumora:** {code_flags(o['lumora'])}\n")
             if o.get("notes"):
-                L.append(f"**Notes:** {o['notes']}\n")
+                L.append(f"**Notes:** {code_flags(o['notes'])}\n")
 
     L.append("## Sources\n")
     for s in d.get("sources") or []:

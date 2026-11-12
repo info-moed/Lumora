@@ -20,7 +20,7 @@ Machine-readable data: [`data/hdrtools.json`](data/hdrtools.json). Every option 
 
 ## HDR
 
-HDR10 needs four things to agree: 10-bit 4:2:0 pixels; VUI tags primaries 9 (BT.2020), transfer 16 (PQ), matrix 9 (BT.2020 NCL), limited range; SEI mastering display (ST 2086) and MaxCLL/MaxFALL; and the same values in the container (MP4 colr nclx + mdcv + clli, or Matroska Colour/MasteringMetadata). HLG uses transfer 18 and usually no mastering SEI. The encoder writes VUI and SEI; FFmpeg frame tags (set with the setparams filter) plus -mastering_display/-content_light side data feed both the encoder and the MP4/MKV muxer; MP4Box (colr, -hdr) and mkvmerge (--color-*, --max-*) can add or fix container values without re-encoding; hevc_metadata/av1_metadata bitstream filters fix VUI tags. HDR10+ and Dolby Vision are layered on afterwards with hdr10plus_tool inject and dovi_tool inject-rpu, then muxed with MP4Box :dvp=8.1 or mkvmerge.
+HDR10 needs four things to agree: 10-bit 4:2:0 pixels; VUI tags primaries 9 (BT.2020), transfer 16 (PQ), matrix 9 (BT.2020 NCL), limited range; SEI mastering display (ST 2086) and MaxCLL/MaxFALL; and the same values in the container (MP4 colr nclx + mdcv + clli, or Matroska Colour/MasteringMetadata). HLG uses transfer 18 and usually no mastering SEI. The encoder writes VUI and SEI; FFmpeg frame tags (set with the setparams filter) plus -mastering_display/-content_light side data feed both the encoder and the MP4/MKV muxer; MP4Box (colr, -hdr) and mkvmerge (`--color-`*, `--max-`*) can add or fix container values without re-encoding; hevc_metadata/av1_metadata bitstream filters fix VUI tags. HDR10+ and Dolby Vision are layered on afterwards with hdr10plus_tool inject and dovi_tool inject-rpu, then muxed with MP4Box :dvp=8.1 or mkvmerge.
 
 **Flags involved:** `setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc:range=tv`, `-pix_fmt yuv420p10le`, `-mastering_display`, `-content_light`, `-tag:v hvc1`, `-strict unofficial`, `-bsf:v hevc_mp4toannexb`, `-bsf:v hevc_metadata`, `MP4Box :dvp=8.1`, `MP4Box :colr=nclx,...`, `MP4Box -hdr`, `mkvmerge --color-primaries/--color-transfer-characteristics/--color-matrix-coefficients/--color-range`, `mkvmerge --max-content-light/--max-frame-light/--chromaticity-coordinates/--white-color-coordinates/--max-luminance/--min-luminance`, `dovi_tool -m 2`, `dovi_tool inject-rpu`, `hdr10plus_tool inject`
 
@@ -32,20 +32,20 @@ ffmpeg -mastering_display "G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,1645
 
 **Pitfalls:**
 
-- FFmpeg 9.0.2 (tested): output -color_primaries/-color_trc on a libx265 encode from an untagged source are overwritten by the frames' unspecified values, so the MP4 gets no colr box and MKV no primaries/transfer, even though x265-params can still write a correct VUI. Tag frames with setparams, and pass -mastering_display/-content_light before -i so mdcv/clli (MP4) or MasteringMetadata (MKV) are written too.
+- FFmpeg 9.0.2 (tested): output -color_primaries/-color_trc on a libx265 encode from an untagged source are overwritten by the frames' unspecified values, so the MP4 gets no colr box and MKV no primaries/transfer, even though x265-params can still write a correct VUI. Tag frames with setparams, and pass -mastering_display/-content_light before `-i` so mdcv/clli (MP4) or MasteringMetadata (MKV) are written too.
 - FFmpeg's MP4/MOV muxer writes the colr box only when primaries, transfer and matrix are ALL specified; one missing tag means no container color at all.
 - FFmpeg drops the dvcC/dvvC box in MP4 unless -strict unofficial is given, so the file silently plays as HDR10.
 - HEVC in MP4 for Apple should use hvc1 (or dvh1); Apple's HLS spec marks hev1/dvhe as not recommended (rule 1.10). Pass -tag:v hvc1 to FFmpeg.
-- Raw .hevc has no timing: MP4Box assumes 25 fps without :fps=, mkvmerge needs --default-duration.
+- Raw .hevc has no timing: MP4Box assumes 25 fps without :fps=, mkvmerge needs `--default-duration`.
 - RPU and HDR10+ entries map to frames by order. Any trim, frame-rate change or interpolation needs the metadata retimed (dovi_tool editor / hdr10plus_tool editor) or regenerated.
-- Cropping letterbox bars invalidates DV L5 offsets; use dovi_tool --crop or editor active_area.
+- Cropping letterbox bars invalidates DV L5 offsets; use dovi_tool `--crop` or editor active_area.
 - MP4Box :nosei strips HDR10 and HDR10+ SEI.
 - Range numbering differs: FFmpeg color_range 1=tv 2=pc; H.273/bsf 0=limited 1=full; mkvmerge 1=broadcast 2=full 3=derived.
 - Chroma location numbering differs: FFmpeg = H.273 type + 1.
 - mkvmerge color coordinates are decimal R,G,B; x265/FFmpeg/HEVC SEI use integers in 0.00002 units ordered G,B,R.
 - The FFmpeg colorspace filter cannot handle PQ/HLG, and this FFmpeg build has no zscale or libplacebo, so tonemap has no ready linearization step.
 - Dolby Vision profile 5 has no HDR10 fallback; never strip its RPU expecting a usable HDR10 file.
-- x265 --repeat-headers puts parameter sets into the samples; it is meant for raw streams without a container, so leave it off for hvc1 MP4 output (x265 docs; Apple HLS rule 1.10).
+- x265 `--repeat-headers` puts parameter sets into the samples; it is meant for raw streams without a container, so leave it off for hvc1 MP4 output (x265 docs; Apple HLS rule 1.10).
 
 ## Presets
 
@@ -77,7 +77,7 @@ Sources: [source](https://github.com/quietvoid/hdr10plus_tool), [source](https:/
 ffmpeg -i src.mkv -map 0:v:0 -c copy -bsf:v hevc_mp4toannexb -f hevc - | hdr10plus_tool extract -o hdr10plus.json -   (then encode with x265 --dhdr10-info hdr10plus.json, or inject afterwards)
 ```
 
-Extraction reorders metadata to presentation order; only add --skip-reorder if the README's misauthoring signs appear.
+Extraction reorders metadata to presentation order; only add `--skip-reorder` if the README's misauthoring signs appear.
 
 Sources: [source](https://github.com/quietvoid/hdr10plus_tool), [source](https://x265.readthedocs.io/en/master/cli.html)
 
@@ -89,7 +89,7 @@ Sources: [source](https://github.com/quietvoid/hdr10plus_tool), [source](https:/
 ffmpeg -i input.mkv -map 0:v:0 -c:v copy -bsf:v hevc_mp4toannexb -f hevc - | dovi_tool -m 2 convert --discard - -o BL_RPU.hevc && dovi_tool extract-rpu BL_RPU.hevc -o RPU.bin && dovi_tool info -i RPU.bin -s
 ```
 
--m 2 rewrites each RPU as profile 8.1 and drops the reconstruction mapping; --discard removes the EL, leaving the HDR10 base layer plus RPU. FEL titles lose the enhancement-layer detail (usually small), MEL titles lose nothing visible. The summary check confirms profile 8 and the frame count.
+`-m` 2 rewrites each RPU as profile 8.1 and drops the reconstruction mapping; `--discard` removes the EL, leaving the HDR10 base layer plus RPU. FEL titles lose the enhancement-layer detail (usually small), MEL titles lose nothing visible. The summary check confirms profile 8 and the frame count.
 
 Sources: [source](https://github.com/quietvoid/dovi_tool), [source](https://github.com/gacopl/dvmkv2mp4), [source](https://emby.media/learn/articles/video/hdr/formats/dolby-vision/profiles-and-compatibility/Dolby-Vision-Profile-8.html)
 
@@ -101,7 +101,7 @@ Sources: [source](https://github.com/quietvoid/dovi_tool), [source](https://gith
 MP4Box -add BL_RPU.hevc:dvp=8.1:fps=24000/1001 -add source.mp4#audio -new out.mp4 && MP4Box -infox out.mp4
 ```
 
-Raw HEVC needs an explicit frame rate (MP4Box assumes 25 otherwise), and dvp writes the Dolby Vision configuration box. MP4Box keeps parameter sets out of band (hvc1), which Apple asks for (HLS rule 1.10). FFmpeg alternative: ffmpeg -i in.mkv -map 0 -c copy -tag:v hvc1 -strict unofficial out.mp4 (movenc.c writes dvcC/dvvC only with -strict unofficial).
+Raw HEVC needs an explicit frame rate (MP4Box assumes 25 otherwise), and dvp writes the Dolby Vision configuration box. MP4Box keeps parameter sets out of band (hvc1), which Apple asks for (HLS rule 1.10). FFmpeg alternative: ffmpeg `-i` in.mkv -map 0 `-c` copy -tag:v hvc1 -strict unofficial out.mp4 (movenc.c writes dvcC/dvvC only with -strict unofficial).
 
 Sources: [source](https://wiki.gpac.io/MP4Box/mp4box-import-opts/), [source](https://github.com/FFmpeg/FFmpeg/blob/master/libavformat/movenc.c), [source](https://developer.apple.com/documentation/http-live-streaming/hls-authoring-specification-for-apple-devices), [source](https://github.com/gacopl/dvmkv2mp4)
 
@@ -113,7 +113,7 @@ Sources: [source](https://wiki.gpac.io/MP4Box/mp4box-import-opts/), [source](htt
 mkvmerge -o out.mkv --default-duration 0:24000/1001fps BL_RPU.hevc -D source.mkv
 ```
 
-mkvmerge reads single-layer DV from Annex B elementary streams (v58), reads DV from MP4 files (v57) and combines Blu-ray two-track DV into one track (v81), per NEWS. Raw streams need --default-duration; -D takes only audio/subtitles from the second file.
+mkvmerge reads single-layer DV from Annex B elementary streams (v58), reads DV from MP4 files (v57) and combines Blu-ray two-track DV into one track (v81), per NEWS. Raw streams need `--default-duration`; `-D` takes only audio/subtitles from the second file.
 
 Sources: [source](https://mkvtoolnix.download/doc/NEWS.md), [source](https://mkvtoolnix.download/doc/mkvmerge.html)
 
@@ -149,7 +149,7 @@ Sources: [source](https://x265.readthedocs.io/en/master/cli.html), [source](http
 ffmpeg -i in.mkv -map 0 -c copy -bsf:v hevc_metadata=colour_primaries=9:transfer_characteristics=16:matrix_coefficients=9:video_full_range_flag=0 out.mkv   (AV1: -bsf:v av1_metadata=color_primaries=9:transfer_characteristics=16:matrix_coefficients=9:color_range=tv)
 ```
 
-Bitstream filters rewrite header fields only, so quality is untouched. They cannot add HDR10 mastering/CLL SEI; add those via -mastering_display/-content_light on re-encode, MP4Box -hdr, or mkvmerge --max-luminance etc. Tested with 9.0.2 (hevc_metadata form, stream copy into MKV).
+Bitstream filters rewrite header fields only, so quality is untouched. They cannot add HDR10 mastering/CLL SEI; add those via -mastering_display/-content_light on re-encode, MP4Box -hdr, or mkvmerge `--max-luminance` etc. Tested with 9.0.2 (hevc_metadata form, stream copy into MKV).
 
 Sources: [source](https://ffmpeg.org/ffmpeg-bitstream-filters.html)
 
@@ -579,7 +579,7 @@ Scope: every option and subcommand option of dovi_tool 2.3.4 and hdr10plus_tool 
 | [`--chapter-charset`](#chapter-charset) | charset | not stated | Charset of a simple chapter file. |  |  |
 | [`--chapter-sync`](#chapter-sync) | d[,o[/p]] | not stated | Shifts chapter timestamps by d ms and optionally scales them by o/p to fix drift. |  |  |
 | [`--cue-chapter-name-format`](#cue-chapter-name-format) | pattern | not stated | Pattern for chapter names created from cue sheets. |  |  |
-| [`--default-language`](#default-language) | language | not stated | Language for all tracks not set with --language. |  |  |
+| [`--default-language`](#default-language) | language | not stated | Language for all tracks not set with `--language`. |  |  |
 | [`--generate-chapters`](#generate-chapters) | when-appending or interval:<duration> | not stated | Generates chapters automatically. |  |  |
 | [`--generate-chapters-name-template`](#generate-chapters-name-template) | template | Chapter <NUM:2> | Name template for generated chapters. |  |  |
 | [`--segmentinfo`](#segmentinfo) | file | not stated | Reads segment information from a file. |  |  |
@@ -728,7 +728,7 @@ Scope: every option and subcommand option of dovi_tool 2.3.4 and hdr10plus_tool 
 | [`--color-matrix-coefficients`](#color-matrix-coefficients) | TID:n (0-10 per docs; H.273 numbering) | not stated | Stores the matrix coefficients in the Matroska Colour element. | ✓ |  |
 | [`--color-bits-per-channel`](#color-bits-per-channel) | TID:n (0 = unspecified) | not stated | Stores coded bits per channel. | ✓ |  |
 | [`--chroma-subsample`](#chroma-subsample) | TID:hori,vert | not stated | Stores how many chroma samples are dropped per kept sample (4:2:0 = 1,1). | ✓ |  |
-| [`--cb-subsample`](#cb-subsample) | TID:hori,vert | not stated | Extra Cb-only subsampling, added to --chroma-subsample (rare formats such as 4:2:1). |  |  |
+| [`--cb-subsample`](#cb-subsample) | TID:hori,vert | not stated | Extra Cb-only subsampling, added to `--chroma-subsample` (rare formats such as 4:2:1). |  |  |
 | [`--chroma-siting`](#chroma-siting) | TID:hori,vert (0 unspecified, 1 top collocated, 2 half) | not stated | Stores where chroma samples sit relative to luma, per axis. | ✓ |  |
 | [`--color-range`](#color-range) | TID:n (0 unspecified, 1 broadcast/limited, 2 full, 3 derived from matrix and transfer) | not stated | Stores the color range. | ✓ |  |
 | [`--color-transfer-characteristics`](#color-transfer-characteristics) | TID:n (0-18; H.273 numbering) | not stated | Stores the transfer function. | ✓ |  |
@@ -853,7 +853,7 @@ Scope: every option and subcommand option of dovi_tool 2.3.4 and hdr10plus_tool 
 | Flag | Values | Default | What it does | HDR | Lumora |
 |---|---|---|---|---|---|
 | [`--data`](#data) | all, scenes, level5 as key=output; repeatable or comma-separated | not stated | Selects what to dump: the whole RPU list as JSON (all), the frame numbers where scene_refresh_flag is set (scenes), or the L5 active area as a ready-to-use editor JSON (level5). | ✓ |  |
-| [`--levels-format`](#levels-format) | csv, json | csv | File format used for --levels exports. | ✓ |  |
+| [`--levels-format`](#levels-format) | csv, json | csv | File format used for `--levels` exports. | ✓ |  |
 | [`--levels`](#levels) | level1, level2, level3, level4, level5, level6, level8, level9, level10, level11 as key=output | not stated | Writes the chosen metadata levels (for example L1 per-frame min/avg/max) to files for analysis. | ✓ |  |
 | [`--frame`](#frame) | 0-based frame index | not stated | Prints one frame's RPU as JSON. | ✓ |  |
 | [`--summary`](#summary) | flag | off | Prints a summary: frame count, profile, CM version, scene count, levels present. | ✓ | ✓ |
@@ -870,17 +870,17 @@ Scope: every option and subcommand option of dovi_tool 2.3.4 and hdr10plus_tool 
 | [`--end`](#end) | frame (inclusive) | not stated | Last frame to plot. |  |  |
 | [`-info`](#info) | none (movie) or track ID; -infon takes a track number; -infox prints all tracks | not stated | Prints movie or track information, including codec string, DV configuration and color/HDR boxes. | ✓ |  |
 | [`--identify`](#identify) | file | not stated | Prints what mkvmerge detects in a file. | ✓ |  |
-| [`-J`](#j) | file | not stated | Shorthand for --identification-format json --identify; since v68 the JSON includes color, mastering and projection properties. | ✓ |  |
-| [`--identification-format`](#identification-format) | text, json | text | Output format for --identify. |  |  |
+| [`-J`](#j) | file | not stated | Shorthand for `--identification-format` json `--identify`; since v68 the JSON includes color, mastering and projection properties. | ✓ |  |
+| [`--identification-format`](#identification-format) | text, json | text | Output format for `--identify`. |  |  |
 | [`-export_side_data`](#export-side-data) | mvs, prft, venc_params, film_grain, enhancements | 0 | Asks decoders/encoders to attach extra data (motion vectors, film grain parameters, encoder params, enhancement layers) to frames or packets. |  | ✓ |
 | [`stats`](#stats) | flag | off | Prints filter session statistics after import. |  |  |
 | [`graph`](#graph) | flag | off | Prints the filter session graph after import. |  |  |
 | [`--verbose`](#verbose) | flag | off | Prints more detail. |  |  |
 | [`--quiet`](#quiet) | flag | off | Suppresses status output. |  |  |
 | [`--list-types`](#list-types) | flag | off | Lists supported source file types. |  |  |
-| [`--list-audio-emphasis`](#list-audio-emphasis) | flag | off | Lists values for --audio-emphasis. |  |  |
+| [`--list-audio-emphasis`](#list-audio-emphasis) | flag | off | Lists values for `--audio-emphasis`. |  |  |
 | [`--list-languages`](#list-languages) | flag | off | Lists ISO 639 languages and codes. |  |  |
-| [`--list-stereo-modes`](#list-stereo-modes) | flag | off | Lists values for --stereo-mode. |  |  |
+| [`--list-stereo-modes`](#list-stereo-modes) | flag | off | Lists values for `--stereo-mode`. |  |  |
 | [`--capabilities`](#capabilities) | flag | off | Lists optional features compiled in. |  |  |
 | [`--redirect-output`](#redirect-output) | file | not stated | Writes all messages to a file. |  |  |
 | [`--debug`](#debug) | topic | not stated | Turns on debug output for a topic. |  |  |
@@ -889,7 +889,7 @@ Scope: every option and subcommand option of dovi_tool 2.3.4 and hdr10plus_tool 
 
 | Flag | Values | Default | What it does | HDR | Lumora |
 |---|---|---|---|---|---|
-| [`--help`](#help) | flag | not stated | Prints help; -h gives the short form and --help the long form. |  |  |
+| [`--help`](#help) | flag | not stated | Prints help; `-h` gives the short form and `--help` the long form. |  |  |
 | [`--version`](#version) | flag | not stated | Prints the tool version. |  | ✓ |
 | [`--no-add-aud`](#no-add-aud) | flag | off (AUDs are added) | Stops the tool from inserting access unit delimiters between frames. |  |  |
 | [`--no-add-aud`](#no-add-aud) | flag | off (AUDs are added) | Do not insert access unit delimiters between frames. |  |  |
@@ -965,7 +965,7 @@ Positional form of the input HEVC file; '-' reads an Annex B stream piped from a
 
 Input HEVC (Annex B) file to convert.
 
-**Notes:** Input must be a raw Annex B HEVC elementary stream; extract it with ffmpeg -c:v copy -bsf:v hevc_mp4toannexb -f hevc.
+**Notes:** Input must be a raw Annex B HEVC elementary stream; extract it with ffmpeg `-c`:v copy -bsf:v hevc_mp4toannexb `-f` hevc.
 
 <a id="output"></a>
 
@@ -1161,7 +1161,7 @@ RPU file to inspect.
 
 Base-layer HEVC to interleave into.
 
-**Notes:** README shows piped input with --bl - (verified 2026-11-12).
+**Notes:** README shows piped input with `--bl` - (verified 2026-11-12).
 
 <a id="el"></a>
 
@@ -2893,7 +2893,7 @@ Pattern for chapter names created from cue sheets.
 
 **Type:** string · **Values:** language · **Default:** not stated
 
-Language for all tracks not set with --language.
+Language for all tracks not set with `--language`.
 
 <a id="generate-chapters"></a>
 
@@ -3731,7 +3731,7 @@ Chooses how each RPU is rewritten as it passes through convert, demux, mux, extr
 
 **In Lumora:** DolbyVisionRetimer.retime runs `dovi_tool -m 2 extract-rpu` so the retimed RPU is always profile 8.1 before it is edited and injected.
 
-**Notes:** Global option: it goes BEFORE the subcommand (dovi_tool -m 2 convert ...). Mode 2 changed meaning in an older release; the former mode 2 is now mode 5 (README). Unverified (no source found): a profile 5 base layer is not HDR10 video, so mode 3 alone may not give a usable HDR10 fallback; community opinions differ on whether mode 5 helps over mode 2.
+**Notes:** Global option: it goes BEFORE the subcommand (dovi_tool `-m` 2 convert ...). Mode 2 changed meaning in an older release; the former mode 2 is now mode 5 (README). Unverified (no source found): a profile 5 base layer is not HDR10 video, so mode 3 alone may not give a usable HDR10 fallback; community opinions differ on whether mode 5 helps over mode 2.
 
 <a id="crop"></a>
 
@@ -3747,7 +3747,7 @@ Zeroes the L5 active-area offsets in every RPU, telling Dolby Vision displays th
 
 **In Lumora:** Not used directly; Lumora resets the active area through the editor JSON (`active_area: {crop: true}`) when the source was cropped.
 
-**Notes:** Equivalent editor setting: active_area.crop in the --edit-config/editor JSON.
+**Notes:** Equivalent editor setting: active_area.crop in the `--edit-config`/editor JSON.
 
 <a id="drop-hdr10plus"></a>
 
@@ -4052,7 +4052,7 @@ Writes a container colr box: CICP primaries/transfer/matrix (nclx adds the full-
 | For | Value | Why | Source |
 |---|---|---|---|
 | HDR | `nclx,bt2020,smpte2084,bt2020,no` | Container color for HDR10 (PQ, BT.2020, limited range), matching the bitstream VUI. | [source](https://wiki.gpac.io/MP4Box/mp4box-import-opts/) |
-| HDR | `nclx,BT2020,STDB67,BT2020,no` | HLG equivalent. MP4Box only accepts its own CICP names (MP4Box -h cicp) or numbers (nclx,9,18,9,no); tested: 'arib-std-b67' is rejected with 'Unknown CICP color transfer type'. | [source](https://wiki.gpac.io/MP4Box/mp4box-import-opts/) |
+| HDR | `nclx,BT2020,STDB67,BT2020,no` | HLG equivalent. MP4Box only accepts its own CICP names (MP4Box `-h` cicp) or numbers (nclx,9,18,9,no); tested: 'arib-std-b67' is rejected with 'Unknown CICP color transfer type'. | [source](https://wiki.gpac.io/MP4Box/mp4box-import-opts/) |
 
 **Notes:** Help text says 'nclx: same as nclx with r'; it means same as nclc plus range. CICP names/ints come from `MP4Box -h cicp`. The colr box does not change the bitstream VUI; use colorprim/colortfc/colormx for that.
 
@@ -4186,7 +4186,7 @@ Stores how many chroma samples are dropped per kept sample (4:2:0 = 1,1).
 
 **Type:** string · **Values:** TID:hori,vert · **Default:** not stated · advanced
 
-Extra Cb-only subsampling, added to --chroma-subsample (rare formats such as 4:2:1).
+Extra Cb-only subsampling, added to `--chroma-subsample` (rare formats such as 4:2:1).
 
 <a id="chroma-siting"></a>
 
@@ -4313,9 +4313,9 @@ Input, per-stream option that replaces the stream's mastering display metadata w
 
 | For | Value | Why | Source |
 |---|---|---|---|
-| HDR | `G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,1)` | P3-D65 1000-nit mastering display; identical string format to x265 --master-display. | [source](https://x265.readthedocs.io/en/master/cli.html) |
+| HDR | `G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,1)` | P3-D65 1000-nit mastering display; identical string format to x265 `--master-display`. | [source](https://x265.readthedocs.io/en/master/cli.html) |
 
-**Notes:** Placed before -i (the man page marks it input,per-stream). Tested with 9.0.2: `-mastering_display ... -content_light ... -i in.mp4 -c copy out.mp4` added mdcv and clli boxes without touching the bitstream; with libx265 the same input options also produced the HEVC SEI.
+**Notes:** Placed before `-i` (the man page marks it input,per-stream). Tested with 9.0.2: `-mastering_display ... -content_light ... -i in.mp4 -c copy out.mp4` added mdcv and clli boxes without touching the bitstream; with libx265 the same input options also produced the HEVC SEI.
 
 <a id="content-light"></a>
 
@@ -4327,7 +4327,7 @@ Input, per-stream option that overrides MaxCLL/MaxFALL content light metadata.
 
 | For | Value | Why | Source |
 |---|---|---|---|
-| HDR | `1000,400 (use measured values)` | Matches x265 --max-cll semantics; 0 means not indicated. | [source](https://x265.readthedocs.io/en/master/cli.html) |
+| HDR | `1000,400 (use measured values)` | Matches x265 `--max-cll` semantics; 0 means not indicated. | [source](https://x265.readthedocs.io/en/master/cli.html) |
 
 **Notes:** Input option (man page). Format MaxCLL,MaxFALL as unsigned integers. Tested with 9.0.2 together with -mastering_display (see that entry).
 
@@ -4447,7 +4447,7 @@ When container (packet) side data and in-bitstream data disagree, prefer the con
 
 Whether decoded frames are cropped by bitstream conformance window and/or container crop.
 
-**Notes:** Values and default are from the installed ffmpeg(1) man page; the -h full listing only names the option. Separately, the decoder AVOption apply_cropping is a boolean with default true.
+**Notes:** Values and default are from the installed ffmpeg(1) man page; the `-h` full listing only names the option. Separately, the decoder AVOption apply_cropping is a boolean with default true.
 
 <a id="dolbyvision"></a>
 
@@ -5495,7 +5495,7 @@ Selects what to dump: the whole RPU list as JSON (all), the frame numbers where 
 
 **Type:** enum · **Values:** csv, json · **Default:** csv · **HDR-relevant** · advanced
 
-File format used for --levels exports.
+File format used for `--levels` exports.
 
 <a id="levels"></a>
 
@@ -5649,7 +5649,7 @@ Prints what mkvmerge detects in a file.
 
 **Type:** path · **Values:** file · **Default:** not stated · **HDR-relevant**
 
-Shorthand for --identification-format json --identify; since v68 the JSON includes color, mastering and projection properties.
+Shorthand for `--identification-format` json `--identify`; since v68 the JSON includes color, mastering and projection properties.
 
 | For | Value | Why | Source |
 |---|---|---|---|
@@ -5663,7 +5663,7 @@ Shorthand for --identification-format json --identify; since v68 the JSON includ
 
 **Type:** enum · **Values:** text, json · **Default:** text · advanced
 
-Output format for --identify.
+Output format for `--identify`.
 
 <a id="export-side-data"></a>
 
@@ -5723,7 +5723,7 @@ Lists supported source file types.
 
 **Type:** bool · **Values:** flag · **Default:** off
 
-Lists values for --audio-emphasis.
+Lists values for `--audio-emphasis`.
 
 <a id="list-languages"></a>
 
@@ -5739,7 +5739,7 @@ Lists ISO 639 languages and codes.
 
 **Type:** bool · **Values:** flag · **Default:** off
 
-Lists values for --stereo-mode.
+Lists values for `--stereo-mode`.
 
 <a id="capabilities"></a>
 
@@ -5773,7 +5773,7 @@ Turns on debug output for a topic.
 
 **Type:** bool · **Values:** flag · **Default:** not stated
 
-Prints help; -h gives the short form and --help the long form. Accepted by the tool and by every subcommand.
+Prints help; `-h` gives the short form and `--help` the long form. Accepted by the tool and by every subcommand.
 
 <a id="version"></a>
 

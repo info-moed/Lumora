@@ -26,5 +26,10 @@ gh_edit_branch: "main"
 gh_edit_source: docs
 gh_edit_view_mode: "tree"
 footer_content: "Lumora is open source under the <a href=\"https://github.com/info-moed/Lumora/blob/main/LICENSE\">MIT license</a>."
+# Keep command-line flags intact: no "--" -> en dash or "---" -> em dash conversion in prose.
+kramdown:
+  typographic_symbols:
+    ndash: "--"
+    mdash: "---"
 exclude:
   - "*.sh"

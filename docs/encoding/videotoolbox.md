@@ -10,7 +10,7 @@ nav_order: 7
 
 **Documented version:** ffmpeg version 9.0.2 · **Codec:** HEVC · **License:** Proprietary (VideoToolbox ships with macOS). FFmpeg wrappers: LGPL-2.1-or-later source; the Homebrew ffmpeg build is GPL-3.0-or-later. · **Homepage:** <https://developer.apple.com/documentation/videotoolbox> · **Homebrew:** [`ffmpeg`](https://formulae.brew.sh/formula/ffmpeg)
 
-VideoToolbox is Apple's system framework that drives the Media Engine's hardware HEVC encoder and the separate ProRes encode engines; Lumora calls it in-process through AVAssetWriter, and FFmpeg exposes the same encoders as hevc_videotoolbox and prores_videotoolbox. It is extremely fast, uses little CPU or power, and its ProRes output is the post-production standard. The trade-offs: hardware HEVC needs noticeably more bits than a slow x265 encode for the same quality, there are almost no tuning knobs (no presets, psy options or grain tools), HEVC stops at 10-bit, and the FFmpeg wrapper cannot carry HDR10 static metadata. Two FFmpeg 9.0.2 traps, both confirmed by test encodes: output -color_primaries/-color_trc do not override the input frames' tags (tag with the setparams filter instead), and FFmpeg's generic -g default of 12 is passed to VideoToolbox as the maximum keyframe interval. Documented against FFmpeg 9.0.2 and the macOS 27 SDK on macOS 27.3 (Apple M3 Max); this one entry covers both HEVC and ProRes.
+VideoToolbox is Apple's system framework that drives the Media Engine's hardware HEVC encoder and the separate ProRes encode engines; Lumora calls it in-process through AVAssetWriter, and FFmpeg exposes the same encoders as hevc_videotoolbox and prores_videotoolbox. It is extremely fast, uses little CPU or power, and its ProRes output is the post-production standard. The trade-offs: hardware HEVC needs noticeably more bits than a slow x265 encode for the same quality, there are almost no tuning knobs (no presets, psy options or grain tools), HEVC stops at 10-bit, and the FFmpeg wrapper cannot carry HDR10 static metadata. Two FFmpeg 9.0.2 traps, both confirmed by test encodes: output -color_primaries/-color_trc do not override the input frames' tags (tag with the setparams filter instead), and FFmpeg's generic `-g` default of 12 is passed to VideoToolbox as the maximum keyframe interval. Documented against FFmpeg 9.0.2 and the macOS 27 SDK on macOS 27.3 (Apple M3 Max); this one entry covers both HEVC and ProRes.
 
 **Bit depths:** 8, 10, 12 · **Chroma:** 4:2:0, 4:2:2, 4:4:4, 4:4:4:4
 
@@ -34,10 +34,10 @@ ffmpeg -i master_pq.mov -map 0:v:0 -map '0:a?' -vf setparams=color_primaries=bt2
 
 - FFmpeg's hevc_videotoolbox (n9.0.2 source) does not forward mastering display or content light level side data to VideoToolbox, so the HEVC stream gets no static HDR10 SEI. Use AVAssetWriter/VTCompressionSession directly (as Lumora does) or x265 when MaxCLL/MaxFALL and mastering metadata matter, and check the result with ffprobe or MediaInfo.
 - In FFmpeg 9.0.2, output -color_primaries and -color_trc are overridden by the decoded frames' tags; only -colorspace and -color_range reach the encoder reliably. Use -vf setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc:range=tv (or color_trc=arib-std-b67 for HLG). Test encodes confirmed both the failure and the fix.
-- -q:v (constant quality) works only on Apple-silicon Macs; on Intel FFmpeg stops with an error and you must use -b:v.
-- If neither -q:v nor -b:v is given, FFmpeg passes a bitrate of 0, so VideoToolbox picks its own, usually low, rate. Expect soft, hazy output.
+- `-q`:v (constant quality) works only on Apple-silicon Macs; on Intel FFmpeg stops with an error and you must use `-b`:v.
+- If neither `-q`:v nor `-b`:v is given, FFmpeg passes a bitrate of 0, so VideoToolbox picks its own, usually low, rate. Expect soft, hazy output.
 - FFmpeg's default -bf is 0, and the wrapper then sets AllowFrameReordering to false, which turns off B-frames. Pass -bf 2 (any positive value) to let the encoder reorder.
-- FFmpeg's generic -g default (12) is passed to kVTCompressionPropertyKey_MaxKeyFrameInterval, so a plain hevc_videotoolbox encode gets a keyframe every 12 frames (confirmed by test). Pass -g 0 to let VideoToolbox choose, or a value that matches your segment length.
+- FFmpeg's generic `-g` default (12) is passed to kVTCompressionPropertyKey_MaxKeyFrameInterval, so a plain hevc_videotoolbox encode gets a keyframe every 12 frames (confirmed by test). Pass `-g` 0 to let VideoToolbox choose, or a value that matches your segment length.
 - Without -tag:v hvc1, FFmpeg 9.0.2 tags HEVC as hev1 in both .mov and .mp4 (checked with ffprobe). Apple's Dolby Vision 8.4 constraints require hvc1, and AVFoundation's own HEVC codec type is 'hvc1'.
 - PQ or HLG tags on an 8-bit (Main) stream will band visibly. Feed p010le or x420 and use Main10.
 - HDRMetadataInsertionMode defaults to Auto, so VideoToolbox may add metadata (Dolby Vision 8.4 for HLG, for example) even when you did not ask for it. Set None only if you need a plain stream and accept that static metadata insertion is turned off too. Apple documents that None removes all HDR metadata.
@@ -60,7 +60,7 @@ ffmpeg -i master_pq.mov -map 0:v:0 -map '0:a?' -vf setparams=color_primaries=bt2
 
 | Mode | Flags | Notes |
 |---|---|---|
-| Constant quality (CQ) | -q:v 1-100 (FFmpeg) / kVTCompressionPropertyKey_Quality 0.0-1.0 (API) | The main mode for file export, and the one Lumora uses. FFmpeg divides -q:v by 100, so -q:v 62 becomes Quality 0.62. Apple's general scale is 0.25 low, 0.50 normal, 0.75 high, 1.0 lossless where supported, and the header says some formats treat it as a fixed QP. In FFmpeg it is limited to Apple-silicon Macs; -global_quality reaches the same property without that check. slhck's FFmpeg guide recommends -q:v 45-65 for hevc_videotoolbox (55-65 about VMAF 95-98, 45-50 about VMAF 90-93). The scale is not comparable to x265 CRF. |
+| Constant quality (CQ) | -q:v 1-100 (FFmpeg) / kVTCompressionPropertyKey_Quality 0.0-1.0 (API) | The main mode for file export, and the one Lumora uses. FFmpeg divides `-q`:v by 100, so `-q`:v 62 becomes Quality 0.62. Apple's general scale is 0.25 low, 0.50 normal, 0.75 high, 1.0 lossless where supported, and the header says some formats treat it as a fixed QP. In FFmpeg it is limited to Apple-silicon Macs; -global_quality reaches the same property without that check. slhck's FFmpeg guide recommends `-q`:v 45-65 for hevc_videotoolbox (55-65 about VMAF 95-98, 45-50 about VMAF 90-93). The scale is not comparable to x265 CRF. |
 | Average bitrate (ABR/VBR) | -b:v <rate> / kVTCompressionPropertyKey_AverageBitRate (AVVideoAverageBitRateKey) | A long-term target that peaks may exceed. FFmpeg's VideoToolbox default is 0, meaning the encoder chooses (low). Only works when frames carry timestamps. Not used for ProRes; FFmpeg skips bitrate for it. |
 | Peak-limited VBR | -b:v <avg> -maxrate <peak> / kVTCompressionPropertyKey_DataRateLimits | FFmpeg turns -maxrate into one hard limit of maxrate/8 bytes per 1-second window. -bufsize is not used. Older macOS releases may reject the key for HEVC, in which case FFmpeg ignores the error. |
 | Constant bitrate (CBR) | -b:v <rate> -constant_bit_rate 1 / kVTCompressionPropertyKey_ConstantBitRate | macOS 13 or newer. Pads frames to hold the rate. Apple advises against it for general export and meant it for CDNs that demand CBR. Cannot be combined with AverageBitRate or DataRateLimits, and should be paired with ExpectedFrameRate. |
@@ -77,7 +77,7 @@ ffmpeg -i master_pq.mov -map 0:v:0 -map '0:a?' -vf setparams=color_primaries=bt2
 -vf setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc:range=tv -c:v hevc_videotoolbox -profile:v main10 -pix_fmt p010le -q:v 62 -bf 2 -g 0 -prio_speed 0 -tag:v hvc1
 ```
 
-setparams tags the frames, because FFmpeg 9.0.2 ignores output -color_primaries/-color_trc. Main10 with p010 avoids banding, -q:v 62 sits inside slhck's recommended 45-65 range, -bf 2 re-enables B-frames that FFmpeg disables by default, -g 0 stops FFmpeg's 12-frame keyframe default, and hvc1 is what Apple's HDR rules use. The wrapper writes no static HDR10 metadata, so use AVAssetWriter or x265 if MaxCLL and mastering data are required.
+setparams tags the frames, because FFmpeg 9.0.2 ignores output -color_primaries/-color_trc. Main10 with p010 avoids banding, `-q`:v 62 sits inside slhck's recommended 45-65 range, -bf 2 re-enables B-frames that FFmpeg disables by default, `-g` 0 stops FFmpeg's 12-frame keyframe default, and hvc1 is what Apple's HDR rules use. The wrapper writes no static HDR10 metadata, so use AVAssetWriter or x265 if MaxCLL and mastering data are required.
 
 Sources: [source](https://github.com/FFmpeg/FFmpeg/blob/n9.0.2/libavcodec/videotoolboxenc.c), [source](https://slhck.info/video/2017/02/24/vbr-settings.html), [source](https://developer.apple.com/documentation/technotes/tn3145-hdr-video-metadata), [source](https://ffmpeg.org/ffmpeg-filters.html#setparams)
 
@@ -101,7 +101,7 @@ Sources: [source](https://developer.apple.com/documentation/technotes/tn3145-hdr
 -vf setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709 -c:v hevc_videotoolbox -profile:v main -b:v 12M -maxrate 18M -g 48 -bf 2 -tag:v hvc1
 ```
 
--b:v sets AverageBitRate, -maxrate becomes a one-second DataRateLimits cap, and -g sets MaxKeyFrameInterval (2 s at 23.976). Works on Intel Macs too, where -q:v is unavailable.
+`-b`:v sets AverageBitRate, -maxrate becomes a one-second DataRateLimits cap, and `-g` sets MaxKeyFrameInterval (2 s at 23.976). Works on Intel Macs too, where `-q`:v is unavailable.
 
 Sources: [source](https://developer.apple.com/documentation/videotoolbox/kvtcompressionpropertykey_averagebitrate), [source](https://developer.apple.com/documentation/videotoolbox/kvtcompressionpropertykey_dataratelimits), [source](https://github.com/FFmpeg/FFmpeg/blob/n9.0.2/libavcodec/videotoolboxenc.c), [source](https://ffmpeg.org/ffmpeg-filters.html#setparams)
 
@@ -149,7 +149,7 @@ Sources: [source](https://www.apple.com/final-cut-pro/docs/Apple_ProRes.pdf)
 segment 1: -c:v hevc_videotoolbox -q:v 62 -bf 2 -frames_after 1 ; segment 2: -c:v hevc_videotoolbox -q:v 62 -bf 2 -frames_before 1 (middle segments on Ultra: -frames_before 1 -frames_after 1)
 ```
 
-Apple lists two video encode engines for M5 Max and four for M5 Ultra. Apple's parallel-encoding setup marks each segment's neighbors with MoreFramesBeforeStart/AfterEnd so the joins stay smooth. Concatenate afterwards with the concat demuxer and -c copy.
+Apple lists two video encode engines for M5 Max and four for M5 Ultra. Apple's parallel-encoding setup marks each segment's neighbors with MoreFramesBeforeStart/AfterEnd so the joins stay smooth. Concatenate afterwards with the concat demuxer and `-c` copy.
 
 Sources: [source](https://www.apple.com/macbook-pro/specs/), [source](https://www.apple.com/mac-studio/specs/), [source](https://developer.apple.com/documentation/videotoolbox/kvtcompressionpropertykey_recommendedparallelizationlimit)
 
@@ -210,7 +210,7 @@ Sources: [source](https://developer.apple.com/av-foundation/Incorporating-HDR-vi
 | Flag | Values | Default | What it does | HDR | Lumora |
 |---|---|---|---|---|---|
 | [`-alpha_quality`](#alpha-quality) | 0 to 1 | 0 | hevc_videotoolbox only: when this is above 0 and the input pixel format has an alpha channel (bgra or ayuv), FFmpeg switches to Apple's HEVC with Alpha codec and sets the alpha plane's target quality. |  |  |
-| [`-constant_bit_rate`](#constant-bit-rate) | true/false | false | hevc_videotoolbox only: hands -b:v to VideoToolbox as a strict constant bitrate instead of an average target. |  |  |
+| [`-constant_bit_rate`](#constant-bit-rate) | true/false | false | hevc_videotoolbox only: hands `-b`:v to VideoToolbox as a strict constant bitrate instead of an average target. |  |  |
 | [`AVVideoCompressionPropertiesKey`](#avvideocompressionpropertieskey) | dictionary of AVVideo* compression keys and kVTCompressionPropertyKey_* keys | not stated (encoder defaults) | Dictionary that AVAssetWriter passes through to the VideoToolbox session. | ✓ | ✓ |
 | [`kVTCompressionPropertyKey_Quality`](#kvtcompressionpropertykey-quality) | 0.0 to 1.0 (Apple: 0.25 low, 0.50 normal, 0.75 high, 1.0 lossless where supported) | not stated (unset means bitrate or encoder-chosen rate) | Constant-quality target. | ✓ | ✓ |
 | [`kVTCompressionPropertyKey_ConstantQualityFactor`](#kvtcompressionpropertykey-constantqualityfactor) | 0.0 (lowest) to 1.0 (highest quality possible) | not stated | New in macOS 27: asks the encoder to hold consistent visual quality at a target factor, with or without bitrate limits. |  | ✓ |
@@ -431,7 +431,7 @@ hevc_videotoolbox only: when this is above 0 and the input pixel format has an a
 
 **Type:** bool · **Values:** true/false · **Default:** false · advanced
 
-hevc_videotoolbox only: hands -b:v to VideoToolbox as a strict constant bitrate instead of an average target. The encoder pads small frames to hold the rate.
+hevc_videotoolbox only: hands `-b`:v to VideoToolbox as a strict constant bitrate instead of an average target. The encoder pads small frames to hold the rate.
 
 **Effect:** quality - wastes bits on easy scenes · speed none · size fixed; usually larger than VBR for the same quality
 
@@ -471,14 +471,14 @@ Constant-quality target. Higher values spend more bits for a cleaner picture and
 
 | For | Value | Why | Source |
 |---|---|---|---|
-| streaming/small size | `0.45-0.50 (-q:v 45-50)` | slhck's FFmpeg rate-control guide puts -q:v 45-50 at about VMAF 90-93, which it calls good. | [source](https://slhck.info/video/2017/02/24/vbr-settings.html) |
+| streaming/small size | `0.45-0.50 (-q:v 45-50)` | slhck's FFmpeg rate-control guide puts `-q`:v 45-50 at about VMAF 90-93, which it calls good. | [source](https://slhck.info/video/2017/02/24/vbr-settings.html) |
 | live action | `0.55-0.65 (-q:v 55-65)` | The same guide reports about VMAF 95-98 in this range and recommends 45-65 overall. | [source](https://slhck.info/video/2017/02/24/vbr-settings.html) |
-| speed | `0.50 (-q:v 50)` | An M1 Pro 4K test found -q:v 50 artifact-free on a low-motion clip, while the default (no quality or bitrate) looked hazy. That -q:v 50 file was about 7x larger than x265 CRF 28. | [source](https://yre.jp/en/post/m1mac_h265/) |
+| speed | `0.50 (-q:v 50)` | An M1 Pro 4K test found `-q`:v 50 artifact-free on a low-motion clip, while the default (no quality or bitrate) looked hazy. That `-q`:v 50 file was about 7x larger than x265 CRF 28. | [source](https://yre.jp/en/post/m1mac_h265/) |
 | archive | `do not use HEVC hardware; use ProRes 422 HQ/4444 XQ or x265` | The same benchmark judged x265 sharper at a similar size and recommends it for quality-critical archiving. Hardware HEVC needs a much higher rate for the same result. | [source](https://yre.jp/en/post/m1mac_h265/) |
 
 **In Lumora:** Lumora's main HEVC control. Fixed mode uses job.quality (AppModel default 0.8). Target-quality mode searches 0.30-0.96 in steps of 0.02, starting at 0.62 (TargetQualityEncoder.levelRange), and re-encodes chunks with the chosen value (encodeChunkVT). The Storage preview encoder uses 0.6. It is not applied to ProRes. EncodeRecipes describes the media-engine HEVC rung as roughly 15-25% larger than x265 at equal quality.
 
-**Notes:** Apple silicon only through FFmpeg: -q:v exits with an error on Intel, and -global_quality N (divided by 100) skips that check. The scale does not map to x265 CRF. Apple's header says the SuggestedLookAheadFrameCount hint is ignored when Quality is 1.0. Apple's docs do not say the constant-quality restriction is hardware-specific; it comes from a comment in FFmpeg's source. Unverified judgment, no source gives an HDR number: 10-bit PQ material may need a slightly higher value than SDR (for example 0.60-0.70); confirm with an HDR-aware metric. macOS 27 adds kVTCompressionPropertyKey_ConstantQualityFactor, which Apple describes as perceptually consistent quality rather than a fixed QP.
+**Notes:** Apple silicon only through FFmpeg: `-q`:v exits with an error on Intel, and -global_quality N (divided by 100) skips that check. The scale does not map to x265 CRF. Apple's header says the SuggestedLookAheadFrameCount hint is ignored when Quality is 1.0. Apple's docs do not say the constant-quality restriction is hardware-specific; it comes from a comment in FFmpeg's source. Unverified judgment, no source gives an HDR number: 10-bit PQ material may need a slightly higher value than SDR (for example 0.60-0.70); confirm with an HDR-aware metric. macOS 27 adds kVTCompressionPropertyKey_ConstantQualityFactor, which Apple describes as perceptually consistent quality rather than a fixed QP.
 
 <a id="kvtcompressionpropertykey-constantqualityfactor"></a>
 
@@ -514,7 +514,7 @@ Long-term average bitrate target. Peaks may exceed it. Use it instead of Quality
 
 **In Lumora:** Not used. Lumora runs HEVC in Quality mode only.
 
-**Notes:** FFmpeg sets it from -b:v (VideoToolbox default 0) for HEVC, but never for ProRes.
+**Notes:** FFmpeg sets it from `-b`:v (VideoToolbox default 0) for HEVC, but never for ProRes.
 
 <a id="kvtcompressionpropertykey-dataratelimits"></a>
 
@@ -678,11 +678,11 @@ Longest allowed distance between keyframes. The encoder may still insert keyfram
 
 | For | Value | Why | Source |
 |---|---|---|---|
-| streaming/small size | `-g 0 to let VideoToolbox choose, or a frame count that matches your segment length` | Apple's 0 means the encoder places keyframes, and the key can be combined with MaxKeyFrameIntervalDuration, whichever limit comes first. In a 9.0.2 test, -g 0 gave keyframes every 30 frames at 24 fps, while the default gave one every 12. | [source](https://developer.apple.com/documentation/videotoolbox/kvtcompressionpropertykey_maxkeyframeinterval) |
+| streaming/small size | `-g 0 to let VideoToolbox choose, or a frame count that matches your segment length` | Apple's 0 means the encoder places keyframes, and the key can be combined with MaxKeyFrameIntervalDuration, whichever limit comes first. In a 9.0.2 test, `-g` 0 gave keyframes every 30 frames at 24 fps, while the default gave one every 12. | [source](https://developer.apple.com/documentation/videotoolbox/kvtcompressionpropertykey_maxkeyframeinterval) |
 
 **In Lumora:** Not set. Keyframe placement is left to VideoToolbox.
 
-**Notes:** FFmpeg sets it from -g for HEVC (gop_size > 0) and never for ProRes. A 2-second interval (48 at 23.976) is common streaming practice, not an Apple number (unverified).
+**Notes:** FFmpeg sets it from `-g` for HEVC (gop_size > 0) and never for ProRes. A 2-second interval (48 at 23.976) is common streaming practice, not an Apple number (unverified).
 
 <a id="kvtcompressionpropertykey-allowframereordering"></a>
 

@@ -20,7 +20,7 @@ Machine-readable data: [`data/avm.json`](data/avm.json). Every option below is l
 
 ## HDR
 
-AVM signals HDR only through the CICP fields in the sequence header: set --color-primaries=bt2020, --transfer-characteristics=smpte2084 (HDR10/PQ) or =hlg (HLG), and --matrix-coefficients=bt2020ncl, encode at --bit-depth=10, and set --chroma-sample-position=topleft as the AV2 common test conditions do for HDR. Full-range video is detected only from a Y4M header tag (COLORRANGE=FULL); there is no command-line range switch. avmenc has no flags for SMPTE ST 2086 mastering-display or MaxCLL/MaxFALL content-light metadata. The library defines metadata OBU types for them, but the application never inserts them, so HDR10 static metadata has to be added by a later tool or left out.
+AVM signals HDR only through the CICP fields in the sequence header: set `--color-primaries=bt2020`, `--transfer-characteristics=smpte2084` (HDR10/PQ) or =hlg (HLG), and `--matrix-coefficients=bt2020ncl`, encode at `--bit-depth=10`, and set `--chroma-sample-position=topleft` as the AV2 common test conditions do for HDR. Full-range video is detected only from a Y4M header tag (COLORRANGE=FULL); there is no command-line range switch. avmenc has no flags for SMPTE ST 2086 mastering-display or MaxCLL/MaxFALL content-light metadata. The library defines metadata OBU types for them, but the application never inserts them, so HDR10 static metadata has to be added by a later tool or left out.
 
 **Flags involved:** `--bit-depth`, `--input-bit-depth`, `--color-primaries`, `--transfer-characteristics`, `--matrix-coefficients`, `--chroma-sample-position`, `--icc`, `--enable-banding-metadata`
 
@@ -35,10 +35,10 @@ avmenc --cpu-used=3 --end-usage=q --qp=135 --bit-depth=10 --threads=8 --row-mt=1
 - HLG is spelled 'hlg' in AVM's transfer enum. 'arib-std-b67' (the ffmpeg/x265 name) is rejected with a fatal 'Failed to set codec option' error.
 - Default builds accept only 8-bit and 10-bit (CONFIG_TESTONLY_12BIT_SUPPORT=0). 12-bit needs a test-only build and produces a non-standard profile.
 - There are no mastering-display or content-light-level options, so PQ output carries only CICP. Players fall back to their default tone-mapping assumptions.
-- The input bit depth comes from the Y4M header when one is present, and --input-bit-depth applies only to raw YUV. If the source is deeper than --bit-depth, the codec bit depth is raised to match, with a warning on stderr unless --quiet is set.
-- Without --obu or --ivf, and with an output name that does not end in .obu or .ivf, avmenc writes WebM with the provisional codec ID 'V_AV2', which most tools do not recognize.
-- The --qp scale is the 8-bit qindex scale and is shifted internally for 10-bit (24 per extra bit), so the same --qp gives similar quality at 8 and 10 bit. 10-bit also accepts negative values down to -48.
-- Leaving --chroma-sample-position at 'unspecified' is legal, but the CTC assumes co-located (top-left, Type 2) siting for HDR. Older CTC versions spelled this 'colocated', and that name is not in the v1.0.0 enum.
+- The input bit depth comes from the Y4M header when one is present, and `--input-bit-depth` applies only to raw YUV. If the source is deeper than `--bit-depth`, the codec bit depth is raised to match, with a warning on stderr unless `--quiet` is set.
+- Without `--obu` or `--ivf`, and with an output name that does not end in .obu or .ivf, avmenc writes WebM with the provisional codec ID 'V_AV2', which most tools do not recognize.
+- The `--qp` scale is the 8-bit qindex scale and is shifted internally for 10-bit (24 per extra bit), so the same `--qp` gives similar quality at 8 and 10 bit. 10-bit also accepts negative values down to -48.
+- Leaving `--chroma-sample-position` at 'unspecified' is legal, but the CTC assumes co-located (top-left, Type 2) siting for HDR. Older CTC versions spelled this 'colocated', and that name is not in the v1.0.0 enum.
 
 ## Presets
 
@@ -59,9 +59,9 @@ avmenc --cpu-used=3 --end-usage=q --qp=135 --bit-depth=10 --threads=8 --row-mt=1
 
 | Mode | Flags | Notes |
 |---|---|---|
-| Constant QP (Q) | --end-usage=q --qp=<M..255> | Fixed-quality mode used by the AV2 common test conditions (--qp gives the qindex directly). Add --use-fixed-qp-offsets=1 --deltaq-mode=0 --enable-tpl-model=0 for strictly fixed per-level QPs, as the CTC does. Left at defaults, the encoder adapts the QP per pyramid level and per block. M is 0, -48 or -96 for 8, 10 or 12 bit. |
-| Constrained quality (CQ) | --end-usage=cq --qp=<level> --target-bitrate=<kbps> | Targets the --qp quality level but caps the bitrate at --target-bitrate. The upstream test suites rarely exercise it. |
-| VBR (default) | --end-usage=vbr --target-bitrate=<kbps> | One-pass variable bitrate with lookahead (--lag-in-frames). Two-pass is not available: --passes must be 1, and --minsection-pct/--maxsection-pct are ignored. The default target is 256 kbps. |
+| Constant QP (Q) | --end-usage=q --qp=<M..255> | Fixed-quality mode used by the AV2 common test conditions (`--qp` gives the qindex directly). Add `--use-fixed-qp-offsets=1` `--deltaq-mode=0` `--enable-tpl-model=0` for strictly fixed per-level QPs, as the CTC does. Left at defaults, the encoder adapts the QP per pyramid level and per block. M is 0, -48 or -96 for 8, 10 or 12 bit. |
+| Constrained quality (CQ) | --end-usage=cq --qp=<level> --target-bitrate=<kbps> | Targets the `--qp` quality level but caps the bitrate at `--target-bitrate`. The upstream test suites rarely exercise it. |
+| VBR (default) | --end-usage=vbr --target-bitrate=<kbps> | One-pass variable bitrate with lookahead (`--lag-in-frames`). Two-pass is not available: `--passes` must be 1, and `--minsection-pct`/--maxsection-pct are ignored. The default target is 256 kbps. |
 | CBR | --end-usage=cbr --target-bitrate=<kbps> --buf-sz --buf-initial-sz --buf-optimal-sz --undershoot-pct --overshoot-pct | Buffer-constrained constant bitrate. The buffer flags take effect only here, because VBR uses fixed large internal buffers. Usage is still good quality (there is no real-time usage in v1.0.0), so it is not a fast mode. |
 | Lossless | --lossless=1 (or --min-qp=0 --max-qp=0 at 8-bit) | Forces qindex 0. The encoder also switches to lossless when the best and worst allowed q both resolve to 0, and TCQ is disabled automatically. |
 
@@ -123,7 +123,7 @@ Sources: [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf)
 --cpu-used=0 --passes=1 --end-usage=q --qp=110 --kf-min-dist=0 --kf-max-dist=0 --use-fixed-qp-offsets=1 --deltaq-mode=0 --enable-tpl-model=0 --enable-keyframe-filtering=0 --limit=1 --obu -o out.obu still.y4m
 ```
 
-This is the CTC all-intra configuration. Use --limit=1 for single images so the encoder uses the reduced still-picture header.
+This is the CTC all-intra configuration. Use `--limit=1` for single images so the encoder uses the reduced still-picture header.
 
 Sources: [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf)
 
@@ -209,13 +209,13 @@ Sources: [source](https://github.com/AOMediaCodec/avm/blob/v1.0.0/av2/av2_cx_ifa
 | [`--width`](#width) | 1..65535 | not stated (taken from Y4M) | Frame width. |  |  |
 | [`--height`](#height) | 1..65535 | not stated (taken from Y4M) | Frame height. |  |  |
 | [`--forced_max_frame_width`](#forced-max-frame-width) | pixels | not stated (0 = use frame width) | Writes a larger maximum frame width into the sequence header, so that a stream can later switch to bigger frames without a new sequence header. |  |  |
-| [`--forced_max_frame_height`](#forced-max-frame-height) | pixels | not stated (0 = use frame height) | The height counterpart of --forced_max_frame_width. |  |  |
+| [`--forced_max_frame_height`](#forced-max-frame-height) | pixels | not stated (0 = use frame height) | The height counterpart of `--forced_max_frame_width`. |  |  |
 | [`--stereo-mode`](#stereo-mode) | mono, left-right, bottom-top, top-bottom, right-left | not stated (mono) | Tags WebM output with a stereoscopic 3D layout. |  |  |
 | [`--timebase`](#timebase) | rational num/den | 1/fps in practice (the help footer says 1/1000) | Sets the precision of output timestamps in fractional seconds. |  |  |
 | [`--fps`](#fps) | rational rate/scale | not stated (taken from Y4M) | Overrides the stream frame rate. |  |  |
 | [`--input-bit-depth`](#input-bit-depth) | 8, 10 (12 only in test builds) | not stated (same as --bit-depth) | Declares the bit depth of raw YUV input. | ✓ | ✓ |
 | [`--full-still-picture-hdr`](#full-still-picture-hdr) | none | not stated (off) | Uses the full sequence header instead of the reduced still-picture header for single-image encodes. |  |  |
-| [`--crop-win-bottom-offset`](#crop-win-bottom-offset) | 0..65535 | not stated (0) | Bottom offset of the conformance cropping window, used when --enable-cropping-window=1. |  |  |
+| [`--crop-win-bottom-offset`](#crop-win-bottom-offset) | 0..65535 | not stated (0) | Bottom offset of the conformance cropping window, used when `--enable-cropping-window=1.` |  |  |
 | [`--crop-win-left-offset`](#crop-win-left-offset) | 0..65535 | not stated (0) | Left offset of the cropping window. |  |  |
 | [`--crop-win-right-offset`](#crop-win-right-offset) | 0..65535 | not stated (0) | Right offset of the cropping window. |  |  |
 | [`--crop-win-top-offset`](#crop-win-top-offset) | 0..65535 | not stated (0) | Top offset of the cropping window. |  |  |
@@ -234,8 +234,8 @@ Sources: [source](https://github.com/AOMediaCodec/avm/blob/v1.0.0/av2/av2_cx_ifa
 | [`--enable-tcq`](#enable-tcq) | 0 off, 1 on for every frame, 2 on for key and altref frames | 1 (library default in encoder_usage_cfg; the help text says 2) | Turns on trellis-coded quantization, which picks quantized values along a state trellis so that the coefficients cost fewer bits. |  |  |
 | [`--drop-frame`](#drop-frame) | 0-100 (buffer %) | not stated (0 = never drop) | In buffer-constrained modes, lets the encoder skip frames when the buffer falls below this percentage. |  |  |
 | [`--resize-mode`](#resize-mode) | 0 none, 1 fixed, 2 random, 3 dynamic, 4 CTC pattern, 5 bridge-frame test pattern | not stated (0) | Allows coding frames at reduced resolution and scaling them back up after decoding, either at a fixed scale or decided by rate control. |  |  |
-| [`--resize-denominator`](#resize-denominator) | 8-16 (scale = 8/denominator) | not stated (8 = no scaling) | Scale factor for non-key frames when --resize-mode=1. |  |  |
-| [`--resize-kf-denominator`](#resize-kf-denominator) | 8-16 | not stated (8) | Scale factor for key frames when --resize-mode=1. |  |  |
+| [`--resize-denominator`](#resize-denominator) | 8-16 (scale = 8/denominator) | not stated (8 = no scaling) | Scale factor for non-key frames when `--resize-mode=1.` |  |  |
+| [`--resize-kf-denominator`](#resize-kf-denominator) | 8-16 | not stated (8) | Scale factor for key frames when `--resize-mode=1.` |  |  |
 | [`--end-usage`](#end-usage) | vbr, cbr, cq, q | not stated (vbr) | Selects the rate control mode: one-pass VBR, CBR, constrained quality (quality level with a bitrate cap), or constant QP. |  | ✓ |
 | [`--target-bitrate`](#target-bitrate) | kbps | not stated (256) | Target bitrate for VBR and CBR, and the bitrate cap in CQ mode. |  |  |
 | [`--min-q`](#min-q) | [0, 63] (DEPRECATED) | not stated | Lowest allowed quantizer on the old 0-63 scale. |  |  |
@@ -260,7 +260,7 @@ Sources: [source](https://github.com/AOMediaCodec/avm/blob/v1.0.0/av2/av2_cx_ifa
 | [`--min-cr`](#min-cr) | integer (ratio x 100) | 0 | Asks the encoder to keep each frame's compression ratio above this value divided by 100, as required by level limits. |  |  |
 | [`--vbr-corpus-complexity-lap`](#vbr-corpus-complexity-lap) | 0..10000 | 0 | Gives one-pass VBR an assumed average complexity per macroblock, to help it spread bits when it has only lookahead. |  |  |
 | [`--cq-level`](#cq-level) | [0, 63] (DEPRECATED) | not stated | Old-scale quality level, mapped to a qindex (for example 63 maps to 255) with a deprecation warning. |  |  |
-| [`--use-fixed-qp-offsets`](#use-fixed-qp-offsets) | 0..2 | not stated (0 = adaptive offsets) | Uses fixed QP offsets for each pyramid level, derived from --qp, instead of letting the encoder adapt them. |  |  |
+| [`--use-fixed-qp-offsets`](#use-fixed-qp-offsets) | 0..2 | not stated (0 = adaptive offsets) | Uses fixed QP offsets for each pyramid level, derived from `--qp`, instead of letting the encoder adapt them. |  |  |
 | [`--fixed-qp-offsets`](#fixed-qp-offsets) | comma-separated offsets: keyframe, ALTREF, then internal alt-ref levels (at least 2 values) | not stated (adaptive) | Sets the QP offsets for each pyramid level by hand. |  |  |
 
 ### Speed and presets
@@ -297,7 +297,7 @@ Sources: [source](https://github.com/AOMediaCodec/avm/blob/v1.0.0/av2/av2_cx_ifa
 | [`--sframe-type`](#sframe-type) | 0: Regular S-Frame, 1: RAS frame | 0 (Regular S-Frame) | Chooses a regular switch frame or a random-access switch (RAS) frame. |  |  |
 | [`--auto-alt-ref`](#auto-alt-ref) | 0/1 | not stated (1) | Lets the encoder create hidden alternate reference frames (temporally filtered future frames) that later frames predict from. |  |  |
 | [`--subgop-config-str`](#subgop-config-str) | built-in name (def, enh, asym, ts, ld) or a custom sub-GOP description string | not stated (encoder's built-in algorithm) | Defines the reference structure and frame order inside each sub-GOP, either by naming a built-in preset or by spelling out a custom structure. |  |  |
-| [`--subgop-config-path`](#subgop-config-path) | file path | not stated (encoder's built-in algorithm) | Same as --subgop-config-str, but reads the sub-GOP structure definitions from a file. |  |  |
+| [`--subgop-config-path`](#subgop-config-path) | file path | not stated (encoder's built-in algorithm) | Same as `--subgop-config-str`, but reads the sub-GOP structure definitions from a file. |  |  |
 | [`--dpb-size`](#dpb-size) | 1-16 | 8 | Number of decoded picture buffer slots the stream may use for references. |  |  |
 | [`--enable-bru`](#enable-bru) | 0: false, 1: true with regular decoder, 2: true with optimized decoder | 0 (false) | Enables backward reference update, which lets a reference buffer be refreshed using later decoded content. |  |  |
 | [`--enable-overlay`](#enable-overlay) | 0: false, 1: true | 0 (false) | Allows coding overlay frames that correct filtered alt-ref frames back toward the source when they are shown. |  |  |
@@ -518,7 +518,7 @@ Sources: [source](https://github.com/AOMediaCodec/avm/blob/v1.0.0/av2/av2_cx_ifa
 
 Names the output file. The extension picks the container when no format flag forces one: .ivf writes IVF, .obu writes a raw OBU stream, and anything else writes WebM in builds with WebM support.
 
-**In Lumora:** Lumora passes '-o {out}' with an .obu file in a temp folder, then concatenates the segment OBU files for AV2.
+**In Lumora:** Lumora passes '`-o` {out}' with an .obu file in a temp folder, then concatenates the segment OBU files for AV2.
 
 **Notes:** Encoding fails if no output is given.
 
@@ -534,9 +534,9 @@ Stops after n input frames.
 
 | For | Value | Why | Source |
 |---|---|---|---|
-| archive | `GOP length (e.g. 65) together with --skip` | The CTC describes encoding the two closed GOPs of a random-access test in parallel, with --limit for the first and --skip for the second, then concatenating the two OBU files. For its test sequences this gives the same bitstream as a single encode. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
+| archive | `GOP length (e.g. 65) together with --skip` | The CTC describes encoding the two closed GOPs of a random-access test in parallel, with `--limit` for the first and `--skip` for the second, then concatenating the two OBU files. For its test sequences this gives the same bitstream as a single encode. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 
-**Notes:** The CTC warns that encoding a still image with a larger --limit makes the encoder use a full sequence header. Use --limit=1 for stills.
+**Notes:** The CTC warns that encoding a still image with a larger `--limit` makes the encoder use a full sequence header. Use `--limit=1` for stills.
 
 <a id="skip"></a>
 
@@ -548,7 +548,7 @@ Discards the first n input frames before encoding.
 
 | For | Value | Why | Source |
 |---|---|---|---|
-| speed | `start frame of the chunk` | Used with --limit to split one source into independently encoded closed-GOP chunks (CTC section 4.8). | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
+| speed | `start frame of the chunk` | Used with `--limit` to split one source into independently encoded closed-GOP chunks (CTC section 4.8). | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 
 <a id="step"></a>
 
@@ -640,7 +640,7 @@ Declares raw input as planar 4:2:2. The profile is raised to the 4:2:2 profile a
 
 **Type:** bool · **Values:** none · **Default:** not stated · advanced
 
-Declares raw input as planar 4:4:4. The profile is raised to the 4:4:4 profile automatically unless --monochrome is set.
+Declares raw input as planar 4:4:4. The profile is raised to the 4:4:4 profile automatically unless `--monochrome` is set.
 
 **Effect:** quality none · speed slower · size larger than 4:2:0
 
@@ -662,7 +662,7 @@ Frame width. Needed for raw YUV input. Y4M input supplies it.
 
 Frame height. Needed for raw YUV input.
 
-**Notes:** -h means height, not help. Use --help for help.
+**Notes:** `-h` means height, not help. Use `--help` for help.
 
 <a id="forced-max-frame-width"></a>
 
@@ -682,7 +682,7 @@ Writes a larger maximum frame width into the sequence header, so that a stream c
 
 **Type:** int · **Values:** pixels · **Default:** not stated (0 = use frame height) · advanced
 
-The height counterpart of --forced_max_frame_width.
+The height counterpart of `--forced_max_frame_width`.
 
 **Effect:** quality none · speed none · size negligible
 
@@ -706,7 +706,7 @@ Tags WebM output with a stereoscopic 3D layout. The coded video is not changed.
 
 Sets the precision of output timestamps in fractional seconds.
 
-**Notes:** Validation requires den between 1 and 1e9 and num no greater than den. In v1.0.0, avmenc sets the timebase to 1/1000 before parsing, then replaces it with the inverse frame rate (from --fps or the input file) after all options are parsed, so a value given with --timebase appears to be overwritten. This comes from reading apps/avmenc.c and has not been tested.
+**Notes:** Validation requires den between 1 and 1e9 and num no greater than den. In v1.0.0, avmenc sets the timebase to 1/1000 before parsing, then replaces it with the inverse frame rate (from `--fps` or the input file) after all options are parsed, so a value given with `--timebase` appears to be overwritten. This comes from reading apps/avmenc.c and has not been tested.
 
 <a id="fps"></a>
 
@@ -728,7 +728,7 @@ Overrides the stream frame rate. Rate control and timing info use it.
 
 Declares the bit depth of raw YUV input. With Y4M input, the header's depth wins and this flag is ignored.
 
-**In Lumora:** Passed as --input-bit-depth={bits}. Lumora feeds Y4M, so the Y4M header takes priority and the flag is harmless.
+**In Lumora:** Passed as `--input-bit-depth={bits}.` Lumora feeds Y4M, so the Y4M header takes priority and the flag is harmless.
 
 <a id="full-still-picture-hdr"></a>
 
@@ -748,7 +748,7 @@ Uses the full sequence header instead of the reduced still-picture header for si
 
 **Type:** int · **Values:** 0..65535 · **Default:** not stated (0) · advanced
 
-Bottom offset of the conformance cropping window, used when --enable-cropping-window=1.
+Bottom offset of the conformance cropping window, used when `--enable-cropping-window=1.`
 
 <a id="crop-win-left-offset"></a>
 
@@ -782,7 +782,7 @@ Top offset of the cropping window.
 
 Signals a conformance cropping window, so the decoder outputs a smaller picture than the coded one (for example 1080 lines from a 1088-line coded frame).
 
-**Notes:** Set the four --crop-win-*-offset values with it.
+**Notes:** Set the four `--crop-win-`*-offset values with it.
 
 <a id="force-video-mode"></a>
 
@@ -802,7 +802,7 @@ Uses the video sequence header even when only one frame is encoded, instead of t
 
 Declares horizontal chroma subsampling for the input.
 
-**Notes:** Normally inferred from Y4M or the --i42x flags.
+**Notes:** Normally inferred from Y4M or the `--i42x` flags.
 
 <a id="input-chroma-subsampling-y"></a>
 
@@ -856,7 +856,7 @@ Turns on trellis-coded quantization, which picks quantized values along a state 
 
 **Effect:** quality + (better rate-distortion) · speed slower · size smaller
 
-**Notes:** Sources disagree on the default: the help text says 2, but encoder_usage_cfg in av2_cx_iface.c initializes it to 1. TCQ is forced off when --enable-trellis-quant=0 or in lossless mode.
+**Notes:** Sources disagree on the default: the help text says 2, but encoder_usage_cfg in av2_cx_iface.c initializes it to 1. TCQ is forced off when `--enable-trellis-quant=0` or in lossless mode.
 
 <a id="drop-frame"></a>
 
@@ -888,7 +888,7 @@ Allows coding frames at reduced resolution and scaling them back up after decodi
 
 **Type:** int · **Values:** 8-16 (scale = 8/denominator) · **Default:** not stated (8 = no scaling) · advanced
 
-Scale factor for non-key frames when --resize-mode=1.
+Scale factor for non-key frames when `--resize-mode=1.`
 
 **Effect:** quality - as it grows · speed faster · size smaller
 
@@ -898,7 +898,7 @@ Scale factor for non-key frames when --resize-mode=1.
 
 **Type:** int · **Values:** 8-16 · **Default:** not stated (8) · advanced
 
-Scale factor for key frames when --resize-mode=1.
+Scale factor for key frames when `--resize-mode=1.`
 
 **Effect:** quality - as it grows · speed faster · size smaller
 
@@ -914,9 +914,9 @@ Selects the rate control mode: one-pass VBR, CBR, constrained quality (quality l
 
 | For | Value | Why | Source |
 |---|---|---|---|
-| archive | `q` | All CTC configurations use --end-usage=q with an explicit --qp. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
+| archive | `q` | All CTC configurations use `--end-usage=q` with an explicit `--qp`. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 
-**In Lumora:** Lumora always passes --end-usage=q and steers quality through --qp.
+**In Lumora:** Lumora always passes `--end-usage=q` and steers quality through `--qp`.
 
 <a id="target-bitrate"></a>
 
@@ -940,7 +940,7 @@ Lowest allowed quantizer on the old 0-63 scale. It is mapped to a qindex and pri
 
 **Effect:** quality caps best quality · speed none · size floor on size
 
-**Notes:** Use --min-qp instead.
+**Notes:** Use `--min-qp` instead.
 
 <a id="max-q"></a>
 
@@ -952,7 +952,7 @@ Highest allowed quantizer on the old 0-63 scale, mapped to a qindex with a depre
 
 **Effect:** quality floor on worst quality · speed none · size cap on savings
 
-**Notes:** Use --max-qp instead.
+**Notes:** Use `--max-qp` instead.
 
 <a id="min-qp"></a>
 
@@ -976,7 +976,7 @@ Highest (worst-quality) qindex that rate control may use.
 
 **Effect:** quality protects against very bad frames · speed none · size may overshoot targets
 
-**Notes:** Also clamps --qp in Q mode.
+**Notes:** Also clamps `--qp` in Q mode.
 
 <a id="undershoot-pct"></a>
 
@@ -1056,7 +1056,7 @@ Two-pass VBR floor on per-GOP bitrate.
 
 Two-pass VBR ceiling on per-GOP bitrate.
 
-**Notes:** Always ignored, for the same reason as --minsection-pct.
+**Notes:** Always ignored, for the same reason as `--minsection-pct`.
 
 <a id="enable-trellis-quant"></a>
 
@@ -1068,7 +1068,7 @@ Controls rate-distortion optimization of quantized coefficients and when it runs
 
 **Effect:** quality + · speed slower with 1 · size smaller
 
-**Notes:** Setting 0 forces --enable-tcq off to avoid an encoder/decoder mismatch.
+**Notes:** Setting 0 forces `--enable-tcq` off to avoid an encoder/decoder mismatch.
 
 <a id="frame-boost"></a>
 
@@ -1145,9 +1145,9 @@ Quality level for Q and CQ modes, given directly as a qindex. Lower means higher
 | archive | `110-135` | The lowest CTC random-access operating points are qindex 110 and 135. All-intra starts at 85 and stills at 60. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 | streaming/small size | `185-235` | These are the upper CTC random-access operating points, the low-bitrate end of the tested range. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 
-**In Lumora:** Passed as --qp={quality}. Lumora interpolates between qualityBest=80 and qualityWorst=200.
+**In Lumora:** Passed as `--qp={quality}.` Lumora interpolates between qualityBest=80 and qualityWorst=200.
 
-**Notes:** In Q mode the value is clamped to [--min-qp, --max-qp]. With default adaptive offsets (no --use-fixed-qp-offsets), frames in the pyramid get different effective QPs around this anchor.
+**Notes:** In Q mode the value is clamped to [`--min-qp`, `--max-qp`]. With default adaptive offsets (no `--use-fixed-qp-offsets`), frames in the pyramid get different effective QPs around this anchor.
 
 <a id="quant-b-adapt"></a>
 
@@ -1191,7 +1191,7 @@ Old-scale quality level, mapped to a qindex (for example 63 maps to 255) with a 
 
 **Effect:** quality + as it falls · speed none · size larger as it falls
 
-**Notes:** Parsed by avmenc but not printed by --help. Use --qp instead.
+**Notes:** Parsed by avmenc but not printed by `--help`. Use `--qp` instead.
 
 <a id="use-fixed-qp-offsets"></a>
 
@@ -1199,15 +1199,15 @@ Old-scale quality level, mapped to a qindex (for example 63 maps to 255) with a 
 
 **Type:** int · **Values:** 0..2 · **Default:** not stated (0 = adaptive offsets) · advanced
 
-Uses fixed QP offsets for each pyramid level, derived from --qp, instead of letting the encoder adapt them.
+Uses fixed QP offsets for each pyramid level, derived from `--qp`, instead of letting the encoder adapt them.
 
 **Effect:** quality ± (predictable, not optimal) · speed none · size ±
 
 | For | Value | Why | Source |
 |---|---|---|---|
-| archive | `1 (research comparisons only)` | Every CTC configuration sets --use-fixed-qp-offsets=1 so that QP per frame level is reproducible. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
+| archive | `1 (research comparisons only)` | Every CTC configuration sets `--use-fixed-qp-offsets=1` so that QP per frame level is reproducible. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 
-**Notes:** Parsed but not listed by --help. The arg_defs help text for this flag talks about comma-separated values, which really belong to --fixed-qp-offsets.
+**Notes:** Parsed but not listed by `--help`. The arg_defs help text for this flag talks about comma-separated values, which really belong to `--fixed-qp-offsets`.
 
 <a id="fixed-qp-offsets"></a>
 
@@ -1219,7 +1219,7 @@ Sets the QP offsets for each pyramid level by hand. Missing trailing values are 
 
 **Effect:** quality ± · speed none · size ±
 
-**Notes:** Parsed but not listed by --help. Implies --use-fixed-qp-offsets=1. The help text says 5 offsets, while the code stores FIXED_QP_OFFSET_COUNT values.
+**Notes:** Parsed but not listed by `--help`. Implies `--use-fixed-qp-offsets=1.` The help text says 5 offsets, while the code stores FIXED_QP_OFFSET_COUNT values.
 
 ### Speed and presets
 
@@ -1231,7 +1231,7 @@ Sets the QP offsets for each pyramid level by hand. Missing trailing values are 
 
 Selects the good-quality usage profile. It is the only usage AVM v1.0.0 defines, so the flag changes nothing.
 
-**Notes:** After v1.0.0, GitHub main added a separate --rt (realtime deadline) flag. It is not in v1.0.0.
+**Notes:** After v1.0.0, GitHub main added a separate `--rt` (realtime deadline) flag. It is not in v1.0.0.
 
 <a id="usage"></a>
 
@@ -1255,10 +1255,10 @@ Main speed/efficiency trade-off. Higher values prune more of the search. The goo
 
 | For | Value | Why | Source |
 |---|---|---|---|
-| archive | `0` | The CTC requires the best-performing setting (--cpu-used=0) for all configurations and comparisons. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
+| archive | `0` | The CTC requires the best-performing setting (`--cpu-used=0`) for all configurations and comparisons. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 | speed | `6` | 6 is the fastest distinct level. 7-9 behave like 6 in good-quality usage. | [source](https://github.com/AOMediaCodec/avm/blob/v1.0.0/avm/avmcx.h) |
 
-**In Lumora:** Passed as --cpu-used={preset}. Lumora's default preset for AVM is 5.
+**In Lumora:** Passed as `--cpu-used={preset}.` Lumora's default preset for AVM is 5.
 
 **Notes:** Even at 6, AVM is a reference encoder and remains very slow. A public test with the simple_encoder example took about 31 s per 320x180 frame at its defaults.
 
@@ -1394,7 +1394,7 @@ How many future frames the encoder may buffer for look-ahead decisions such as a
 
 | For | Value | Why | Source |
 |---|---|---|---|
-| archive | `19` | The CTC random-access configuration uses --lag-in-frames=19. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
+| archive | `19` | The CTC random-access configuration uses `--lag-in-frames=19.` | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 
 **Notes:** 0 gives a low-delay structure, as in the CTC LD configuration.
 
@@ -1410,7 +1410,7 @@ Enables forward keyframes, which give an open-GOP structure where frames before 
 
 | For | Value | Why | Source |
 |---|---|---|---|
-| archive | `0` | The CTC scripts default to closed GOPs (enable_open_gop: false in config.yaml, which VideoEncoder.py turns into --enable-fwd-kf=0). Closed GOPs keep chunks independently decodable and safe to concatenate. | [source](https://github.com/AOMediaCodec/avm/blob/v1.0.0/tools/convexhull_framework/src/config.yaml) |
+| archive | `0` | The CTC scripts default to closed GOPs (enable_open_gop: false in config.yaml, which VideoEncoder.py turns into `--enable-fwd-kf=0`). Closed GOPs keep chunks independently decodable and safe to concatenate. | [source](https://github.com/AOMediaCodec/avm/blob/v1.0.0/tools/convexhull_framework/src/config.yaml) |
 
 **Notes:** Keep it at 0 when encoding segments that will be concatenated.
 
@@ -1502,7 +1502,7 @@ Chooses a regular switch frame or a random-access switch (RAS) frame.
 
 **Effect:** quality ± · speed none · size ±
 
-**Notes:** After v1.0.0, GitHub main added --sframe-conformance-option. It is not in v1.0.0.
+**Notes:** After v1.0.0, GitHub main added `--sframe-conformance-option`. It is not in v1.0.0.
 
 <a id="auto-alt-ref"></a>
 
@@ -1516,7 +1516,7 @@ Lets the encoder create hidden alternate reference frames (temporally filtered f
 
 | For | Value | Why | Source |
 |---|---|---|---|
-| archive | `1` | The CTC random-access configuration sets --auto-alt-ref=1. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
+| archive | `1` | The CTC random-access configuration sets `--auto-alt-ref=1.` | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 
 <a id="subgop-config-str"></a>
 
@@ -1530,7 +1530,7 @@ Defines the reference structure and frame order inside each sub-GOP, either by n
 
 | For | Value | Why | Source |
 |---|---|---|---|
-| streaming/small size | `ld (only for zero-delay use)` | The CTC low-delay configuration uses --subgop-config-str=ld with --lag-in-frames=0. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
+| streaming/small size | `ld (only for zero-delay use)` | The CTC low-delay configuration uses `--subgop-config-str=ld` with `--lag-in-frames=0.` | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 
 **Notes:** The preset names come from subgop_config_str_preset_map in av2_cx_iface.c.
 
@@ -1540,7 +1540,7 @@ Defines the reference structure and frame order inside each sub-GOP, either by n
 
 **Type:** path · **Values:** file path · **Default:** not stated (encoder's built-in algorithm) · advanced
 
-Same as --subgop-config-str, but reads the sub-GOP structure definitions from a file.
+Same as `--subgop-config-str`, but reads the sub-GOP structure definitions from a file.
 
 **Effect:** quality ± · speed ± · size ±
 
@@ -1678,7 +1678,7 @@ Adaptive quantization by segment: adjusts the quantizer per region based on vari
 
 **Effect:** quality ± (can help flat areas, can lower PSNR) · speed slight · size ±
 
-**Notes:** --deltaq-mode is the main block-level QP modulation in AVM. aq-mode is an older segment-based method.
+**Notes:** `--deltaq-mode` is the main block-level QP modulation in AVM. aq-mode is an older segment-based method.
 
 <a id="deltaq-mode"></a>
 
@@ -1692,9 +1692,9 @@ Varies the quantizer per superblock, guided by the temporal dependency (TPL) mod
 
 | For | Value | Why | Source |
 |---|---|---|---|
-| archive | `0 (only for fixed-QP comparisons)` | Every CTC configuration sets --deltaq-mode=0, together with fixed per-level QPs (--use-fixed-qp-offsets=1), so results are comparable across tests. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
+| archive | `0 (only for fixed-QP comparisons)` | Every CTC configuration sets `--deltaq-mode=0`, together with fixed per-level QPs (`--use-fixed-qp-offsets=1`), so results are comparable across tests. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 
-**Notes:** Requires --enable-tpl-model. For normal use the default (1) is probably better, but that is an inference, not a measured claim.
+**Notes:** Requires `--enable-tpl-model`. For normal use the default (1) is probably better, but that is an inference, not a measured claim.
 
 <a id="enable-chroma-deltaq"></a>
 
@@ -1728,7 +1728,7 @@ Enables quantization matrices, which quantize high frequencies more coarsely tha
 
 **Effect:** quality ± (perceptual gain possible, PSNR may drop) · speed none · size smaller
 
-**Notes:** Use with --qm-min/--qm-max.
+**Notes:** Use with `--qm-min`/--qm-max.
 
 <a id="enable-tpl-model"></a>
 
@@ -1736,13 +1736,13 @@ Enables quantization matrices, which quantize high frequencies more coarsely tha
 
 **Type:** bool · **Values:** 0: off, 1: backward source based · **Default:** not stated (source default 1) · advanced
 
-Runs a temporal dependency model over the lookahead to find which blocks are referenced most, then spends more bits on them. Required for --deltaq-mode.
+Runs a temporal dependency model over the lookahead to find which blocks are referenced most, then spends more bits on them. Required for `--deltaq-mode`.
 
 **Effect:** quality + · speed slower · size smaller
 
 | For | Value | Why | Source |
 |---|---|---|---|
-| archive | `0 (only for fixed-QP research)` | The CTC sets --enable-tpl-model=0 with --use-fixed-qp-offsets=1 and --deltaq-mode=0, so the coded QPs are exactly as specified. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
+| archive | `0 (only for fixed-QP research)` | The CTC sets `--enable-tpl-model=0` with `--use-fixed-qp-offsets=1` and `--deltaq-mode=0`, so the coded QPs are exactly as specified. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 
 **Notes:** Lumora leaves it at the default (on), which suits non-research encodes.
 
@@ -1756,7 +1756,7 @@ Flattest quantization matrix level the encoder may use (15 is effectively flat).
 
 **Effect:** quality ± · speed none · size ±
 
-**Notes:** Needs --enable-qm=1. The help text claims a default of 15, but default_extra_cfg in av2_cx_iface.c initializes qm_max to DEFAULT_QM_LAST, which quant_common.h defines as 9.
+**Notes:** Needs `--enable-qm=1.` The help text claims a default of 15, but default_extra_cfg in av2_cx_iface.c initializes qm_max to DEFAULT_QM_LAST, which quant_common.h defines as 9.
 
 <a id="qm-min"></a>
 
@@ -1768,7 +1768,7 @@ Steepest quantization matrix level the encoder may use. Lower values weight high
 
 **Effect:** quality ± · speed none · size smaller with lower
 
-**Notes:** Needs --enable-qm=1. The help text claims a default of 8, but default_extra_cfg in av2_cx_iface.c initializes qm_min to DEFAULT_QM_FIRST, which quant_common.h defines as 5.
+**Notes:** Needs `--enable-qm=1.` The help text claims a default of 8, but default_extra_cfg in av2_cx_iface.c initializes qm_min to DEFAULT_QM_FIRST, which quant_common.h defines as 5.
 
 <a id="tune-content"></a>
 
@@ -1782,7 +1782,7 @@ Tells the encoder the content type. 'screen' turns on screen-content tools such 
 
 | For | Value | Why | Source |
 |---|---|---|---|
-| screen content | `screen` | The CTC applies --tune-content=screen to the screen-sharing class (B2). | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
+| screen content | `screen` | The CTC applies `--tune-content=screen` to the screen-sharing class (B2). | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 | CGI | `default (screen optional)` | Gaming and animation (class B1) are encoded with default tuning in mandatory CTC runs. 'screen' is only an optional extra test for them. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 
 **In Lumora:** Not used. Lumora's encoders.json 'tunes' entries for avm (default, grain, anime, screen) are all empty, so even the screen profile passes nothing.
@@ -1817,7 +1817,7 @@ Loads film grain synthesis parameters from a text table instead of estimating th
 |---|---|---|---|
 | heavy grain | `a measured filmgrn2 table, with a denoised source` | Grain synthesis encodes a compact parametric model and re-synthesizes it at the decoder instead of coding the noise itself. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Appendix-Film-Grain-Synthesis.md) |
 
-**In Lumora:** Not wired correctly for AV2. ExportEngine passes '--fgs-table <path>' for every non-libaom codec, which avmenc rejects with 'Unrecognized option'. The correct form is --film-grain-table=<path>. Lumora's GrainTable also writes the AV1 'filmgrn1' format, but AVM requires the 'filmgrn2' format, whose 'p' line has extra fields.
+**In Lumora:** Not wired correctly for AV2. ExportEngine passes '`--fgs-table` <path>' for every non-libaom codec, which avmenc rejects with 'Unrecognized option'. The correct form is `--film-grain-table=<path>.` Lumora's GrainTable also writes the AV1 'filmgrn1' format, but AVM requires the 'filmgrn2' format, whose 'p' line has extra fields.
 
 **Notes:** The table format is defined in avm_dsp/grain_table.c (magic 'filmgrn2'). AV1 tables from libaom or SVT-AV1 will not parse.
 
@@ -1948,7 +1948,7 @@ Sets the internal coding bit depth. 10-bit improves gradients and is required fo
 | HDR | `10` | The CTC HDR class (BT.2100 PQ) is 10-bit, and 10 is the highest depth any defined AV2 profile supports. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 | anime | `10` | The CTC encodes the synthetic gaming and animation class (B1) at 10-bit even when the source is 8-bit. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 
-**In Lumora:** Passed as --bit-depth={bits} from the job's output depth. A 12-bit job will fail on a standard AVM build.
+**In Lumora:** Passed as `--bit-depth={bits}` from the job's output depth. A 12-bit job will fail on a standard AVM build.
 
 **Notes:** The help says '8 for version <=1, 10 or 12 for version 2', which is inherited wording. If the input is deeper than this value, avmenc raises it to the input depth with a warning. 12-bit needs CONFIG_TESTONLY_12BIT_SUPPORT=1, which defaults to 0.
 
@@ -2000,10 +2000,10 @@ Signals where chroma samples sit relative to luma for 4:2:0 and 4:2:2. It also t
 
 | For | Value | Why | Source |
 |---|---|---|---|
-| HDR | `topleft` | The CTC adds --chroma-sample-position=topleft for HDR sequences, which assume co-located (Type 2) chroma. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
+| HDR | `topleft` | The CTC adds `--chroma-sample-position=topleft` for HDR sequences, which assume co-located (Type 2) chroma. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 | live action | `left` | The CTC states that BT.709 and other non-HDR video uses vertical chroma siting (Type 0, left). | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 
-**In Lumora:** Not passed. Lumora's HDR10 and HLG AVM encodes leave chroma siting unspecified. Adding --chroma-sample-position=topleft for PQ/HLG would match the CTC.
+**In Lumora:** Not passed. Lumora's HDR10 and HLG AVM encodes leave chroma siting unspecified. Adding `--chroma-sample-position=topleft` for PQ/HLG would match the CTC.
 
 **Notes:** Parsed both as a global and as a stream option. AVM's enum is richer than AV1's (adds center, top, bottomleft, bottom). CTC v7 and earlier used 'colocated', which is not a valid v1.0.0 value.
 
@@ -2021,7 +2021,7 @@ Writes the CICP color primaries of the content into the sequence header. The pix
 |---|---|---|---|
 | HDR | `bt2020` | This is the CTC HDR signaling for BT.2100 content. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 
-**In Lumora:** Passed as --color-primaries={cp_name}: bt2020 for PQ and HLG, bt709 for SDR. Both names are valid AVM enum values.
+**In Lumora:** Passed as `--color-primaries={cp_name}:` bt2020 for PQ and HLG, bt709 for SDR. Both names are valid AVM enum values.
 
 **Notes:** Use smpte432 for Display P3 content.
 
@@ -2039,7 +2039,7 @@ Writes the CICP matrix coefficients (YUV conversion) into the sequence header.
 |---|---|---|---|
 | HDR | `bt2020ncl` | This is the CTC HDR signaling. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 
-**In Lumora:** Passed as --matrix-coefficients={mc_name}: bt2020ncl for PQ and HLG, bt709 for SDR. Both are valid.
+**In Lumora:** Passed as `--matrix-coefficients={mc_name}:` bt2020ncl for PQ and HLG, bt709 for SDR. Both are valid.
 
 **Notes:** AVM adds ipt-c2, ycgco-re and ycgco-ro to the AV1 list. 'identity' is used for RGB (4:4:4) coding.
 
@@ -2057,7 +2057,7 @@ Writes the CICP transfer function into the sequence header. This is the field th
 |---|---|---|---|
 | HDR | `smpte2084 (HDR10/PQ) or hlg (HLG)` | The CTC HDR class uses smpte2084. 'hlg' is the spelling in AVM's transfer enum. | [source](https://github.com/AOMediaCodec/avm/blob/v1.0.0/av2/arg_defs.c) |
 
-**In Lumora:** Passed as --transfer-characteristics={tc_name}. PQ maps to smpte2084, which is valid. HLG maps to 'arib-std-b67', which is NOT in AVM's enum, so every Lumora HLG AV2 encode fails at option parsing. encoders.json avm.colorNames.hlg.tc should be 'hlg'.
+**In Lumora:** Passed as `--transfer-characteristics={tc_name}.` PQ maps to smpte2084, which is valid. HLG maps to 'arib-std-b67', which is NOT in AVM's enum, so every Lumora HLG AV2 encode fails at option parsing. encoders.json avm.colorNames.hlg.tc should be 'hlg'.
 
 **Notes:** Enum matching is exact and case-sensitive.
 
@@ -2213,7 +2213,7 @@ Controls the search range extension for intra block copy.
 
 | For | Value | Why | Source |
 |---|---|---|---|
-| screen content | `1` | The CTC uses --tune-content=screen --enable-intrabc-ext=1 for the screen-sharing class (B2). | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
+| screen content | `1` | The CTC uses `--tune-content=screen` `--enable-intrabc-ext=1` for the screen-sharing class (B2). | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 | live action | `1 (2 for 360p and smaller)` | The CTC uses 1 for most classes and 2 for the 640x360 and 480x270 classes (A4, A5). | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 
 <a id="enable-joint-mvd"></a>
@@ -2510,7 +2510,7 @@ Allows separate luma and chroma partition trees (semi-decoupled partitioning) on
 
 | For | Value | Why | Source |
 |---|---|---|---|
-| screen content | `0 (only in CTC ECF-6 screen RGB tests)` | The CTC extended-chroma-format screen content class turns it off alongside --tune-content=screen. | [source](https://github.com/AOMediaCodec/avm/blob/v1.0.0/tools/convexhull_framework/src/VideoEncoder.py) |
+| screen content | `0 (only in CTC ECF-6 screen RGB tests)` | The CTC extended-chroma-format screen content class turns it off alongside `--tune-content=screen.` | [source](https://github.com/AOMediaCodec/avm/blob/v1.0.0/tools/convexhull_framework/src/VideoEncoder.py) |
 
 <a id="enable-ext-partitions"></a>
 
@@ -2562,7 +2562,7 @@ When forward skip coding is off, still allows the identity transform for intra b
 
 **Effect:** quality + on synthetic content · speed slight · size smaller
 
-**Notes:** Only matters with --enable-fsc=0.
+**Notes:** Only matters with `--enable-fsc=0.`
 
 <a id="enable-inter-ddt"></a>
 
@@ -2736,7 +2736,7 @@ Largest block size the partition search may use.
 
 **Effect:** quality + larger helps flat areas · speed ± · size smaller with larger blocks
 
-**Notes:** Cannot be below --min-partition-size.
+**Notes:** Cannot be below `--min-partition-size`.
 
 <a id="min-partition-size"></a>
 
@@ -2864,7 +2864,7 @@ Enables the pixel-classified Wiener mode of loop restoration.
 
 **Effect:** quality + · speed slower · size smaller
 
-**Notes:** Needs --enable-restoration=1.
+**Notes:** Needs `--enable-restoration=1.`
 
 <a id="enable-restoration"></a>
 
@@ -2923,7 +2923,7 @@ Caps the number of worker threads. Threads only help when there are several tile
 | archive | `1 (with one tile)` | The CTC verification configuration uses one thread and one tile to measure the best possible coding gain. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 | speed | `match the tile count (e.g. 4 for 4 column tiles)` | For speed, the CTC pairs threads with tiles: two threads for two tiles and four for four. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 
-**In Lumora:** Passed as --threads={threads} from Lumora's per-segment thread budget.
+**In Lumora:** Passed as `--threads={threads}` from Lumora's per-segment thread budget.
 
 **Notes:** Fatal error above 1 in builds without CONFIG_MULTITHREAD.
 
@@ -2951,7 +2951,7 @@ Turns on features that allow frames to be decoded in parallel, by disabling back
 
 | For | Value | Why | Source |
 |---|---|---|---|
-| archive | `0` | The CTC encode scripts pass --frame-parallel=0. | [source](https://github.com/AOMediaCodec/avm/blob/v1.0.0/tools/convexhull_framework/src/VideoEncoder.py) |
+| archive | `0` | The CTC encode scripts pass `--frame-parallel=0.` | [source](https://github.com/AOMediaCodec/avm/blob/v1.0.0/tools/convexhull_framework/src/VideoEncoder.py) |
 
 <a id="mode-cost-upd-freq"></a>
 
@@ -2989,9 +2989,9 @@ Multithreads the encoder across superblock rows inside a tile.
 
 | For | Value | Why | Source |
 |---|---|---|---|
-| archive | `0` | Every CTC tile and thread configuration passes --row-mt=0. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
+| archive | `0` | Every CTC tile and thread configuration passes `--row-mt=0.` | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 
-**Notes:** GitHub main has since changed the default to 0 (off). On those builds, pass --row-mt=1 explicitly to keep the speedup.
+**Notes:** GitHub main has since changed the default to 0 (off). On those builds, pass `--row-mt=1` explicitly to keep the speedup.
 
 <a id="tile-columns"></a>
 
@@ -3008,7 +3008,7 @@ Splits each frame into 2^n tile columns, which can be encoded and decoded in par
 | speed | `2 at 4K (4 columns), 1 at 1080p` | The CTC uses four column tiles at 4K and two at 1080p to cut test time. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 | archive | `0` | The CTC verification configuration uses a single tile for the best coding gain. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 
-**Notes:** Lumora sets --threads but not tiles. Without tiles or --row-mt, extra threads do little.
+**Notes:** Lumora sets `--threads` but not tiles. Without tiles or `--row-mt`, extra threads do little.
 
 <a id="tile-rows"></a>
 
@@ -3034,7 +3034,7 @@ Gives explicit, possibly uneven, tile column widths instead of an even log2 spli
 
 **Effect:** quality - slight · speed faster with threads · size slightly larger
 
-**Notes:** Parsed but not listed by --help. The units are not documented and are presumably superblocks.
+**Notes:** Parsed but not listed by `--help`. The units are not documented and are presumably superblocks.
 
 <a id="tile-height"></a>
 
@@ -3046,7 +3046,7 @@ Gives explicit tile row heights.
 
 **Effect:** quality - slight · speed faster with threads · size slightly larger
 
-**Notes:** Parsed but not listed by --help.
+**Notes:** Parsed but not listed by `--help`.
 
 ### Logging and statistics
 
@@ -3060,7 +3060,7 @@ Turns on debug mode, which makes the output bitstream deterministic so that repe
 
 | For | Value | Why | Source |
 |---|---|---|---|
-| archive | `set` | The upstream CI encode checks use --debug so that md5 comparisons between builds are meaningful. | [source](https://gitlab.com/AOMediaCodec/avm/-/blob/research-v15.0.0/.gitlab-ci.yml) |
+| archive | `set` | The upstream CI encode checks use `--debug` so that md5 comparisons between builds are meaningful. | [source](https://gitlab.com/AOMediaCodec/avm/-/blob/research-v15.0.0/.gitlab-ci.yml) |
 
 <a id="recon"></a>
 
@@ -3080,7 +3080,7 @@ Writes the encoder's reconstructed (decoded) frames to a raw file so they can be
 
 Suppresses the per-frame progress line and the automatic profile or bit-depth upgrade notices.
 
-**Notes:** Note that -q is quiet here, not quantizer.
+**Notes:** Note that `-q` is quiet here, not quantizer.
 
 <a id="verbose"></a>
 
@@ -3092,7 +3092,7 @@ Prints the full encoder configuration (tools, QP, speed, partition sizes) before
 
 | For | Value | Why | Source |
 |---|---|---|---|
-| archive | `set` | The CTC encode script always logs the configuration with --verbose so that runs are reproducible. | [source](https://github.com/AOMediaCodec/avm/blob/v1.0.0/tools/convexhull_framework/src/VideoEncoder.py) |
+| archive | `set` | The CTC encode script always logs the configuration with `--verbose` so that runs are reproducible. | [source](https://github.com/AOMediaCodec/avm/blob/v1.0.0/tools/convexhull_framework/src/VideoEncoder.py) |
 
 **Notes:** Useful for confirming that CICP values were accepted.
 
@@ -3138,7 +3138,7 @@ Hides the warnings that avmenc prints about settings it considers risky.
 
 Still prints configuration warnings but does not stop to ask whether to continue. Use it for unattended runs.
 
-**In Lumora:** Not passed. Lumora pipes Y4M on stdin, so an interactive warning prompt could stall an encode. Adding -y would be safer.
+**In Lumora:** Not passed. Lumora pipes Y4M on stdin, so an interactive warning prompt could stall an encode. Adding `-y` would be safer.
 
 <a id="test-decode"></a>
 
@@ -3162,7 +3162,7 @@ Writes decoded-frame hash metadata OBUs so that a decoder can check its output. 
 
 **Effect:** quality none · speed slight · size tiny
 
-**Notes:** Parsed but not listed by --help.
+**Notes:** Parsed but not listed by `--help`.
 
 <a id="use-per-plane-frame-hash"></a>
 
@@ -3174,7 +3174,7 @@ Writes separate hashes for Y, U and V instead of one per frame.
 
 **Effect:** quality none · speed none · size tiny
 
-**Notes:** Parsed but not listed by --help.
+**Notes:** Parsed but not listed by `--help`.
 
 ### Other
 
@@ -3186,7 +3186,7 @@ Writes separate hashes for Y, U and V instead of one per frame.
 
 Prints the full option list grouped into Options, Encoder Global, Rate Control, Keyframe Placement and AV2 Specific sections, then exits.
 
-**Notes:** Several flags that the encoder parses are not printed by --help: --cq-level, --tile-width, --tile-height, --use-fixed-qp-offsets, --fixed-qp-offsets, --frame-hash and --use-per-plane-frame-hash.
+**Notes:** Several flags that the encoder parses are not printed by `--help`: `--cq-level`, `--tile-width`, `--tile-height`, `--use-fixed-qp-offsets`, `--fixed-qp-offsets`, `--frame-hash` and `--use-per-plane-frame-hash`.
 
 <a id="cfg"></a>
 
@@ -3198,7 +3198,7 @@ Reads encoder tool settings from a key = value text file (see Sample.cfg in the 
 
 **Effect:** quality depends on file · speed depends on file · size depends on file
 
-**Notes:** Only the first --cfg is honored. Keys use underscore names such as superblock_size and enable_cdef, which are not the dashed CLI names.
+**Notes:** Only the first `--cfg` is honored. Keys use underscore names such as superblock_size and enable_cdef, which are not the dashed CLI names.
 
 <a id="codec"></a>
 
@@ -3208,7 +3208,7 @@ Reads encoder tool settings from a key = value text file (see Sample.cfg in the 
 
 Selects the encoder interface. AVM ships a single encoder, so this is effectively fixed to av2.
 
-**Notes:** The CTC scripts pass --codec=av2 explicitly.
+**Notes:** The CTC scripts pass `--codec=av2` explicitly.
 
 <a id="enable-lcr"></a>
 
@@ -3284,7 +3284,7 @@ Chooses whether entropy-model averaging is done per frame or per tile.
 
 **Effect:** quality none · speed none · size ±
 
-**Notes:** Only matters with --enable-avg-cdf=1.
+**Notes:** Only matters with `--enable-avg-cdf=1.`
 
 <a id="cdf-update-mode"></a>
 
@@ -3342,7 +3342,7 @@ Signals the reference refresh flags with 3 bits instead of 8 bits.
 
 **Type:** int · **Values:** bytes; 0 = no MTU targeting · **Default:** 0 (no MTU targeting) · advanced
 
-Sizes tile groups to fit a network packet. It overrides --num-tile-groups.
+Sizes tile groups to fit a network packet. It overrides `--num-tile-groups`.
 
 **Effect:** quality - · speed none · size larger
 
