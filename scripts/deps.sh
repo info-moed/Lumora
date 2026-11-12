@@ -132,7 +132,7 @@ EOF
 import json, sys
 watch = {"torch", "coremltools", "numpy", "cvvdp"}
 rows = [p for p in json.load(sys.stdin) if p["name"].lower() in watch]
-print("\n".join(f"  {p[\"name\"]}: {p[\"version\"]} -> {p[\"latest_version\"]}" for p in rows) or "  up to date")' || true
+print("\n".join("  %s: %s -> %s" % (p["name"], p["version"], p["latest_version"]) for p in rows) or "  up to date")' || true
   fi
   say ""
   health
