@@ -64,7 +64,7 @@ enum ToolLocator {
 }
 
 extension Process {
-    /// A semaphore signalled when the process exits. Unlike `waitUntilExit()`, waiting on it doesn't spin the
+    /// A semaphore signaled when the process exits. Unlike `waitUntilExit()`, waiting on it doesn't spin the
     /// current run loop, so a short tool call made on the main thread (e.g. while SwiftUI is computing a view)
     /// can't re-enter UI updates. Call before `run()`.
     func exitSignal() -> DispatchSemaphore {
@@ -89,7 +89,7 @@ extension Process {
         } else {
             // Not tracked: poll. `isRunning` is reliable on any thread, unlike `waitUntilExit()`.
             while isRunning {
-                do { try await Task.sleep(nanoseconds: 2_000_000) } catch { usleep(2_000) }   // still wait when cancelled
+                do { try await Task.sleep(nanoseconds: 2_000_000) } catch { usleep(2_000) }   // still wait when canceled
             }
         }
     }
@@ -167,7 +167,7 @@ enum ToolProbe {
 
 enum LumoraError: LocalizedError {
     case noVideoTrack, decodeFailed(String), missingTool(String), toolFailed(String, String)
-    case needsVendorSDK(String), unsupported(String), cancelled
+    case needsVendorSDK(String), unsupported(String), canceled
 
     var errorDescription: String? {
         switch self {
@@ -177,7 +177,7 @@ enum LumoraError: LocalizedError {
         case .toolFailed(let t, let e): return "\(t) failed: \(e)"
         case .needsVendorSDK(let ext): return ".\(ext) files need the camera maker's RAW SDK plug-in. See README → RAW formats."
         case .unsupported(let s): return s
-        case .cancelled: return "Cancelled."
+        case .canceled: return "Canceled."
         }
     }
 }

@@ -13,7 +13,7 @@ enum HDRMetadata {
     // P3-D65 in units of 0.00002 (ST 2086 / HEVC SEI ordering: G, B, R, white point).
     static let p3 = (g: (13250, 34500), b: (7500, 3000), r: (34000, 16000), wp: (15635, 16450))
 
-    /// 24-byte big-endian mastering display colour volume, as VideoToolbox expects.
+    /// 24-byte big-endian mastering display color volume, as VideoToolbox expects.
     static func vtMasteringDisplay(_ s: Static) -> Data {
         var d = Data()
         func u16(_ v: Int) { d.append(contentsOf: [UInt8((v >> 8) & 0xFF), UInt8(v & 0xFF)]) }
@@ -63,7 +63,7 @@ enum HDRMetadata {
         """
     }
 
-    /// mkvmerge track options for the Matroska Colour/MasteringMetadata elements (chromaticities as fractions).
+    /// mkvmerge track options for the Matroska Color/MasteringMetadata elements (chromaticities as fractions).
     static func mkvmergeStaticArgs(_ s: Static, track: Int) -> [String] {
         func f(_ v: Int) -> String { String(format: "%.4f", Double(v) / 50000) }
         let t = "\(track):"
@@ -156,7 +156,7 @@ enum LUTExporter {
         TITLE "Lumora \(preset.name) — \(target.displayName)"
         # Input:  \(preset.color.name) (\(preset.color.transfer.rawValue), \(preset.color.gamut.displayName))
         # Output: \(target.displayName)
-        # Bakes exposure, contrast, tone curve, colour and gamut mapping.
+        # Bakes exposure, contrast, tone curve, color and gamut mapping.
         # Not included (cannot live in a LUT): local-contrast "punch" and per-scene auto exposure.
         LUT_3D_SIZE \(size)
         DOMAIN_MIN 0.0 0.0 0.0

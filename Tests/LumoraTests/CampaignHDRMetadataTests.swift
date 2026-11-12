@@ -234,7 +234,7 @@ final class CampaignHDRMetadataTests: XCTestCase {
             .out.split(separator: "\n").count
     }
 
-    /// Inspect → (optional crop detection) → analyse → presets → job, as the app does it.
+    /// Inspect → (optional crop detection) → analyze → presets → job, as the app does it.
     func makeJob(_ src: URL, delivery: DeliveryFormat, codec: Codec, out: String, look: Look? = nil,
                  detectCrop: Bool = false) async throws -> ExportJob {
         var (d, colors) = try await SourceInspector.inspect(src)
@@ -555,7 +555,7 @@ final class CampaignHDRMetadataTests: XCTestCase {
         let url = try await ExportEngine().run(job) { _, _ in }
         let r = try assertDV81(url, expectFrames: plan.count)
         XCTAssertGreaterThanOrEqual(r.frames, 94)
-        // The colourist's metadata came through, frame-accurately: L1/L2 of each output frame = its source frame's.
+        // The colorist's metadata came through, frame-accurately: L1/L2 of each output frame = its source frame's.
         XCTAssertTrue(r.summary.contains("L2 trims"), "trims were dropped: \(r.summary)")
         XCTAssertEqual(r.l1.count, mapping.count)
         for (k, s) in mapping.enumerated() where k < r.l1.count {
@@ -635,7 +635,7 @@ final class CampaignHDRMetadataTests: XCTestCase {
         await Task.yield()
         let r = try assertDV81(url, expectFrames: try frames(url))
         XCTAssertGreaterThanOrEqual(r.frames, 94)
-        XCTAssertFalse(r.summary.contains("L2 trims"), "fallback metadata is generated, not the colourist's: \(r.summary)")
+        XCTAssertFalse(r.summary.contains("L2 trims"), "fallback metadata is generated, not the colorist's: \(r.summary)")
         let log = LogStore.shared.entries.dropFirst(before).map(\.message)
         XCTAssertTrue(log.contains { $0.contains("Couldn't retime the original Dolby Vision") }, "\(log.suffix(10))")
     }

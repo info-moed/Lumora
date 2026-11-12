@@ -62,7 +62,7 @@ struct TaskRow: View {
                     if let cancel = task.onCancel { Button("Stop") { cancel() }.buttonStyle(.link) }
                 case .finished: Image(systemName: "checkmark").foregroundStyle(Theme.pass)
                 case .failed: Image(systemName: "exclamationmark.triangle").foregroundStyle(Theme.fail)
-                case .cancelled: Text("Stopped").font(Theme.note).foregroundStyle(.secondary)
+                case .canceled: Text("Stopped").font(Theme.note).foregroundStyle(.secondary)
                 }
             }
             if task.state == .running {
@@ -367,7 +367,7 @@ struct StorageSettings: View {
         @Bindable var app = app
         Form {
             Section("Scratch drive (all temporary and intermediate writes)") {
-                LabeledContent("Folder", value: scratch.root.path)
+                LabeledContent("Folder", value: scratch.root.path.displayPath)
                 if let v = scratch.volume {
                     LabeledContent("Drive", value: "\(v.name), \(v.kindDescription)")
                     LabeledContent("Free", value: ByteCountFormatter.string(fromByteCount: v.freeBytes, countStyle: .file))
@@ -411,7 +411,7 @@ struct ToolsSettings: View {
                         StatusDot(color: ToolLocator.isAvailable(t) ? Theme.pass : Theme.fail)
                         Text(t).font(Theme.body)
                         Spacer()
-                        Text(ToolLocator.url(for: t)?.path ?? "not found").font(Theme.note).foregroundStyle(.secondary)
+                        Text(ToolLocator.url(for: t)?.path.displayPath ?? "not found").font(Theme.note).foregroundStyle(.secondary)
                     }
                 }
             }

@@ -96,7 +96,7 @@ enum Log {
 @MainActor
 @Observable
 final class TrackedTask: Identifiable {
-    enum State: Equatable { case running, finished, failed(String), cancelled }
+    enum State: Equatable { case running, finished, failed(String), canceled }
     let id = UUID()
     let title: String
     let symbol: String
@@ -138,7 +138,7 @@ final class TaskCenter {
 
     func finish(_ t: TrackedTask, error: Error? = nil) {
         if let error {
-            t.state = (error is CancellationError) ? .cancelled : .failed(error.localizedDescription)
+            t.state = (error is CancellationError) ? .canceled : .failed(error.localizedDescription)
             Log.error(.app, "\(t.title) failed: \(error.localizedDescription)")
         } else {
             t.state = .finished

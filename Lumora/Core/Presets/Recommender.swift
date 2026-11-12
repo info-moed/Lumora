@@ -57,7 +57,7 @@ enum Recommender {
             items.append(.init(area: "Look", value: look.displayName, why: "This is camera log footage; it needs grading. Natural keeps skin and light true to life."))
         } else if let r = report, hdrSource, r.verdict == .conservative || r.verdict == .fakeHDR {
             look = .ripRevive
-            items.append(.init(area: "Look", value: "Rip Revive", why: "The HDR on this file is dim (highlights around \(Int(r.p999Nits)) nits). Rip Revive brings them up without touching the colourist's mid-tones."))
+            items.append(.init(area: "Look", value: "Rip Revive", why: "The HDR on this file is dim (highlights around \(Int(r.p999Nits)) nits). Rip Revive brings them up without touching the colorist's mid-tones."))
         } else {
             look = .original
             items.append(.init(area: "Look", value: "Keep original look", why: hdrSource ? "The HDR is already well graded; Lumora keeps it exactly as mastered." : "Keeps the picture exactly as it is."))
@@ -102,7 +102,7 @@ enum Recommender {
             codec = playsAV1 ? .av1 : .hevc; plan = .bestForMac
             items.append(.init(area: "Codec", value: codec.displayName, why: playsAV1 ? "Your TV/player handles AV1: smaller files, same picture." : "HEVC plays on every TV and Apple device."))
         }
-        // Dolby Vision: keep the colourist's original when nothing is regraded and the codec can carry it.
+        // Dolby Vision: keep the colorist's original when nothing is regraded and the codec can carry it.
         if d.isDolbyVision && d.dvProfile != 5 && (goal == .watchOnTV || goal == .archive || goal == .saveSpace) {
             if look == .original && d.scanFix == .none {
                 if codec == .av1 {
@@ -112,7 +112,7 @@ enum Recommender {
                     delivery = .dolbyVision81
                     if codec == .hevc { codec = .hevc12 }
                     items.append(.init(area: "Dolby Vision", value: "Keep the original (retimed)",
-                                       why: "Carries the colourist's own Dolby Vision, including the trims for different TVs, into the new file."))
+                                       why: "Carries the colorist's own Dolby Vision, including the trims for different TVs, into the new file."))
                 }
             } else {
                 items.append(.init(area: "Dolby Vision", value: "Generated fresh",

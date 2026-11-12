@@ -74,7 +74,7 @@ final class AVFoundationFrameSource: FrameSource {
                 highPrecision ? kCVPixelFormatType_128RGBAFloat : kCVPixelFormatType_64RGBAHalf,
             kCVPixelBufferMetalCompatibilityKey as String: true
         ]
-        // No colour properties = no colour matching: we receive the camera's encoded signal untouched,
+        // No color properties = no color matching: we receive the camera's encoded signal untouched,
         // which is what the log decoders expect. The exception is Dolby Vision profile 5 (IPTPQc2),
         // which is only meaningful after Dolby processing, so we ask AVFoundation for PQ BT.2020.
         if convertDolbyVisionToPQ {
@@ -180,7 +180,7 @@ final class FFmpegFrameSource: FrameSource {
         url = d.url
         scanFilter = d.scanFix.ffmpegFilter(fieldsFlagged: d.fieldsFlagged)
         // State the YCbCr matrix and range explicitly: a wrong guess (BT.601/709 on a BT.2020 HDR file)
-        // silently shifts colours. The file's own matrix tag wins; untagged files are guessed from their
+        // silently shifts colors. The file's own matrix tag wins; untagged files are guessed from their
         // primaries and transfer. The signal stays PQ/HLG/log-encoded; nothing is tone mapped.
         let wide = d.primariesTag == "ITU_R_2020" || d.transferTag?.contains("2084") == true || d.transferTag?.contains("HLG") == true
         let matrix: String
@@ -198,7 +198,7 @@ final class FFmpegFrameSource: FrameSource {
         guard ToolLocator.isAvailable("ffmpeg") else { throw LumoraError.missingTool("ffmpeg") }
     }
 
-    /// A source dropped mid-stream (an early return, a cancelled export) must not leave FFmpeg blocked on a full pipe.
+    /// A source dropped mid-stream (an early return, a canceled export) must not leave FFmpeg blocked on a full pipe.
     deinit { cancel() }
 
     func start(at frame: Int, count: Int?) throws {
@@ -209,7 +209,7 @@ final class FFmpegFrameSource: FrameSource {
         if frame > 0 { args += ["-ss", String(format: "%.6f", Double(frame) / fps)] }
         args += ["-i", url.path]
         if let count { args += ["-frames:v", "\(count)"] }
-        // 16-bit RGB without colour management: the encoded signal, like the AVFoundation path.
+        // 16-bit RGB without color management: the encoded signal, like the AVFoundation path.
         let scale = "scale=\(width):\(height):flags=lanczos+accurate_rnd+full_chroma_int:\(colorFilter)"
         args += ["-vf", scanFilter.map { "\($0),\(scale)" } ?? scale, "-f", "rawvideo", "-pix_fmt", "rgba64le", "-"]
         p.arguments = FFHarden.args("ffmpeg", args)

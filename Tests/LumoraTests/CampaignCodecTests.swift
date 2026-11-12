@@ -4,7 +4,7 @@ import CoreMedia
 
 /// Every codec × every bit depth and chroma it claims × SDR / HDR10 / HLG, from SDR and from HDR10 (PQ) sources,
 /// through the real engine (GPU grade, VideoToolbox or the real CLI encoders, join with audio). Each output is
-/// checked with ffprobe (codec, profile, pixel format, colour tags, range, frame count, container, audio) and by
+/// checked with ffprobe (codec, profile, pixel format, color tags, range, frame count, container, audio) and by
 /// decoding it (mean luma, spread), plus HDR10 static metadata, quality extremes, multi-segment joins and validation.
 @MainActor
 final class CampaignCodecTests: XCTestCase {
@@ -62,7 +62,7 @@ final class CampaignCodecTests: XCTestCase {
         return s
     }
 
-    /// A 16×16 white box moving 4 px per frame over grey, 22 s at 24 fps (528 frames, so the engine splits it
+    /// A 16×16 white box moving 4 px per frame over gray, 22 s at 24 fps (528 frames, so the engine splits it
     /// into several segments). The box position encodes the frame index, so a dropped or duplicated frame at a
     /// segment join shows up as a position error.
     func movingBoxSource() async throws -> Source {
@@ -81,10 +81,10 @@ final class CampaignCodecTests: XCTestCase {
         return s
     }
 
-    /// Inspect → analyse → auto presets, as AppModel's batch path does.
+    /// Inspect → analyze → auto presets, as AppModel's batch path does.
     func prepare(name: String, url: URL) async throws -> Source {
         let (d, colors) = try await SourceInspector.inspect(url)
-        let color = try XCTUnwrap(colors.first, "no colour interpretation for \(name)")
+        let color = try XCTUnwrap(colors.first, "no color interpretation for \(name)")
         let a = try await SceneAnalyzer.analyze(d, color: color) { _ in }
         let report = (color.transfer == .pq || color.transfer == .hlg)
             ? HDRReportCard.make(title: name, descriptor: d, color: color, analysis: a) : nil
@@ -514,7 +514,7 @@ final class CampaignCodecTests: XCTestCase {
 
     // MARK: - Multi-segment exports
 
-    /// Decodes every frame and returns the centre of the bright box in each (nil when there is none).
+    /// Decodes every frame and returns the center of the bright box in each (nil when there is none).
     static func boxPositions(_ url: URL, width: Int = 256, height: Int = 144) throws -> [SIMD2<Double>?] {
         let ffmpeg = try ffmpegPath()
         let p = Process()
@@ -571,7 +571,7 @@ final class CampaignCodecTests: XCTestCase {
         let want = try Self.boxPositions(s.url), got = try Self.boxPositions(url)
         XCTAssertEqual(want.count, 528)
         XCTAssertEqual(got.count, 528)
-        // Instrument check: every source frame differs from its neighbour by ≥ 3 px, so a slip can't hide.
+        // Instrument check: every source frame differs from its neighbor by ≥ 3 px, so a slip can't hide.
         XCTAssertTrue(zip(want, want.dropFirst()).allSatisfy { a, b in
             guard let a, let b else { return false }
             return max(abs(a.x - b.x), abs(a.y - b.y)) >= 3

@@ -23,11 +23,19 @@ final class ScreenshotTests: XCTestCase {
         }
         try TestHardware.requireGPU()
         EDRViewer.snapshotMode = true
+        // The "not tuned for this Mac yet" banner isn't part of what the screenshots document; hide it, then put the
+        // owner's own setting back afterwards.
+        savedBanner = UserDefaults.standard.object(forKey: "optimizeBannerDismissed")
+        UserDefaults.standard.set(true, forKey: "optimizeBannerDismissed")
     }
+
+    private var savedBanner: Any?
 
     override func tearDown() async throws {
         EDRViewer.snapshotMode = false
         InspectorView.defaultTab = .source
+        if let savedBanner { UserDefaults.standard.set(savedBanner, forKey: "optimizeBannerDismissed") }
+        else { UserDefaults.standard.removeObject(forKey: "optimizeBannerDismissed") }
     }
 
     // MARK: Sample footage (original, generated)
@@ -62,7 +70,7 @@ final class ScreenshotTests: XCTestCase {
     // MARK: Rendering
 
     func shoot<V: View>(_ name: String, _ view: V, size: CGSize = CGSize(width: 1440, height: 900)) async throws {
-        let host = NSHostingView(rootView: view.frame(width: size.width, height: size.height))
+        let host = NSHostingView(rootView: view.frame(width: size.width, height: size.height).background(Theme.surround))
         host.frame = CGRect(origin: .zero, size: size)
         let window = NSWindow(contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
@@ -147,7 +155,7 @@ final class ScreenshotTests: XCTestCase {
 
     func testSheetsAndWindows() async throws {
         let model = try await loaded(simple: false)
-        try await shoot("14-export", dark(ExportSheet(), model), size: CGSize(width: 760, height: 720))
+        try await shoot("14-export", dark(ExportSheet(), model), size: CGSize(width: 680, height: 720))
         try await shoot("15-advisor", dark(AdvisorSheet(), model), size: CGSize(width: 760, height: 640))
         model.prepareCompare()
         try await shoot("16-compare", dark(CompareView().environment(model.compare), model))

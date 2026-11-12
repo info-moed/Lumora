@@ -1,13 +1,17 @@
 import SwiftUI
 import CoreGraphics
 
-/// Lumora's visual language: a grading suite. Neutral grey surround (no tinted near-black) so the picture is
-/// judged correctly, quiet chrome, wide "expanded" headings, and colour used only where it carries meaning.
+/// Lumora's visual language: a grading suite. Neutral gray surround (no tinted near-black) so the picture is
+/// judged correctly, quiet chrome, wide "expanded" headings, and color used only where it carries meaning.
 /// The one bold element: real HDR light in the scene strip, which glows above SDR white on XDR displays.
 enum Theme {
-    static let surround = Color(red: 0.157, green: 0.157, blue: 0.157)   // neutral ~16% grey, D65
+    static let surround = Color(red: 0.157, green: 0.157, blue: 0.157)   // neutral ~16% gray, D65
     static let rail = Color(red: 0.188, green: 0.188, blue: 0.188)
     static let hairline = Color.white.opacity(0.08)
+    /// Text colors for places where the system's adaptive colors don't follow Lumora's always-dark interface
+    /// (e.g. sidebar lists, which take their appearance from AppKit).
+    static let ink = Color(white: 0.93)
+    static let inkSecondary = Color(white: 0.64)
     static let signal = Color(red: 0.42, green: 0.79, blue: 0.86)      // controls and focus
     static let pass = Color(red: 0.38, green: 0.79, blue: 0.55)
     static let marginal = Color(red: 0.92, green: 0.72, blue: 0.32)
@@ -24,6 +28,11 @@ enum Theme {
 }
 
 /// A titled inspector section, separated by a hairline rather than boxed in a card.
+extension String {
+    /// A path as people expect to read it on a Mac: the home folder shown as "~".
+    var displayPath: String { (self as NSString).abbreviatingWithTildeInPath }
+}
+
 struct InspectorSection<Content: View>: View {
     let title: String
     var trailing: String? = nil
@@ -99,7 +108,7 @@ struct StatusDot: View {
     var body: some View { Circle().fill(color).frame(width: 7, height: 7) }
 }
 
-/// A one-pixel-tall image in the PQ colour space: SwiftUI displays it with real HDR headroom on XDR screens.
+/// A one-pixel-tall image in the PQ color space: SwiftUI displays it with real HDR headroom on XDR screens.
 enum HDRStrip {
     static func image(nits: [Float]) -> CGImage? {
         let w = max(1, nits.count)

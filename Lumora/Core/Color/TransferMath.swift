@@ -1,7 +1,7 @@
 import Foundation
 
 /// CPU versions of the transfer functions in Grade.metal. Used by the UI (scope markers, metadata) and by the
-/// unit tests, which pin every curve to published reference values so a typo can never shift colours silently.
+/// unit tests, which pin every curve to published reference values so a typo can never shift colors silently.
 enum TransferMath {
     // MARK: PQ (SMPTE ST 2084)
     static let m1: Float = 0.1593017578125, m2: Float = 78.84375

@@ -262,7 +262,7 @@ final class CampaignQualityTests: XCTestCase {
         try Self.requireVMAFCLI()
         let src = try Self.clip("cq-suite.mp4", size: "320x180", shots: [("testsrc2", 1)])
         let ref = try Self.y4m(src, name: "cq-suite-ref.y4m")
-        // Degraded: blur, a colour shift and heavy compression, so every metric has something to see.
+        // Degraded: blur, a color shift and heavy compression, so every metric has something to see.
         let bad = Self.work.appendingPathComponent("cq-suite-bad.mkv")
         try Self.ff(["-i", ref.path, "-vf", "boxblur=1,eq=saturation=1.4:gamma_r=1.1", "-c:v", "libx265", "-crf", "34",
                      "-x265-params", "log-level=error", "-pix_fmt", "yuv420p10le", bad.path])
@@ -292,7 +292,7 @@ final class CampaignQualityTests: XCTestCase {
         // Units and ranges a profile threshold relies on.
         if metrics.contains(.ciede) {
             XCTAssertEqual(good.pooled[.ciede]!.mean, 0, accuracy: 0.05, "an identical picture has ΔE 0")
-            XCTAssertGreaterThan(worse.pooled[.ciede]!.mean, 1.5, "a 1.4× saturation boost is a visible colour shift (ΔE > 1.5)")
+            XCTAssertGreaterThan(worse.pooled[.ciede]!.mean, 1.5, "a 1.4× saturation boost is a visible color shift (ΔE > 1.5)")
             XCTAssertLessThan(worse.pooled[.ciede]!.mean, 30, "ΔE2000 values live roughly in 0–30")
             XCTAssertFalse(MetricRule(metric: .ciede, role: .mustPass, threshold: 1.5).passes(worse.pooled[.ciede]!.mean))
             XCTAssertTrue(MetricRule(metric: .ciede, role: .mustPass, threshold: 1.5).passes(good.pooled[.ciede]!.mean))
@@ -355,7 +355,7 @@ final class CampaignQualityTests: XCTestCase {
         XCTAssertEqual(TargetQualityEncoder.describe(.vvc, level: -30), "QP 30")
     }
 
-    /// The reference Y4M carries no colour matrix, real encodes are tagged. Two-input FFmpeg graphs (XPSNR, the
+    /// The reference Y4M carries no color matrix, real encodes are tagged. Two-input FFmpeg graphs (XPSNR, the
     /// libvmaf filter fallback) must score the coded values, not a matrix-converted copy of one side.
     func testFFmpegComparisonsIgnoreColourTags() async throws {
         try Self.requireVMAFCLI()
@@ -374,7 +374,7 @@ final class CampaignQualityTests: XCTestCase {
             let b = try await MetricSuite.measure([.xpsnr], reference: writer, distorted: plain, ctx: ctx)
             let xa = try XCTUnwrap(a.pooled[.xpsnr]?.mean), xb = try XCTUnwrap(b.pooled[.xpsnr]?.mean)
             Self.report(String(format: "XPSNR CRF18 tagged %.2f dB, untagged %.2f dB", xa, xb))
-            XCTAssertEqual(xa, xb, accuracy: 0.1, "XPSNR changed with colour tags alone")
+            XCTAssertEqual(xa, xb, accuracy: 0.1, "XPSNR changed with color tags alone")
             XCTAssertGreaterThan(xa, 35, "a CRF 18 encode is well above 35 dB XPSNR")
         }
         let opts = VMAFRunner.Options(model: "vmaf_v0.6.1", subsample: 1, threads: 4, downscaleHeight: nil)
@@ -478,7 +478,7 @@ final class CampaignQualityTests: XCTestCase {
         try await targetExport(codec: .av1, low: 84, high: 95, size: "480x270")
     }
 
-    /// The shipped default standard (Imperceptible, with its banding/colour/NEG gates) must be reachable at a
+    /// The shipped default standard (Imperceptible, with its banding/color/NEG gates) must be reachable at a
     /// sensible setting: a gate in the wrong units would push every chunk to the encoder's maximum.
     func testImperceptibleProfileGatesPassAtASensibleSetting() async throws {
         try Self.requireVMAFCLI()
@@ -516,7 +516,7 @@ final class CampaignQualityTests: XCTestCase {
         let ffmpeg: String
         init(bad: Set<ObjectIdentifier>, full: Int, ffmpeg: String) { self.bad = bad; self.full = full; self.ffmpeg = ffmpeg }
 
-        /// A stand-in encoder whose full-chunk encodes starve one hard stretch (it comes out flat grey), while a
+        /// A stand-in encoder whose full-chunk encodes starve one hard stretch (it comes out flat gray), while a
         /// separate, higher-level encode of that stretch gets it right. Real x265 via FFmpeg; real files.
         func encode(_ frames: [PlanarFrame], _ level: Double, _ url: URL) async throws {
             lock.lock()
@@ -575,7 +575,7 @@ final class CampaignQualityTests: XCTestCase {
             codec: .hevc12, hdr: false)
         Self.report("dip calls: " + enc.calls.map { "\($0.count)@\(Int($0.level))\($0.corrupted ? "*" : "")" }.joined(separator: " ")
                     + " pieces: " + pieces.map { "\($0.start)+\($0.count)@\(Int($0.level))" }.joined(separator: " "))
-        XCTAssertGreaterThanOrEqual(pieces.count, 2, "the grey stretch must be split out")
+        XCTAssertGreaterThanOrEqual(pieces.count, 2, "the gray stretch must be split out")
         XCTAssertEqual(pieces.first?.start, start)
         XCTAssertEqual(pieces.reduce(0) { $0 + $1.count }, frames.count)
         for (a, b) in zip(pieces, pieces.dropFirst()) { XCTAssertEqual(a.start + a.count, b.start, "pieces are contiguous") }

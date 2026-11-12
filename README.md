@@ -13,6 +13,10 @@ Metal, AVFoundation and VideoToolbox) that:
 It opens in a **Simple mode**: drop a file, say what you want ("watch it on my TV", "make it much smaller"…), and
 Lumora picks the settings and tells you why. **Pro mode** exposes every control.
 
+![Lumora in Simple mode: pick a goal, read the recommendations, export](docs/images/02-simple-watch-on-tv.png)
+
+**Website and full documentation:** [info-moed.github.io/Lumora](https://info-moed.github.io/Lumora/)
+
 > **Project status:** builds and runs on macOS 27 / Xcode 27. The core pipeline is verified end to end by automated
 > tests; several advanced features are written but not yet verified. See [Project status](#project-status) before
 > relying on any one feature.
@@ -21,6 +25,7 @@ Lumora picks the settings and tells you why. **Pro mode** exposes every control.
 
 ## Contents
 
+- [Screenshots](#screenshots)
 - [Who this is for](#who-this-is-for)
 - [Requirements](#requirements)
 - [Quick start](#quick-start)
@@ -30,6 +35,20 @@ Lumora picks the settings and tells you why. **Pro mode** exposes every control.
 - [Repository layout](#repository-layout)
 - [Contributing](#contributing)
 - [License and legal](#license-and-legal)
+
+---
+
+## Screenshots
+
+| | |
+|---|---|
+| [![Pro mode: Look tab](docs/images/07-pro-look.png)](docs/images/07-pro-look.png) **Pro mode, Look:** every grade control, live on the HDR preview. | [![Pro mode: Deliver tab](docs/images/10-pro-deliver.png)](docs/images/10-pro-deliver.png) **Deliver:** format, quality target, time budget, size forecast and packaging. |
+| [![Pro mode: Motion tab](docs/images/08-pro-motion.png)](docs/images/08-pro-motion.png) **Motion:** frame interpolation with per-frame checks and repair. | [![Scopes](docs/images/11-pro-scopes.png)](docs/images/11-pro-scopes.png) **Scopes:** PQ waveform with nit markers and a CIE plot. |
+| [![HDR source](docs/images/12-pro-hdr-source.png)](docs/images/12-pro-hdr-source.png) **HDR sources:** read, measured and explained. | [![Export sheet](docs/images/14-export.png)](docs/images/14-export.png) **Export:** several looks at once, any codec. |
+| [![Compare](docs/images/16-compare.png)](docs/images/16-compare.png) **Compare:** original vs interpolated, side by side. | [![Model Lab](docs/images/17-model-lab.png)](docs/images/17-model-lab.png) **Model Lab:** convert and benchmark RIFE models. |
+
+More in the [User guide](docs/user-guide.md). All screenshots are regenerated from the real app with
+`scripts/screenshots.sh`, using original generated footage.
 
 ---
 
@@ -98,6 +117,7 @@ Prefer Xcode? After `xcodegen`, run `open Lumora.xcodeproj` and press **⌘R**.
 | [Getting started](docs/getting-started.md) | Install everything, build, first launch, your first conversion. Assumes no prior knowledge. |
 | [HDR and video basics](docs/hdr-basics.md) | SDR vs HDR, nits, PQ and HLG, bit depth, chroma, codecs and containers, Dolby Vision profiles. |
 | [User guide](docs/user-guide.md) | Simple mode, Pro mode tab by tab, the toolbar and Tools menu, every window, settings, shortcuts. |
+| [Encoding settings](docs/encoding/index.md) | Every option of SVT-AV1, x265, VVenC, libaom, AVM and VideoToolbox, plus the HDR metadata tools: values, defaults, effects, HDR relevance and sourced recommendations by content type, checked against the installed encoders. Starts with a guide to choosing settings. |
 | [Feature reference](docs/features.md) | Deep dive on every feature and the reasoning behind it: grading pipeline, codecs, quality metrics, interpolation, grain, storage, packaging. |
 | [Building from source](docs/building.md) | XcodeGen, `xcodebuild`, Debug vs Release, signing and notarization, bundling helper tools, running the tests. |
 | [Command-line guide](docs/command-line.md) | Everything you can drive or inspect from Terminal: settings keys, tool overrides, logs, scratch and data folders, encoder recipes, model conversion, checking output files. |

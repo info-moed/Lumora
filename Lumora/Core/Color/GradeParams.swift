@@ -7,7 +7,7 @@ struct GradeParams: Codable, Hashable {
     var exposureStops: Float = 0
     var temperature: Float = 0      // -1 (cool) ... +1 (warm)
     var tint: Float = 0             // -1 (green) ... +1 (magenta)
-    var midGreyStops: Float = 0     // moves where mid grey lands on the display
+    var midGreyStops: Float = 0     // moves where mid gray lands on the display
     var contrast: Float = 1.0
     var toe: Float = 0.2
     var shoulder: Float = 2.0
@@ -70,7 +70,7 @@ enum Look: String, CaseIterable, Codable, Hashable {
             return GradeParams(midGreyStops: -0.45, contrast: 1.22, toe: 0.60, shoulder: 1.8, localContrast: 0.25,
                                saturation: 0.90, vibrance: 0.10, skinProtect: 1.0, highlightDesat: 0.45)
         case .ripRevive:
-            // For dim/flat HDR masters: keep the colourist's mid-tones, rebuild highlights, add clarity.
+            // For dim/flat HDR masters: keep the colorist's mid-tones, rebuild highlights, add clarity.
             return GradeParams(midGreyStops: 0.05, contrast: 1.06, toe: 0.25, shoulder: 2.8, localContrast: 0.22,
                                saturation: 1.03, vibrance: 0.25, skinProtect: 1.0, highlightDesat: 0.2,
                                highlightExpansion: 3.0, expandHDRSources: true)

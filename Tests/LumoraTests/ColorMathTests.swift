@@ -21,7 +21,7 @@ final class ColorMathTests: XCTestCase {
         }
     }
 
-    /// 18% grey code values from each manufacturer's published curve.
+    /// 18% gray code values from each manufacturer's published curve.
     func testCameraLogGrey() {
         XCTAssertEqual(TransferMath.sLog3Encode(0.18), 420.0 / 1023, accuracy: 1e-4)
         XCTAssertEqual(TransferMath.logC3Encode(0.18), 0.3910, accuracy: 2e-4)

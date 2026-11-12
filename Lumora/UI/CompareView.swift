@@ -3,7 +3,7 @@ import MetalKit
 import AppKit
 
 /// Original vs interpolated (or any two versions), synced in time and shown in real HDR side by side.
-/// Each side keeps its own colour interpretation, so an SDR original and an HDR interpolated file both
+/// Each side keeps its own color interpretation, so an SDR original and an HDR interpolated file both
 /// display correctly. Step through the interpolated file frame by frame and see which frames are generated.
 @MainActor
 @Observable

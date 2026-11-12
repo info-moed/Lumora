@@ -44,7 +44,7 @@ enum StillExporter {
                 let avif = base.appendingPathExtension("avif")
                 let trc = hdrTarget.kind == .hlg ? "arib-std-b67" : "smpte2084"
                 let aom = encoder == "libaom-av1"
-                // setparams tags the frames themselves, so the AVIF's colour box carries BT.2020 + PQ/HLG
+                // setparams tags the frames themselves, so the AVIF's color box carries BT.2020 + PQ/HLG
                 // (output options alone leave it "unknown" with some encoders).
                 var args = ["-y", "-v", "error", "-i", png.path,
                             "-vf", "setparams=color_primaries=bt2020:color_trc=\(trc):colorspace=bt2020nc,format=\(aom ? "yuv444p10le" : "yuv420p10le")",

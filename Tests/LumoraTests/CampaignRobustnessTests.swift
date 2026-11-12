@@ -139,7 +139,7 @@ final class CampaignRobustnessTests: XCTestCase {
 
     nonisolated static func prepare(_ url: URL) async throws -> Prepared {
         let (d, colors) = try await SourceInspector.inspect(url)
-        guard let color = colors.first else { throw LumoraError.unsupported("no colour interpretation") }
+        guard let color = colors.first else { throw LumoraError.unsupported("no color interpretation") }
         let a = try await SceneAnalyzer.analyze(d, color: color) { _ in }
         return Prepared(d: d, color: color, analysis: a, preset: preset(color: color, analysis: a))
     }
@@ -149,7 +149,7 @@ final class CampaignRobustnessTests: XCTestCase {
         return presets.first(where: \.recommended) ?? presets[0]
     }
 
-    /// An analysis for a source that couldn't be analysed, so export can still be attempted on it.
+    /// An analysis for a source that couldn't be analyzed, so export can still be attempted on it.
     nonisolated static func syntheticAnalysis(frames n: Int) -> AnalysisResult {
         var a = AnalysisResult.empty
         a.frameCount = n
@@ -333,14 +333,14 @@ final class CampaignRobustnessTests: XCTestCase {
         }
         print("[robustness] \(label): opened as \(d.summary), \(d.frameCount) frames, kind \(d.kind)")
         let color = try XCTUnwrap(colors.first)
-        let analysed = await outcome("analyze \(label)") { try await SceneAnalyzer.analyze(d, color: color) { _ in } }
+        let analyzed = await outcome("analyze \(label)") { try await SceneAnalyzer.analyze(d, color: color) { _ in } }
         var analysis: AnalysisResult
-        switch analysed {
+        switch analyzed {
         case .success(let a)?:
             analysis = a
             XCTAssertGreaterThan(a.frameCount, 0)
-            if let maxDecodable { XCTAssertLessThanOrEqual(a.frameCount, maxDecodable, "\(label): analysed more frames than the file holds") }
-            print("[robustness] \(label): analysed \(a.frameCount) frames, \(a.scenes.count) scenes")
+            if let maxDecodable { XCTAssertLessThanOrEqual(a.frameCount, maxDecodable, "\(label): analyzed more frames than the file holds") }
+            print("[robustness] \(label): analyzed \(a.frameCount) frames, \(a.scenes.count) scenes")
         case .failure(let e)?:
             assertClear(e, "analyze \(label)")
             analysis = Self.syntheticAnalysis(frames: min(d.frameCount, 200))
@@ -357,7 +357,7 @@ final class CampaignRobustnessTests: XCTestCase {
             print("[robustness] \(label): exported \(probe.frames) frames (\(probe.codec))")
             XCTAssertGreaterThan(probe.frames, 0, "\(label): export finished but holds no frames")
             if let maxDecodable { XCTAssertLessThanOrEqual(probe.frames, maxDecodable, "\(label): more frames out than the file holds") }
-            if case .success? = analysed {
+            if case .success? = analyzed {
                 XCTAssertEqual(probe.frames, analysis.frameCount, "\(label): export should hold every decodable frame")
             }
             XCTAssertTrue(try decodesCleanly(u), "\(label): the exported file must decode without errors")
@@ -441,7 +441,7 @@ final class CampaignRobustnessTests: XCTestCase {
         XCTAssertFalse(try decodesCleanly(bad))
         let inspected = await outcome("inspect unsupported mkv") { try await Self.prepare(bad) }
         switch inspected {
-        case .success?: XCTFail("a video in an unknown codec must not open and analyse as if it were fine")
+        case .success?: XCTFail("a video in an unknown codec must not open and analyze as if it were fine")
         case .failure(let e)?:
             let msg = assertClear(e, "unsupported codec")
             XCTAssertFalse(msg.hasSuffix("no frames"), "say why: \(msg)")
@@ -475,7 +475,7 @@ final class CampaignRobustnessTests: XCTestCase {
                 let frames = try EndToEndTests.probe(out).frames
                 if url == ts { XCTAssertEqual(frames, 48, "\(label): every frame survives the size change") }
                 else { XCTAssertGreaterThanOrEqual(frames, 46, "\(label): frames lost around the size change") }
-                // The second half (colour bars, scaled into 320×180) must be real picture, not black.
+                // The second half (color bars, scaled into 320×180) must be real picture, not black.
                 guard let ffmpeg = EndToEndTests.ffmpeg else { continue }
                 let tail = dir.appendingPathComponent("tail-\(UUID().uuidString.prefix(4)).mov")
                 try EndToEndTests.sh(ffmpeg, ["-v", "error", "-y", "-ss", "1.2", "-i", out.path, "-c", "copy", tail.path])
@@ -824,12 +824,12 @@ final class CampaignRobustnessTests: XCTestCase {
                 XCTAssertFalse(leftoverJobFolders(scratch).isEmpty, "instrument: a scratch job folder exists while running")
                 let cancelledAt = Date()
                 task.cancel()
-                let r = await outcome("cancelled \(kind.rawValue) export") { try await task.value }
+                let r = await outcome("canceled \(kind.rawValue) export") { try await task.value }
                 let took = Date().timeIntervalSince(cancelledAt)
                 let codec = targeted ? "\(kind.rawValue) target-quality" : kind.rawValue
                 print("[robustness] cancel \(codec): stopped after \(String(format: "%.2f", took)) s")
                 switch r {
-                case .success?: XCTFail("\(codec): a cancelled export must not finish and write its output")
+                case .success?: XCTFail("\(codec): a canceled export must not finish and write its output")
                 case .failure(let e)?: XCTAssertTrue(e is CancellationError || e.localizedDescription.localizedCaseInsensitiveContains("cancel"),
                                                      "\(codec): \(e)")
                 case nil: break
@@ -847,7 +847,7 @@ final class CampaignRobustnessTests: XCTestCase {
             }
         }
         try await Task.sleep(nanoseconds: 500_000_000)
-        XCTAssertLessThanOrEqual(openFDs() - fdsBefore, 3, "file descriptors leaked by cancelled exports (\(fdsBefore) → \(openFDs()))")
+        XCTAssertLessThanOrEqual(openFDs() - fdsBefore, 3, "file descriptors leaked by canceled exports (\(fdsBefore) → \(openFDs()))")
     }
 
     func testTwoExportsAtOnce() async throws {

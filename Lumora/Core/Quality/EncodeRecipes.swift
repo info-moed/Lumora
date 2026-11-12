@@ -48,7 +48,7 @@ enum EncodeRecipes {
             let grainLevel = kind == .realLifeHeavyGrain ? 12 : (anime ? 4 : 8)
             var opts: [EncodeOption] = [
                 EncodeOption(id: "varboost", title: "Protect flat and dark areas",
-                             detail: "Variance boost gives low-contrast areas (skies, shadows, flat colour) more bits. Consistent gains in SVT-AV1 3.x tests.",
+                             detail: "Variance boost gives low-contrast areas (skies, shadows, flat color) more bits. Consistent gains in SVT-AV1 3.x tests.",
                              args: ["--enable-variance-boost", "1"], probeFlag: "--enable-variance-boost", speedCost: 1.01, vmafSaving: 0.02),
                 EncodeOption(id: "qm", title: "Quantization matrices",
                              detail: "Frequency-shaped quantization; usually a small efficiency win, more so with a lower minimum level.",
@@ -158,7 +158,7 @@ enum EncodeRecipes {
                                 options: opts, baseFps1080: 40)
         case .av1Pro:
             return EncodeRecipe(codec: codec, kind: kind, title: "AV1 12-bit / 4:4:4 (libaom)",
-                                summary: "libaom: slower than SVT-AV1 but supports 12-bit and full colour.",
+                                summary: "libaom: slower than SVT-AV1 but supports 12-bit and full color.",
                                 rungs: [
                                     EncodeRung(id: "c6", label: "cpu-used 6", presetValue: "6", seedSpeed: 1.0, seedSaving: 0),
                                     EncodeRung(id: "c5", label: "cpu-used 5", presetValue: "5", seedSpeed: 0.5, seedSaving: 0.03),

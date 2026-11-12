@@ -32,7 +32,7 @@ enum Codec: String, CaseIterable, Identifiable, Codable, Hashable {
         case .prores422HQ: return "Editing/mastering format. Huge files, perfect quality, fast."
         case .prores4444XQ: return "Top-quality 12-bit master for archives and studio delivery. Enormous files."
         case .av1: return "Smaller than HEVC at the same quality. Great for web and modern TVs; slower to encode."
-        case .av1Pro: return "AV1 with 12-bit or full colour. Very slow; for archives, not everyday playback."
+        case .av1Pro: return "AV1 with 12-bit or full color. Very slow; for archives, not everyday playback."
         case .vvc: return "Newest broadcast codec, ~30–40% smaller than HEVC. Few players support it yet."
         case .av2: return "Next-gen open codec. Brand new: almost nothing plays it and encoding is extremely slow."
         case .hevc12: return "Software HEVC with full archival tuning. Smaller files than the hardware encoder at the same quality; much slower. 12-bit has limited player support."

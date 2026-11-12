@@ -1,6 +1,6 @@
 import Foundation
 
-/// Carries a film's original Dolby Vision metadata (including the colourist's trims) through interpolation,
+/// Carries a film's original Dolby Vision metadata (including the colorist's trims) through interpolation,
 /// black-bar cropping and re-encoding, instead of replacing it with simpler generated metadata.
 ///
 /// How: extract the RPU (converting profile 7 to 8.1), then rebuild it for the new frame sequence: every output
@@ -9,7 +9,7 @@ import Foundation
 /// duplications applied from the end so indices never shift. L5 (active area) is reset when black bars are removed.
 enum DolbyVisionRetimer {
     enum Decision: Equatable {
-        case retimeOriginal          // keep the colourist's Dolby Vision, retimed
+        case retimeOriginal          // keep the colorist's Dolby Vision, retimed
         case generateNew(String)     // reason: why the original can't be kept
         case none
     }

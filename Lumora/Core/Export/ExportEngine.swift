@@ -84,7 +84,7 @@ final class ExportEngine {
             return "\(job.codec.displayName) can't do \(job.bitDepth)-bit. Choose \(job.codec.bitDepths.map { "\($0)-bit" }.joined(separator: " or "))."
         }
         if !job.codec.chromaFormats.contains(job.chroma) {
-            return "\(job.codec.displayName) supports \(job.codec.chromaFormats.map(\.label).joined(separator: ", ")) colour only."
+            return "\(job.codec.displayName) supports \(job.codec.chromaFormats.map(\.label).joined(separator: ", ")) color only."
         }
         if !job.codec.supports(bitDepth: job.bitDepth, chroma: job.chroma) {
             return "\(job.codec.displayName) can't encode \(job.bitDepth)-bit \(job.chroma.label). Choose 10-bit for 4:2:2 or 4:4:4, or 12-bit 4:2:0."
@@ -424,7 +424,7 @@ final class ExportEngine {
             status("Finishing file", 1)
             var result = try addContainerHDR10Metadata(ctx, file: try await join(ctx, segments: pieces, tmp: tmp), tmp: tmp)
             if Self.needsMetadataPass(job.delivery) { result = try injectDynamicMetadata(ctx, file: result, tmp: tmp) }
-            try Task.checkCancellation()          // never move a cancelled export into place
+            try Task.checkCancellation()          // never move a canceled export into place
             try Self.clearOutput(job)
             try FileManager.default.moveItem(at: result, to: job.outputURL)
             ExportManifest(output: job.outputURL.path, source: job.descriptor.url.path, codec: job.codec, rateNum: ctx.rate.num,
@@ -469,7 +469,7 @@ final class ExportEngine {
             status("Adding \(job.delivery.displayName) metadata", 1)
             result = try injectDynamicMetadata(ctx, file: result, tmp: tmp)
         }
-        try Task.checkCancellation()              // never move a cancelled export into place
+        try Task.checkCancellation()              // never move a canceled export into place
         try Self.clearOutput(job)
         try FileManager.default.moveItem(at: result, to: job.outputURL)
         return job.outputURL
@@ -924,7 +924,7 @@ final class ExportEngine {
                 let (process, handle, log) = try await self.startCLIEncoder(ctx, spec: spec, out: url, tmp: tmp,
                                                                             tag: url.deletingPathExtension().lastPathComponent,
                                                                             threads: threads, quality: String(Int(-level)))
-                // Cancelling stops the trial encode at once (a slow encoder can block a write or its flush for minutes).
+                // Canceling stops the trial encode at once (a slow encoder can block a write or its flush for minutes).
                 try await withTaskCancellationHandler {
                     do {
                         guard let first = frames.first else { throw LumoraError.decodeFailed("No frames rendered for this chunk.") }
@@ -1078,7 +1078,7 @@ final class ExportEngine {
             }
         }
 
-        // Cancelling stops the encoder at once: a slow encoder can keep a frame write (or its final flush) blocked
+        // Canceling stops the encoder at once: a slow encoder can keep a frame write (or its final flush) blocked
         // for minutes, so checking between frames alone isn't enough.
         return try await withTaskCancellationHandler {
             do {
@@ -1240,7 +1240,7 @@ final class ExportEngine {
     }
 
     /// aomenc has no way to write HDR10 static metadata into the AV1 stream, so for Matroska output it goes into
-    /// the container's Colour element (MaxCLL/MaxFALL and the mastering display), which players read instead.
+    /// the container's Color element (MaxCLL/MaxFALL and the mastering display), which players read instead.
     private func addContainerHDR10Metadata(_ ctx: Context, file: URL, tmp: URL) throws -> URL {
         guard ctx.job.codec == .av1Pro, ctx.job.target.kind == .hdr10, let m = ctx.meta,
               file.pathExtension.lowercased() == "mkv" else { return file }

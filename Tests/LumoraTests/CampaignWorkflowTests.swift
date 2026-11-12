@@ -187,7 +187,7 @@ final class CampaignWorkflowTests: XCTestCase {
         return url
     }
 
-    /// The same programme as an MP4 (what AVFoundation opens directly): AAC 5.1 (eng, "Surround 5.1"), AAC stereo
+    /// The same program as an MP4 (what AVFoundation opens directly): AAC 5.1 (eng, "Surround 5.1"), AAC stereo
     /// (fra, "Commentary"), two tx3g subtitle tracks (spa "Spanish SDH", eng), chapters and container tags.
     static func richMP4(_ name: String) throws -> URL {
         let url = root.appendingPathComponent(name)
@@ -757,7 +757,7 @@ final class CampaignWorkflowTests: XCTestCase {
         model.cancel()
         let stopped = try await waitUntil(60) { model.progress == nil }
         XCTAssertTrue(stopped)
-        XCTAssertEqual(model.status, "Cancelled")
+        XCTAssertEqual(model.status, "Canceled")
         XCTAssertNil(model.errorMessage, "a user cancel is not an error")
 
         let afterCancel = QueueStore.load()
@@ -864,13 +864,13 @@ final class CampaignWorkflowTests: XCTestCase {
         XCTAssertTrue(resumed, "work resumes after un-pausing")
         _ = await waiter.value
 
-        // Cancelling a paused wait returns instead of hanging.
+        // Canceling a paused wait returns instead of hanging.
         await gate.setPaused(true)
-        let cancelled = Task { await gate.wait() }
+        let canceled = Task { await gate.wait() }
         try await Task.sleep(nanoseconds: 200_000_000)
-        cancelled.cancel()
+        canceled.cancel()
         let t1 = Date()
-        _ = await cancelled.value
+        _ = await canceled.value
         XCTAssertLessThan(Date().timeIntervalSince(t1), 3)
         await gate.setPaused(false)
     }

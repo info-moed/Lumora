@@ -149,7 +149,7 @@ final class AppModel {
     /// the timecode; the small tolerance keeps n/fps on frame n.
     nonisolated static func frameIndex(at t: Double, fps: Double) -> Int { max(0, Int((t * fps + 1e-4).rounded(.down))) }
 
-    // MARK: Open & analyse
+    // MARK: Open & analyze
 
     func presentOpenPanel() {
         let panel = NSOpenPanel()
@@ -215,7 +215,7 @@ final class AppModel {
     private func analyzeNow() async throws {
         guard let d = descriptor, let color = selectedColor else { return }
         status = "Scanning scenes"
-        let task = TaskCenter.shared.begin("Analysing \(d.url.lastPathComponent)", symbol: "waveform")
+        let task = TaskCenter.shared.begin("Analyzing \(d.url.lastPathComponent)", symbol: "waveform")
         let reporter = ProgressReporter(task: task)
         let wantsProxy = (storagePlan?.buildProxy ?? false) && proxyDescriptor == nil
         let proxy = wantsProxy ? try? ProxyWriter(for: d) : nil
@@ -258,7 +258,7 @@ final class AppModel {
         presets = AutoPresetEngine.generate(colors: colorCandidates.filter { $0 == color } + colorCandidates.filter { $0 != color },
                                             analysis: a, report: report)
         applyTuningToPresets()
-        // Re-analysing (black bars, scan fix, colour reading, an applied recommendation) keeps the chosen look.
+        // Re-analysing (black bars, scan fix, color reading, an applied recommendation) keeps the chosen look.
         selectedPresetID = keepLook.flatMap { l in presets.first { $0.look == l && $0.color == color }?.id }
             ?? presets.first(where: \.recommended)?.id ?? presets.first?.id
         status = "\(a.scenes.count) scenes, \(presets.count) presets ready for \(contentKind.displayName.lowercased())"
@@ -400,7 +400,7 @@ final class AppModel {
             Notifier.send("Lumora finished", "\(result.video.lastPathComponent)\(result.verified == false ? " (verification FAILED)" : "")")
         } catch {
             TaskCenter.shared.finish(t, error: error)
-            errorMessage = "Packaging failed: \(error.localizedDescription). The encoded file is still at \(exported.path)."
+            errorMessage = "Packaging failed: \(error.localizedDescription). The encoded file is still at \(exported.path.displayPath)."
             Notifier.send("Lumora: packaging failed", exported.lastPathComponent)
         }
     }
@@ -586,7 +586,7 @@ final class AppModel {
                 }
                 src.cancel()
             } catch {}
-            // A paused (cancelled) loop must not flip the state of a playback started after it.
+            // A paused (canceled) loop must not flip the state of a playback started after it.
             if !Task.isCancelled { playing = false }
         }
     }
@@ -779,7 +779,7 @@ final class AppModel {
                 before += sizes.total; low += est.low; mid += est.mid; high += est.high
                 reporter.update(Double(i + 1) / Double(max(1, files.count)), detail: f.lastPathComponent)
             }
-            folderEstimate = "\(files.count) files: \(SizeForecast.gb(before)) → about \(SizeForecast.gb(mid)) (\(SizeForecast.gb(low))–\(SizeForecast.gb(high))), assuming \(kind.displayName.lowercased()). Quick estimate; analysing files tightens it."
+            folderEstimate = "\(files.count) files: \(SizeForecast.gb(before)) → about \(SizeForecast.gb(mid)) (\(SizeForecast.gb(low))–\(SizeForecast.gb(high))), assuming \(kind.displayName.lowercased()). Quick estimate; analyzing files tightens it."
             TaskCenter.shared.finish(t)
             Log.notice(.encode, folderEstimate ?? "")
         }
@@ -1122,7 +1122,7 @@ final class AppModel {
                     Task { @MainActor in self.status = "\(p.look.displayName): \(label)"; self.progress = value }
                 }
                 qcEvents = engine.qcEvents
-                try Task.checkCancellation()          // cancelled while finishing: don't package or announce it
+                try Task.checkCancellation()          // canceled while finishing: don't package or announce it
                 lastExportURL = url
                 if let f = forecast, let actual = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize {
                     // Learn on the video part (audio passes through unchanged).
@@ -1188,7 +1188,7 @@ final class AppModel {
         Log.info(.app, label)
         task = Task {
             do { try await body() } catch is CancellationError {
-                status = "Cancelled"
+                status = "Canceled"
             } catch {
                 errorMessage = error.localizedDescription
                 Log.error(.app, "\(label): \(error.localizedDescription)")

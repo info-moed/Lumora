@@ -70,7 +70,7 @@ struct HDRReportCard: Codable, Hashable {
         case .sdr:
             suggestion = "Convert SDR → HDR with the Natural or Punchy preset; Lumora rebuilds highlights above the old white point."
         case .balanced:
-            suggestion = "Already good. For extra pop, Punchy adds clarity and colour without changing the brightness design."
+            suggestion = "Already good. For extra pop, Punchy adds clarity and color without changing the brightness design."
         case .vivid:
             suggestion = "Leave the HDR as is. If you re-encode, use Natural with highlight expansion off."
         }

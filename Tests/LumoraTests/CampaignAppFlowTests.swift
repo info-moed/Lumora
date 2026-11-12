@@ -129,7 +129,7 @@ final class CampaignAppFlowTests: XCTestCase {
     }
 
     /// The shared HDR10 test clip, copied under this class's file-name prefix (so anything keyed by the file name,
-    /// such as motion maps, is recognised and removed in tearDown).
+    /// such as motion maps, is recognized and removed in tearDown).
     static func hdrClip() throws -> URL {
         let url = root.appendingPathComponent("CampaignFlow-hdr10.mp4")
         if !FileManager.default.fileExists(atPath: url.path) {
@@ -406,7 +406,7 @@ final class CampaignAppFlowTests: XCTestCase {
         XCTAssertGreaterThan(sc.cie.reduce(0) { $0 + UInt64($1) }, 0)
         XCTAssertGreaterThan(sc.waveform.filter { $0 > 0 }.count, 100, "waveform should spread over many cells")
 
-        // Probe the colour bars of frame 24 and compare the ordering with the source pixels' luma.
+        // Probe the color bars of frame 24 and compare the ordering with the source pixels' luma.
         XCTAssertEqual(m.previewFrame?.index, 24)
         guard let ff = EndToEndTests.ffmpeg else { throw XCTSkip("FFmpeg not installed") }
         let raw = Self.root.appendingPathComponent("frame24.rgb")
@@ -511,7 +511,7 @@ final class CampaignAppFlowTests: XCTestCase {
         XCTAssertEqual(m.previewFrame?.index, 47)
     }
 
-    // MARK: - Picture fixes and colour interpretation
+    // MARK: - Picture fixes and color interpretation
 
     func testRemoveBlackBarsReanalysesAndThumbnailsKeepAspect() async throws {
         let m = try await opened(try Self.clip("letterbox", letterbox: true))
@@ -948,11 +948,11 @@ final class CampaignAppFlowTests: XCTestCase {
         }
         try await Task.sleep(nanoseconds: 500_000_000)
         XCTAssertNil(m.errorMessage)
-        XCTAssertFalse(m.status.hasPrefix("Saved"), "export finished before it could be cancelled")
+        XCTAssertFalse(m.status.hasPrefix("Saved"), "export finished before it could be canceled")
         XCTAssertFalse(Set(Self.scratchLeftovers()).subtracting(before).isEmpty, "export should be using scratch")
         m.cancel()
-        try await waitUntil("cancellation (status: \(m.status))", timeout: 30) { m.status == "Cancelled" || m.errorMessage != nil }
-        XCTAssertNil(m.errorMessage, "cancelling should not surface an error")
+        try await waitUntil("cancellation (status: \(m.status))", timeout: 30) { m.status == "Canceled" || m.errorMessage != nil }
+        XCTAssertNil(m.errorMessage, "canceling should not surface an error")
         try await waitUntil("progress to clear", timeout: 10) { m.progress == nil }
         try await Task.sleep(nanoseconds: 1_000_000_000)
         XCTAssertEqual(Self.allFiles(in: out).map(\.lastPathComponent), [], "no partial output")
@@ -1175,7 +1175,7 @@ final class CampaignAppFlowTests: XCTestCase {
         let pn = panel(narrow), pw = panel(wide)
         let diff = Self.meanAbsDiff(pn, pw)
         XCTAssertLessThan(diff, 0.01, "the right-hand panel differs at the minimum window size (shifted or squeezed): \(diff)")
-        // Every recognised text line in the panel sits inside it, clear of both edges (an over-wide control makes
+        // Every recognized text line in the panel sits inside it, clear of both edges (an over-wide control makes
         // the whole panel overflow and get cut on both sides).
         let lines = try Self.ocr(pn)
         XCTAssertGreaterThan(lines.count, 5, "OCR found too little in the panel")

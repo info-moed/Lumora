@@ -3,7 +3,7 @@ import XCTest
 
 /// Runs real clips through the real pipeline: inspect → analyze → auto presets → GPU grade → encode → file.
 /// The clips are generated with FFmpeg (skipped when it isn't installed), and every output is checked with
-/// ffprobe: codec, bit depth, HDR signalling, frame count, and that the picture is neither black nor blown out.
+/// ffprobe: codec, bit depth, HDR signaling, frame count, and that the picture is neither black nor blown out.
 @MainActor
 final class EndToEndTests: XCTestCase {
     static let ffmpeg = ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"].first { FileManager.default.isExecutableFile(atPath: $0) }
@@ -88,7 +88,7 @@ final class EndToEndTests: XCTestCase {
     /// Inspect → analyze → presets → job, exactly as the batch path in AppModel does it.
     func makeJob(_ src: URL, delivery: DeliveryFormat, codec: Codec, out: String) async throws -> ExportJob {
         let (d, colors) = try await SourceInspector.inspect(src)
-        let color = try XCTUnwrap(colors.first, "no colour interpretation for \(src.lastPathComponent)")
+        let color = try XCTUnwrap(colors.first, "no color interpretation for \(src.lastPathComponent)")
         let a = try await SceneAnalyzer.analyze(d, color: color) { _ in }
         let report = (color.transfer == .pq || color.transfer == .hlg)
             ? HDRReportCard.make(title: src.lastPathComponent, descriptor: d, color: color, analysis: a) : nil

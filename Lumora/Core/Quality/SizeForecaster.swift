@@ -222,7 +222,7 @@ enum SizeForecaster {
                             learnedFrom: corr.count, key: key)
     }
 
-    /// Which scenes to sample: spread across difficulty (range, colour, darkness), largest scenes first on ties.
+    /// Which scenes to sample: spread across difficulty (range, color, darkness), largest scenes first on ties.
     static func pickScenes(_ a: AnalysisResult, count: Int) -> [Int] {
         let usable = a.scenes.enumerated().filter { $0.element.end - $0.element.start >= 24 }
         guard !usable.isEmpty else { return a.scenes.indices.prefix(count).map { $0 } }

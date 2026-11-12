@@ -4,7 +4,7 @@ import AVFoundation
 import CoreImage
 @testable import Lumora
 
-/// Ingest, inspection and analysis on real generated media: every container / codec / rate / colour / scan
+/// Ingest, inspection and analysis on real generated media: every container / codec / rate / color / scan
 /// combination the inspector claims to handle, crop detection, cut / fade / dissolve / duplicate detection,
 /// the content test, camera log ranking, RAW (DNG and CinemaDNG folders), storage and scratch handling, and the
 /// preview proxy written during analysis. Every check looks at the result (descriptor fields against ffprobe,
@@ -125,7 +125,7 @@ final class CampaignIngestTests: XCTestCase {
 
     static func luma(_ p: [SIMD4<Float>]) -> [Float] { p.map { 0.2126 * $0.x + 0.7152 * $0.y + 0.0722 * $0.z } }
 
-    /// Combing: in an interlaced frame with motion, neighbouring rows (opposite fields) differ far more than rows
+    /// Combing: in an interlaced frame with motion, neighboring rows (opposite fields) differ far more than rows
     /// two apart (same field). Returns mean|L[y]-L[y+1]| / mean|L[y]-L[y+2]|; progressive pictures give ≲ 1.
     static func combRatio(_ tex: MTLTexture) -> Float {
         let l = luma(pixels(tex))
@@ -332,7 +332,7 @@ final class CampaignIngestTests: XCTestCase {
         XCTAssertEqual(dk.durationSeconds, 1.5, accuracy: 0.1)
     }
 
-    // MARK: - Colour signalling
+    // MARK: - Color signaling
 
     func testHDRAndHLGTagsRankFirstOnBothPaths() async throws {
         try requireTools()
@@ -358,7 +358,7 @@ final class CampaignIngestTests: XCTestCase {
         }
     }
 
-    /// The same grey (RGB 40/255) coded as limited range and as full range must decode to the same value.
+    /// The same gray (RGB 40/255) coded as limited range and as full range must decode to the same value.
     func testFullAndLimitedRangeDecodeToSameValue() async throws {
         try requireTools()
         let expected: Float = 40 / 255
@@ -990,7 +990,7 @@ final class CampaignIngestTests: XCTestCase {
                 let info = try Self.streamInfo(out)
                 XCTAssertEqual(info["codec_name"], "hevc", name)
                 XCTAssertTrue(info["pix_fmt"]?.contains("10") == true, "\(name): \(info["pix_fmt"] ?? "")")
-                XCTAssertEqual(Int(info["nb_read_frames"] ?? ""), a.frameCount, "\(name): one proxy frame per analysed frame")
+                XCTAssertEqual(Int(info["nb_read_frames"] ?? ""), a.frameCount, "\(name): one proxy frame per analyzed frame")
                 XCTAssertEqual(info["avg_frame_rate"], "24/1", name)
                 let size = ProxyWriter.outputSize(for: d)
                 XCTAssertEqual(Int(info["height"] ?? ""), size.height, name)

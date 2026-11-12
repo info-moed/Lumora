@@ -63,7 +63,7 @@ extension AutoPresetEngine {
     static func adapt(_ p: PresetCandidate, for display: DisplayProfile, analysis a: AnalysisResult, pop: Bool) -> PresetCandidate {
         var out = p
         if pop && !out.params.passthrough {
-            // "Make it pop": use the screen's headroom for highlights, a touch more clarity and colour.
+            // "Make it pop": use the screen's headroom for highlights, a touch more clarity and color.
             out.params.shoulder = max(out.params.shoulder, display.peakNits >= 1500 ? 2.8 : 2.4)
             out.params.localContrast = min(0.5, out.params.localContrast + 0.06)
             out.params.vibrance = min(0.6, out.params.vibrance + 0.08)

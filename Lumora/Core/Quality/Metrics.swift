@@ -25,14 +25,14 @@ enum QualityMetric: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .vmaf: return "Netflix's perceptual score (0–100). Fast and well understood; trained on SDR viewing."
         case .vmafNeg: return "VMAF that ignores encoder sharpening tricks, so a score can't be inflated."
-        case .cvvdp: return "Cambridge's model of human vision for SDR and HDR, colour and motion, on a described display. 10 = identical; a drop of 1 means 75% of viewers would notice."
+        case .cvvdp: return "Cambridge's model of human vision for SDR and HDR, color and motion, on a described display. 10 = identical; a drop of 1 means 75% of viewers would notice."
         case .puPsnr: return "PSNR on perceptually uniform (PU21) HDR values. A cheap HDR-aware fidelity check."
         case .xpsnr: return "Fraunhofer's perceptually weighted PSNR (in FFmpeg). Tracks visible error better than plain PSNR."
         case .ssimulacra2: return "Cloudinary's psycho-visual metric. ~90 means hard to tell apart at normal viewing. SDR only."
         case .cambi: return "Netflix's banding detector. Lumora measures how much banding the encode adds over the master."
         case .msssim: return "Multi-scale structural similarity. A classic sanity check."
         case .psnrHvs: return "PSNR weighted by the eye's contrast sensitivity."
-        case .ciede: return "Average colour difference (ΔE 2000). Catches colour shifts the luma metrics miss."
+        case .ciede: return "Average color difference (ΔE 2000). Catches color shifts the luma metrics miss."
         case .avqt: return "Apple's Advanced Video Quality Tool (1–5), HDR10/HLG/Dolby Vision aware. Needs an Apple developer download; used when comparing files."
         }
     }
@@ -114,7 +114,7 @@ struct QualityProfile: Codable, Hashable, Identifiable {
         let cvvdpDisplay = hdr ? "HDR display" : "4K display"
         return [
             QualityProfile(name: "Imperceptible",
-                           summary: "Searches with a relaxed VMAF, then proves the result with ColorVideoVDP (\(cvvdpDisplay)), banding and colour checks. Usually reaches invisible quality at a lower bitrate than chasing VMAF 95 alone.",
+                           summary: "Searches with a relaxed VMAF, then proves the result with ColorVideoVDP (\(cvvdpDisplay)), banding and color checks. Usually reaches invisible quality at a lower bitrate than chasing VMAF 95 alone.",
                            rules: [MetricRule(metric: .vmaf, role: .target, threshold: 93),
                                    MetricRule(metric: .cvvdp, role: .mustPass, threshold: 9.6),
                                    MetricRule(metric: .cambi, role: .mustPass, threshold: 1.0),

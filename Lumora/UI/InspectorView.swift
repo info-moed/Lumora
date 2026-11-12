@@ -163,7 +163,7 @@ struct LookPanel: View {
                 ParamSlider(label: "Highlight snap", value: $model.params.shoulder, range: 1...4, defaultValue: base.shoulder)
                 ParamSlider(label: "Highlight softening", value: $model.params.highlightDesat, range: 0...1, defaultValue: base.highlightDesat)
             }
-            InspectorSection(title: "Colour") {
+            InspectorSection(title: "Color") {
                 ParamSlider(label: "Saturation", value: $model.params.saturation, range: 0.6...1.4, defaultValue: base.saturation)
                 ParamSlider(label: "Vibrance", value: $model.params.vibrance, range: 0...1, defaultValue: base.vibrance)
                 ParamSlider(label: "Skin protection", value: $model.params.skinProtect, range: 0...1, defaultValue: base.skinProtect)
@@ -560,7 +560,7 @@ struct ForecastSection: View {
                         .font(Theme.note).foregroundStyle(.secondary)
                 }
             } else {
-                Text("Appears once the video is analysed.").font(Theme.note).foregroundStyle(.secondary)
+                Text("Appears once the video is analyzed.").font(Theme.note).foregroundStyle(.secondary)
             }
             if let folder = model.folderEstimate {
                 Text(folder).font(Theme.note).padding(.top, 4)

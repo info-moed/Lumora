@@ -1,6 +1,6 @@
 import simd
 
-/// Colour primaries Lumora understands. All are D65-white, so no chromatic adaptation is needed.
+/// Color primaries Lumora understands. All are D65-white, so no chromatic adaptation is needed.
 enum Gamut: String, Codable, CaseIterable, Hashable {
     case rec709, p3d65, rec2020, sGamut3Cine, arriWideGamut3, arriWideGamut4, vGamut, appleWideGamut
 
@@ -70,7 +70,7 @@ enum ColorScience {
         SIMD3(c.x / c.y, 1.0, (1.0 - c.x - c.y) / c.y)
     }
 
-    /// Normalised primary matrix (RGB -> XYZ) per SMPTE RP 177.
+    /// Normalized primary matrix (RGB -> XYZ) per SMPTE RP 177.
     static func rgbToXYZ(_ gamut: Gamut) -> simd_double3x3 {
         let p = gamut.primaries
         let P = simd_double3x3([xyz(p.r), xyz(p.g), xyz(p.b)])

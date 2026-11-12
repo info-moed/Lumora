@@ -79,6 +79,8 @@ Your source file is never modified, and nothing is written next to it.
 
 ## Simple mode
 
+![Simple mode](images/02-simple-watch-on-tv.png)
+
 Simple mode is a three-step flow on the right-hand side, beside a playable preview.
 
 1. **What do you want to do?** Pick a goal:
@@ -113,6 +115,8 @@ Also in Simple mode:
 ## Pro mode
 
 ### Looks sidebar
+
+![Pro mode with the Look tab open](images/07-pro-look.png)
 
 The left column lists **looks** built for this file, each with a thumbnail rendered from your footage:
 
@@ -151,12 +155,14 @@ interpretation. Compare them and pick the one that looks right. The recommended 
 | **Before / after** | Split view: the ungraded signal beside the grade. |
 | **False color** | Colors the picture by brightness, to see exposure at a glance. |
 | **Nits picker** | Click the picture to read the exact brightness of a point. |
-| **Scopes** | Scopes panel under the preview. |
+| **Scopes** | HDR scopes under the preview: a luminance waveform on the PQ scale with nit markers, and a CIE 1931 chromaticity plot. |
 | **Activity** | Every running task with progress, rate and time remaining. |
 | **Tools** | The [Tools menu](#the-tools-menu). |
 | **Export (⌘E)** | Opens the export sheet. |
 
 ### Source tab
+
+![Source tab](images/06-pro-source.png)
 
 - **File facts:** resolution, frame rate, codec, how Lumora reads the color ("Read as"), scene and fade counts,
   length.
@@ -181,6 +187,8 @@ interpretation. Compare them and pick the one that looks right. The recommended 
 
 ### Motion tab
 
+![Motion tab](images/08-pro-motion.png)
+
 - **Frame rate:** off, 2×/3×/4×/8×, an exact target (e.g. 60 or 59.94), or slow motion.
 - **Model:** which interpolation model to use (installed Core ML models, or blending if none are installed).
 - **Intelligence:**
@@ -194,10 +202,14 @@ interpretation. Compare them and pick the one that looks right. The recommended 
 
 ### Enhance tab
 
+![Enhance tab](images/09-pro-enhance.png)
+
 - **Upscaling:** **Engine** (off, MetalFX, or Real-ESRGAN if installed) and **Output height** (up to 12K).
   Upscaling runs after black-bar removal and before grading.
 
 ### Deliver tab
+
+![Deliver tab](images/10-pro-deliver.png)
 
 - **Format:** HDR format, codec, bit depth and chroma, with a line about Dolby Vision (whether the film's own
   metadata is kept, or why new metadata is written). **What should I export?** opens the plain-English advisor.
@@ -217,6 +229,8 @@ interpretation. Compare them and pick the one that looks right. The recommended 
 ---
 
 ## Exporting
+
+![Export sheet](images/14-export.png)
 
 1. Click **Export (⌘E)**.
 2. In the sheet, check **HDR format**, **Peak brightness** (1000 nits recommended), **Codec**, **Bit depth**,
@@ -256,6 +270,14 @@ Progress shows at the bottom of the window and in **Activity**. Use **Pause** to
 
 ## Other windows
 
+| Compare | Model Lab |
+|---|---|
+| ![Compare window](images/16-compare.png) | ![Model Lab](images/17-model-lab.png) |
+| **Encode monitor** | **Optimize for this Mac** |
+| ![Encode monitor](images/18-encode-monitor.png) | ![Optimize for this Mac](images/19-optimize.png) |
+| **UHD HDR library** | **Log** |
+| ![UHD HDR library](images/20-library.png) | ![Log](images/21-log.png) |
+
 - **Compare: original vs interpolated.** Side-by-side or wipe view in HDR, frame stepping with **←/→**, a 0–100
   grade of an interpolated file against its original with a problem-frame list, a model benchmark, and **Repair
   these frames** for a finished export.
@@ -274,6 +296,11 @@ Progress shows at the bottom of the window and in **Activity**. Use **Pause** to
 ## Settings
 
 **Lumora → Settings… (⌘,)** has three tabs:
+
+| Storage | Tools | Runs & Library |
+|---|---|---|
+| ![Storage settings](images/22-settings-storage.png) | ![Tools settings](images/23-settings-tools.png) | ![Runs and library settings](images/24-settings-runs.png) |
+
 
 - **Storage**
   - **Scratch drive:** where every temporary and intermediate file goes. **Choose…** your fastest SSD, **Test

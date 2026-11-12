@@ -2,7 +2,7 @@ import XCTest
 @testable import Lumora
 
 /// Hostile inputs: crafted names, metadata, frame rates, sizes, playlists and archives. Each test is an attack that
-/// used to work (or crash) and must now be refused or neutralised.
+/// used to work (or crash) and must now be refused or neutralized.
 @MainActor
 final class SecurityTests: XCTestCase {
 

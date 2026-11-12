@@ -54,7 +54,7 @@ final class CampaignGradeTests: XCTestCase {
         return r
     }
 
-    /// 640x360: testsrc2 on top (288 rows) and a full-range grey ramp below (72 rows), 12 frames at 24 fps.
+    /// 640x360: testsrc2 on top (288 rows) and a full-range gray ramp below (72 rows), 12 frames at 24 fps.
     /// HDR: the same RGB scaled so white is PQ 0.75 (≈1000 nits), coded like a UHD rip (10-bit, BT.2020, PQ tags).
     static func makeSource(_ name: String, hdr: Bool, frames: Int = 12, size: (Int, Int) = (640, 360), whitePQ: Double = 0.75,
                            pattern: String = "testsrc2") throws -> URL {
@@ -241,7 +241,7 @@ final class CampaignGradeTests: XCTestCase {
 
     struct FrameStats { var avg: Double; var min: Double; var max: Double }
 
-    /// Per-frame luma statistics, in normalised signal units ((code - 64) / 876 at 10-bit, studio range).
+    /// Per-frame luma statistics, in normalized signal units ((code - 64) / 876 at 10-bit, studio range).
     static func frameStats(_ url: URL) throws -> [FrameStats] {
         guard let ff = EndToEndTests.ffmpeg else { throw XCTSkip("FFmpeg not installed") }
         let r = try run(ff, ["-hide_banner", "-i", url.path, "-vf", "format=yuv420p10le,signalstats,metadata=print", "-f", "null", "-"])
@@ -259,7 +259,7 @@ final class CampaignGradeTests: XCTestCase {
         return out
     }
 
-    /// Mean of the ramp band per column bin (normalised signal, studio range 10-bit), from frame `index`.
+    /// Mean of the ramp band per column bin (normalized signal, studio range 10-bit), from frame `index`.
     static func rampProfile(_ url: URL, width: Int = 640, height: Int = 360, bins: Int = 32) throws -> [Double] {
         let rampH = height / 5, y0 = height - rampH + 8, rows = rampH - 16
         let r = try ffmpeg(["-i", url.path, "-vf", "select=eq(n\\,6),crop=\(width):\(rows):0:\(y0)", "-frames:v", "1",
@@ -373,7 +373,7 @@ final class CampaignGradeTests: XCTestCase {
                     if info.masteringMax == nil { fail("no mastering display metadata") }
                     if let cll = info.maxCLL, cll > Double(target.peakNits) + 1 || cll < 100 { fail("MaxCLL \(cll)") }
                 }
-                // The grey ramp must stay monotonic and keep gradation at its bright end (no clipped plateau).
+                // The gray ramp must stay monotonic and keep gradation at its bright end (no clipped plateau).
                 if ramp.count != 32 { fail("ramp unreadable") } else {
                     for i in 1..<ramp.count where ramp[i] < ramp[i - 1] - 0.004 { fail(String(format: "ramp inverts at bin %d (%.4f < %.4f)", i, ramp[i], ramp[i - 1])); break }
                     let plateau = ramp.filter { $0 >= ramp[31] - 1.0 / 876 }.count
@@ -626,7 +626,7 @@ final class CampaignGradeTests: XCTestCase {
                 XCTAssertTrue(e.localizedDescription.contains("isn't installed"), "\(spec.id): \(e.localizedDescription)")
             }
         }
-        XCTAssertFalse(UpscaleModelSpec.all().isEmpty, "the bundled model catalogue should list Real-ESRGAN models")
+        XCTAssertFalse(UpscaleModelSpec.all().isEmpty, "the bundled model catalog should list Real-ESRGAN models")
         XCTAssertThrowsError(try PreGradeStage(sourceWidth: 640, sourceHeight: 360, crop: UniformBuilder.fullFrame,
                                                mode: .model(id: "no-such-model", targetHeight: 720)))
         // Through the export engine: a clean error, no crash, no file.
@@ -691,7 +691,7 @@ final class CampaignGradeTests: XCTestCase {
         for i in 0..<size {
             let v = cube.values[i + i * size + i * size * size]
             XCTAssertEqual(v.x, v.y, accuracy: 0.01); XCTAssertEqual(v.y, v.z, accuracy: 0.01)
-            XCTAssertGreaterThanOrEqual(v.y, last - 1e-4, "grey axis must be monotonic"); last = v.y
+            XCTAssertGreaterThanOrEqual(v.y, last - 1e-4, "gray axis must be monotonic"); last = v.y
         }
 
         // The same frame through Lumora and through FFmpeg + the LUT. The LUT holds the global grade only
@@ -699,15 +699,15 @@ final class CampaignGradeTests: XCTestCase {
         let src = try await Self.frame(m, index: 6)
         let w = src.width, h = src.height
         let raw = Self.pixels(src)
-        var q16 = [UInt16](repeating: 0, count: w * h * 3), quantised = [Float](repeating: 1, count: w * h * 4)
+        var q16 = [UInt16](repeating: 0, count: w * h * 3), quantized = [Float](repeating: 1, count: w * h * 4)
         for i in 0..<(w * h) { for c in 0..<3 {
             let v = UInt16((max(0, min(1, raw[i * 4 + c])) * 65535).rounded())
-            q16[i * 3 + c] = v; quantised[i * 4 + c] = Float(v) / 65535
+            q16[i * 3 + c] = v; quantized[i * 4 + c] = Float(v) / 65535
         } }
         preset.params.localContrast = 0; preset.params.deband = 0
         let sorted = preset.sceneExposures.sorted()
         let u = Self.uniforms(m.color, preset.params, target, w: w, h: h, exposure: sorted.isEmpty ? 0 : sorted[sorted.count / 2])
-        let lumora = Self.grade(Self.texture(quantised, w, h), u)
+        let lumora = Self.grade(Self.texture(quantized, w, h), u)
         let inRaw = Self.work.appendingPathComponent("lut-in-\(size).rgb48")
         try q16.withUnsafeBytes { try Data($0).write(to: inRaw) }
         let r = try Self.ffmpeg(["-f", "rawvideo", "-pix_fmt", "rgb48le", "-s", "\(w)x\(h)", "-i", inRaw.path,
@@ -762,7 +762,7 @@ final class CampaignGradeTests: XCTestCase {
                                                  sceneExposure: 0, crop: UniformBuilder.fullFrame, target: target, to: base)
             XCTAssertNotNil(StillExporter.avifEncoder, "this FFmpeg has an AV1 encoder, so an AVIF must be written")
             XCTAssertEqual(Set(files.map(\.pathExtension)), ["heic", "avif", "jpg"])
-            // HEIC: 10-bit, HDR colour space, right size, real picture.
+            // HEIC: 10-bit, HDR color space, right size, real picture.
             let heic = try XCTUnwrap(files.first { $0.pathExtension == "heic" })
             let isrc = try XCTUnwrap(CGImageSourceCreateWithURL(heic as CFURL, nil))
             let props = try XCTUnwrap(CGImageSourceCopyPropertiesAtIndex(isrc, 0, nil) as? [CFString: Any])
@@ -770,9 +770,9 @@ final class CampaignGradeTests: XCTestCase {
             XCTAssertEqual(props[kCGImagePropertyPixelWidth] as? Int, 640)
             XCTAssertEqual(props[kCGImagePropertyPixelHeight] as? Int, 360)
             let img = try XCTUnwrap(CGImageSourceCreateImageAtIndex(isrc, 0, nil))
-            let cs = try XCTUnwrap(img.colorSpace, "HEIC has no colour space")
+            let cs = try XCTUnwrap(img.colorSpace, "HEIC has no color space")
             XCTAssertTrue(target.kind == .hlg ? CGColorSpaceIsHLGBased(cs) : CGColorSpaceIsPQBased(cs),
-                          "HEIC colour space should be \(target.kind == .hlg ? "HLG" : "PQ"): \(cs)")
+                          "HEIC color space should be \(target.kind == .hlg ? "HLG" : "PQ"): \(cs)")
             XCTAssertTrue(CGColorSpaceUsesITUR_2100TF(cs))
             // AVIF: AV1 still, 10-bit 4:4:4, BT.2020 primaries, PQ / HLG transfer.
             let avif = try XCTUnwrap(files.first { $0.pathExtension == "avif" })
@@ -789,7 +789,7 @@ final class CampaignGradeTests: XCTestCase {
             for i in stride(from: 0, to: 640 * 360, by: 7) { for c in 0..<3 {
                 let d = Double(fromAVIF[i * 3 + c] - direct[i * 4 + c]); se += d * d; n += 1
             } }
-            // Colour accuracy per 16x16 block (catches a wrong RGB→Y'CbCr matrix; immune to 4:2:0 edge blur).
+            // Color accuracy per 16x16 block (catches a wrong RGB→Y'CbCr matrix; immune to 4:2:0 edge blur).
             for by in 0..<(288 / 16) { for bx in 0..<(640 / 16) {
                 var d = SIMD3<Double>(repeating: 0)
                 for y in (by * 16)..<(by * 16 + 16) { for x in (bx * 16)..<(bx * 16 + 16) {
@@ -800,7 +800,7 @@ final class CampaignGradeTests: XCTestCase {
             } }
             let p = 10 * log10(1 / max(1e-12, se / Double(n)))
             XCTAssertGreaterThan(p, 30, "AVIF signal vs Lumora's render (PSNR \(p))")
-            XCTAssertLessThan(worstPatch, 0.04, "AVIF colours drift from the render (worst 16x16 block error \(worstPatch))")
+            XCTAssertLessThan(worstPatch, 0.04, "AVIF colors drift from the render (worst 16x16 block error \(worstPatch))")
             // The Y'CbCr really is BT.2020 (as tagged): decoding with another matrix fits the render clearly worse.
             func err(_ px: [Float]) -> Double {
                 var e = 0.0
@@ -816,7 +816,7 @@ final class CampaignGradeTests: XCTestCase {
             let jimg = try XCTUnwrap(CGImageSourceCreateImageAtIndex(jsrc, 0, nil))
             XCTAssertEqual(jimg.width, 640); XCTAssertEqual(jimg.bitsPerComponent, 8)
             let jprops = CGImageSourceCopyPropertiesAtIndex(jsrc, 0, nil) as? [CFString: Any]
-            XCTAssertNotNil(jprops?[kCGImagePropertyProfileName], "JPEG should carry a colour profile")
+            XCTAssertNotNil(jprops?[kCGImagePropertyProfileName], "JPEG should carry a color profile")
             for f in files { try? FileManager.default.removeItem(at: f) }
         }
     }
@@ -965,11 +965,11 @@ final class CampaignGradeTests: XCTestCase {
         XCTAssertEqual(stats.sigmaPerBin.count, Int(GRAIN_BINS))
         XCTAssertEqual(stats.overall, sigma, accuracy: sigma * 0.5, "measured grain σ vs the σ we added")
         XCTAssertEqual(stats.sigmaPerBin[14], sigma, accuracy: sigma * 0.5, "the mid-grey band holds the measured grain")
-        XCTAssertFalse(stats.sigmaPerBin.contains { $0 <= 0 }, "empty bands are filled from neighbours")
+        XCTAssertFalse(stats.sigmaPerBin.contains { $0 <= 0 }, "empty bands are filled from neighbors")
         let flat = gp.measure(Self.texture(cleanPx, w, h))
         XCTAssertLessThan(flat.overall, sigma * 0.2, "a grain-free picture measures (almost) no grain")
 
-        // Re-grain a clean in-between frame with the grain of its neighbour.
+        // Re-grain a clean in-between frame with the grain of its neighbor.
         let out = Self.sharedTexture(w, h)
         cb = Self.ctx.queue.makeCommandBuffer()!
         gp.regrain(cb, cleanMid: Self.texture(cleanPx, w, h), origNear: grainy, cleanNear: denoised, into: out, seed: 3)
@@ -1143,7 +1143,7 @@ final class CampaignGradeTests: XCTestCase {
 
     func testProbeReadsKnownPatchLevels() async throws {
         try TestHardware.requireGPU()
-        // SDR: left half 100% white, right half 18% grey (studio-range H.264, BT.709 tags).
+        // SDR: left half 100% white, right half 18% gray (studio-range H.264, BT.709 tags).
         let url = Self.work.appendingPathComponent("patch-sdr.mp4")
         if !FileManager.default.fileExists(atPath: url.path) {
             try Self.ffmpeg(["-f", "lavfi", "-i", "color=c=white:s=320x180:r=24:d=0.5,drawbox=x=160:y=0:w=160:h=180:color=0x767676:t=fill",
@@ -1159,9 +1159,9 @@ final class CampaignGradeTests: XCTestCase {
         let white = r.probe(frame, uniforms: Self.uniforms(colors[0], original, .sdr, w: 0, h: 0), at: SIMD2(0.25, 0.5))
         XCTAssertEqual(white.w, 100, accuracy: 3, "100% SDR white should read ~100 nits in SDR (read \(white))")
         XCTAssertEqual(white.x, white.z, accuracy: 1, "white is neutral")
-        let grey = r.probe(frame, uniforms: Self.uniforms(colors[0], original, .sdr, w: 0, h: 0), at: SIMD2(0.75, 0.5))
+        let gray = r.probe(frame, uniforms: Self.uniforms(colors[0], original, .sdr, w: 0, h: 0), at: SIMD2(0.75, 0.5))
         let greyNits = powf(Float(0x76) / 255, 2.4) * 100
-        XCTAssertEqual(grey.w, greyNits, accuracy: greyNits * 0.06, "grey patch nits")
+        XCTAssertEqual(gray.w, greyNits, accuracy: greyNits * 0.06, "gray patch nits")
         let whiteHDR = r.probe(frame, uniforms: Self.uniforms(colors[0], original, .hdr10_1000, w: 0, h: 0), at: SIMD2(0.25, 0.5))
         XCTAssertEqual(whiteHDR.w, 203, accuracy: 6, "SDR white sits at BT.2408 graphics white in HDR")
 

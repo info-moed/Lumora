@@ -34,7 +34,7 @@ enum AutoPresetEngine {
                 if range > 11 { p.contrast *= 0.93; p.shoulder *= 0.9 }      // very wide range: soften
                 if range < 7 { p.contrast *= 1.05 }                            // flat scene: firm up
                 if a.skinFraction > 0.06 { p.skinProtect = max(p.skinProtect, 0.9); p.vibrance *= 0.85 }
-                if a.avgChroma < 0.04 { p.vibrance += 0.08 }                   // muted footage: a bit more colour
+                if a.avgChroma < 0.04 { p.vibrance += 0.08 }                   // muted footage: a bit more color
                 if isHDRSource && look != .ripRevive { p.expandHDRSources = false }
                 if look == .original { p = look.params }
 
@@ -72,7 +72,7 @@ enum AutoPresetEngine {
         case .superPunchy: bits.append("maximum pop, skin still protected")
         case .cinematic: bits.append("softer highlights, film-like roll-off")
         case .brightClean: bits.append("airy, lifted mid-tones")
-        case .moody: bits.append("darker, denser, restrained colour")
+        case .moody: bits.append("darker, denser, restrained color")
         case .ripRevive: bits.append("rebuilds dim HDR highlights" + (report.map { " (now ~\(Int($0.p999Nits)) nits)" } ?? ""))
         }
         return bits.joined(separator: " · ")

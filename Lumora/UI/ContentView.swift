@@ -65,7 +65,7 @@ struct ContentView: View {
                 .frame(width: 170)
                 ControlGroup {
                     Toggle(isOn: $model.splitCompare) { Label("Before / after", systemImage: "rectangle.split.2x1") }
-                    Toggle(isOn: $model.falseColor) { Label("False colour", systemImage: "paintpalette") }
+                    Toggle(isOn: $model.falseColor) { Label("False color", systemImage: "paintpalette") }
                     Toggle(isOn: $model.nitsPicker) { Label("Nits picker", systemImage: "eyedropper") }
                     Toggle(isOn: $model.showScopes) { Label("Scopes", systemImage: "waveform.path.ecg") }
                 }
@@ -163,22 +163,24 @@ struct PresetSidebar: View {
         @Bindable var model = model
         List(selection: $model.selectedPresetID) {
             if model.colorCandidates.count > 1 {
-                Section("Read the signal as") {
+                Section {
                     ForEach(model.colorCandidates) { c in
                         Button { model.chooseColor(c) } label: {
                             HStack(spacing: 8) {
                                 StatusDot(color: c == model.selectedColor ? Theme.signal : .secondary.opacity(0.4))
                                 VStack(alignment: .leading, spacing: 1) {
-                                    Text(c.name).font(Theme.body)
-                                    Text("\(Int(c.confidence * 100))% likely").font(Theme.note).foregroundStyle(.secondary)
+                                    Text(c.name).font(Theme.body).foregroundStyle(Theme.ink)
+                                    Text("\(Int(c.confidence * 100))% likely").font(Theme.note).foregroundStyle(Theme.inkSecondary)
                                 }
                             }
                         }
                         .buttonStyle(.plain)
                     }
+                } header: {
+                    Text("Read the signal as").font(Theme.note).foregroundStyle(Theme.inkSecondary)
                 }
             }
-            Section("Looks") {
+            Section {
                 ForEach(model.presets) { p in
                     VStack(alignment: .leading, spacing: 5) {
                         if let img = model.thumbnails[p.id] {
@@ -186,15 +188,17 @@ struct PresetSidebar: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 5))
                         }
                         HStack {
-                            Text(p.name).font(Theme.heading(12))
+                            Text(p.name).font(Theme.heading(12)).foregroundStyle(Theme.ink)
                             Spacer()
                             if p.recommended { StatusDot(color: Theme.signal).help("Recommended for this footage") }
                         }
-                        Text(p.reason).font(Theme.note).foregroundStyle(.secondary).lineLimit(2)
+                        Text(p.reason).font(Theme.note).foregroundStyle(Theme.inkSecondary).lineLimit(2)
                     }
                     .padding(.vertical, 5)
                     .tag(p.id)
                 }
+            } header: {
+                Text("Looks").font(Theme.note).foregroundStyle(Theme.inkSecondary)
             }
         }
         .listStyle(.sidebar)

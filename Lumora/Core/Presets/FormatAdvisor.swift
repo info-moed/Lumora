@@ -44,7 +44,7 @@ enum FormatAdvisor {
             watch.append("This file's HDR is dim (\(r.verdict.rawValue.lowercased())). The Rip Revive preset fixes that.")
         }
         if color?.gamut.isVerified == false {
-            watch.append("Apple Log 2 colour is approximate until its exact gamut numbers are added (see README).")
+            watch.append("Apple Log 2 color is approximate until its exact gamut numbers are added (see README).")
         }
 
         switch dest {
@@ -85,7 +85,7 @@ enum FormatAdvisor {
                           headline: "Send SDR Rec.709. It looks the same on every screen.",
                           why: ["HDR files can look dark or washed out on a laptop or office monitor that isn't set up for HDR.",
                                 "SDR removes the guesswork — what you approved is what they see."],
-                          alsoMake: "An HDR10 version labelled “for HDR TVs” if they'll present on a big screen.",
+                          alsoMake: "An HDR10 version labeled “for HDR TVs” if they'll present on a big screen.",
                           watchOut: watch)
         case .broadcast:
             return Advice(delivery: .hlg, codec: .prores422HQ, bitDepth: 10, peakNits: 1000, look: .natural,
@@ -100,7 +100,7 @@ enum FormatAdvisor {
                                 "12-bit keeps the smoothest gradients for their encoders.",
                                 "Most services also require a matching SDR deliverable."],
                           alsoMake: "SDR Rec.709 ProRes 422 HQ.",
-                          watchOut: watch + ["Professional delivery usually needs a colourist's QC and, for Dolby Vision, Dolby-certified tools. Lumora gets you close; it doesn't replace that sign-off."])
+                          watchOut: watch + ["Professional delivery usually needs a colorist's QC and, for Dolby Vision, Dolby-certified tools. Lumora gets you close; it doesn't replace that sign-off."])
         case .archive:
             return Advice(delivery: .hdr10, codec: .prores4444XQ, bitDepth: 12, peakNits: 1000, look: nil,
                           headline: "12-bit ProRes 4444 XQ, and keep your original camera files too.",

@@ -31,7 +31,7 @@ enum VMAFRunner {
 
     enum Backend { case vmafCLI, ffmpegLibvmaf, none }
 
-    /// Clears colour tags at the start of each branch of a two-input FFmpeg comparison graph. The reference Y4M
+    /// Clears color tags at the start of each branch of a two-input FFmpeg comparison graph. The reference Y4M
     /// carries no matrix while an encode is tagged (BT.709 / BT.2020), and FFmpeg would then convert one side's
     /// matrix before the metric sees it: a CRF 18 encode scored VMAF 47 / XPSNR 10 dB instead of 99 / 45 dB.
     /// Metrics must compare code values exactly as coded, as the vmaf CLI path does.

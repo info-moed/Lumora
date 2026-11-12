@@ -13,7 +13,7 @@ final class PipelineTests: XCTestCase {
 
     func testChannelPropagatesFailure() async {
         let ch = BoundedChannel<Int>(capacity: 2)
-        await ch.fail(LumoraError.cancelled)
+        await ch.fail(LumoraError.canceled)
         do { _ = try await ch.receive(); XCTFail("expected error") } catch {}
     }
 

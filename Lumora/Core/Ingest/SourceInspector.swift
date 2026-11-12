@@ -303,7 +303,7 @@ enum SourceInspector {
             let log2Capable = gen >= 17 && model.contains("pro")
             let taggedLog2 = d.logTag?.contains("2") == true || (d.primariesTag != nil && d.primariesTag != "ITU_R_2020")
             let log2Conf: Float = taggedLog2 ? 0.85 : (log2Capable ? 0.6 : 0.15)
-            let note = Gamut.appleWideGamut.isVerified ? nil : "Apple Wide Gamut primaries not yet verified — colour approximate."
+            let note = Gamut.appleWideGamut.isVerified ? nil : "Apple Wide Gamut primaries not yet verified — color approximate."
             out.append(SourceColor(name: "Apple Log 2", transfer: .appleLog, gamut: .appleWideGamut,
                                    legalToFull: false, confidence: log2Conf, note: note))
             out.append(SourceColor(name: "Apple Log", transfer: .appleLog, gamut: .rec2020,

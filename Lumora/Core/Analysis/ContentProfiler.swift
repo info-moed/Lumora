@@ -68,7 +68,7 @@ struct ContentTuning: Codable, Hashable {
                                  punchScale: 0.7, grain: .synthesize, encoderTune: "grain", vmafModel: "vmaf_v0.6.1",
                                  targetVMAF: 93, upscaleModel: "realesrgan-x2plus")
         case .anime:
-            return ContentTuning(kind: k, summary: "Modern digital animation. Interpolates between real drawings (skips held frames), protects line art, prevents banding in flat colour.",
+            return ContentTuning(kind: k, summary: "Modern digital animation. Interpolates between real drawings (skips held frames), protects line art, prevents banding in flat color.",
                                  interpolationModels: ["rife-4.25-flow", "rife-4.22-flow", "rife-4.6-flow", "rife-4.25"],
                                  repairModel: "film", qcSensitivity: 0.6, smoothDuplicates: true, deband: 0.4, edgeProtection: 0.9,
                                  punchScale: 0.6, grain: .keep, encoderTune: "anime", vmafModel: "vmaf_v0.6.1",
@@ -161,7 +161,7 @@ enum ContentProfiler {
             kind = .screenContent; conf = 0.7
             ev.append("large flat areas with sharp edges and little motion")
         } else if animation {
-            ev.append(String(format: "%.0f%% of the picture is flat colour", flat * 100))
+            ev.append(String(format: "%.0f%% of the picture is flat color", flat * 100))
             if repeats > 0.1 { ev.append(String(format: "%.0f%% of frames repeat (drawn on twos/threes)", repeats * 100)) }
             if legacy || grain > 0.008 {
                 kind = .oldAnime

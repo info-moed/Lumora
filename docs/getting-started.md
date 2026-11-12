@@ -222,6 +222,8 @@ Xcode opens the project. Press **⌘R** (or click the ▶ button at the top-left
 
 Open **Lumora** from your Applications folder (or from Xcode).
 
+![Lumora's Simple mode, before opening a file](images/01-simple-empty.png)
+
 - **Simple mode** opens first. That's the friendly view; you can switch to **Pro** with the selector at the top
   of the window.
 - A banner may suggest **Optimize for this Mac**. It's optional. It spends a while measuring your Mac to pick the
@@ -249,9 +251,13 @@ recording.
    - **Share it or play it anywhere**: maximum compatibility.
    - **Make motion smoother**: raise the frame rate.
 4. If your TV or player can't play **AV1**, untick **My TV or player can play AV1**.
+   ![Simple mode with a video open, showing goals and recommendations](images/02-simple-watch-on-tv.png)
+
 5. Read **Lumora recommends**. Each setting has a one-line reason. The **Result** section estimates the file size
    and time before you start.
-6. Click **Export…**, check the settings, click **Export…** again and choose a folder. Lumora names the file after
+6. ![The export sheet](images/14-export.png)
+
+   Click **Export…**, check the settings, click **Export…** again and choose a folder. Lumora names the file after
    the source, the look and the format, e.g. `Holiday – Natural – HDR10.mov`.
 7. Watch progress at the bottom of the window. **Pause** in the toolbar pauses without losing work.
 

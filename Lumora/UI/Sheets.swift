@@ -35,7 +35,7 @@ struct ExportSheet: View {
                 Picker("Bit depth", selection: $model.bitDepth) {
                     ForEach(model.codec.bitDepths, id: \.self) { Text("\($0)-bit").tag($0) }
                 }
-                Picker("Colour detail", selection: $model.chroma) {
+                Picker("Color detail", selection: $model.chroma) {
                     ForEach(model.codec.chromaFormats, id: \.self) { Text($0.label).tag($0) }
                 }
                 if model.useTargetQuality && ![.prores422HQ, .prores4444XQ, .av2].contains(model.codec) {
