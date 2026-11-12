@@ -37,6 +37,9 @@ enum SourceInspector {
             result = try await inspectFFmpeg(url)
         }
         try validateGeometry(result.0)
+        // AVFoundation leaves the field order out for interlaced H.264/HEVC in MP4/MOV, so ask the stream itself;
+        // storing it on the descriptor lets both detection and the decoder's deinterlace filter use it.
+        if result.0.fieldOrder == nil { result.0.fieldOrder = probeFieldOrder(result.0.url) }
         result.0.suggestedScanFix = detectScanFix(result.0)
         if result.0.suggestedScanFix != .none { result.0 = result.0.applying(result.0.suggestedScanFix) }
         return result
@@ -51,6 +54,14 @@ enum SourceInspector {
             throw LumoraError.unsupported("Videos larger than 16384 pixels on a side aren't supported (\(d.width)×\(d.height)).")
         }
         guard d.frameCount >= 1 else { throw LumoraError.decodeFailed("The video has no frames.") }
+    }
+
+    static func probeFieldOrder(_ url: URL) -> String? {
+        guard ToolLocator.isAvailable("ffprobe"),
+              let out = try? ToolLocator.run("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=field_order",
+                                                         "-of", "default=nw=1:nk=1", url.path]) else { return nil }
+        let v = String(decoding: out, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        return v.isEmpty ? nil : v
     }
 
     /// Uses FFmpeg's `idet` field detector on ~400 frames when a source might be interlaced or telecined.

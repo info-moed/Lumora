@@ -407,6 +407,7 @@ final class ExportEngine {
             status("Finishing file", 1)
             var result = try addContainerHDR10Metadata(ctx, file: try await join(ctx, segments: pieces, tmp: tmp), tmp: tmp)
             if Self.needsMetadataPass(job.delivery) { result = try injectDynamicMetadata(ctx, file: result, tmp: tmp) }
+            try Task.checkCancellation()          // never move a cancelled export into place
             try Self.clearOutput(job)
             try FileManager.default.moveItem(at: result, to: job.outputURL)
             ExportManifest(output: job.outputURL.path, source: job.descriptor.url.path, codec: job.codec, rateNum: ctx.rate.num,
@@ -450,6 +451,7 @@ final class ExportEngine {
             status("Adding \(job.delivery.displayName) metadata", 1)
             result = try injectDynamicMetadata(ctx, file: result, tmp: tmp)
         }
+        try Task.checkCancellation()              // never move a cancelled export into place
         try Self.clearOutput(job)
         try FileManager.default.moveItem(at: result, to: job.outputURL)
         return job.outputURL
@@ -643,6 +645,7 @@ final class ExportEngine {
 
         do {
             while let item = try await encoded.receive() {
+                try Task.checkCancellation()
                 let (pb, time) = item
                 while !input.isReadyForMoreMediaData { try await Task.sleep(nanoseconds: 1_000_000) }
                 guard adaptor.append(pb, withPresentationTime: time) else {
@@ -652,6 +655,7 @@ final class ExportEngine {
             }
         } catch {
             producer.cancel(); grader.cancel()
+            await prepared.fail(error); await encoded.fail(error)     // release stages waiting to send
             writer.cancelWriting()
             throw error
         }
@@ -840,6 +844,9 @@ final class ExportEngine {
         let tq = TargetQualityEncoder(engine: self)
         let encodeOne = chunkEncoder(ctx, tmp: tmp, threads: threads)
         var pieces: [TargetQualityEncoder.Piece] = []
+        // The render and producer stages are separate tasks waiting on channels; on cancel, stop them and fail the
+        // channels so every waiting stage (and this loop) wakes up instead of rendering the rest of the film.
+        try await withTaskCancellationHandler {
         try await withThrowingTaskGroup(of: [TargetQualityEncoder.Piece].self) { group in
             var running = 0
             while let chunk = try await channel.receive() {
@@ -858,6 +865,10 @@ final class ExportEngine {
                 running += 1
             }
             for try await done in group { pieces += done }
+        }
+        } onCancel: {
+            producer.cancel(); render.cancel()
+            Task { await channel.fail(CancellationError()); await prepared.fail(CancellationError()) }
         }
         _ = await render.value
         qcEvents += try await producer.value
@@ -880,13 +891,23 @@ final class ExportEngine {
                 let (process, handle, log) = try await self.startCLIEncoder(ctx, spec: spec, out: url, tmp: tmp,
                                                                             tag: url.deletingPathExtension().lastPathComponent,
                                                                             threads: threads, quality: String(Int(-level)))
-                do {
-                    guard let first = frames.first else { throw LumoraError.decodeFailed("No frames rendered for this chunk.") }
-                    try handle.write(contentsOf: Data(first.y4mHeader(fpsNum: ctx.rate.num, fpsDen: ctx.rate.den).utf8))
-                    for f in frames { try f.write(to: handle) }
-                    try handle.close()
-                } catch { process.terminate(); throw error }
-                await process.exited()
+                // Cancelling stops the trial encode at once (a slow encoder can block a write or its flush for minutes).
+                try await withTaskCancellationHandler {
+                    do {
+                        guard let first = frames.first else { throw LumoraError.decodeFailed("No frames rendered for this chunk.") }
+                        try handle.write(contentsOf: Data(first.y4mHeader(fpsNum: ctx.rate.num, fpsDen: ctx.rate.den).utf8))
+                        for f in frames { try Task.checkCancellation(); try f.write(to: handle) }
+                        try handle.close()
+                    } catch {
+                        if process.isRunning { process.terminate() }
+                        await process.exited()
+                        throw Task.isCancelled ? CancellationError() : error
+                    }
+                    await process.exited()
+                    try Task.checkCancellation()
+                } onCancel: {
+                    if process.isRunning { process.terminate() }
+                }
                 guard process.terminationStatus == 0 else {
                     throw LumoraError.toolFailed(spec.binary, String((try? String(contentsOf: log, encoding: .utf8))?.suffix(1200) ?? ""))
                 }
@@ -1024,33 +1045,43 @@ final class ExportEngine {
             }
         }
 
-        do {
-            // Writer stage: the encoder process (CPU cores) consumes frames while the GPU grades the next ones.
-            while let planes = try await packed.receive() {
-                try planes.write(to: handle)
-                tick()
+        // Cancelling stops the encoder at once: a slow encoder can keep a frame write (or its final flush) blocked
+        // for minutes, so checking between frames alone isn't enough.
+        return try await withTaskCancellationHandler {
+            do {
+                // Writer stage: the encoder process (CPU cores) consumes frames while the GPU grades the next ones.
+                while let planes = try await packed.receive() {
+                    try Task.checkCancellation()
+                    try planes.write(to: handle)
+                    tick()
+                }
+            } catch {
+                producer.cancel(); grader.cancel()
+                await prepared.fail(error); await packed.fail(error)      // release stages waiting to send
+                // If the encoder quit on its own, its log says why; that beats a broken-pipe or cancellation error.
+                let exitedByItself = !process.isRunning
+                if process.isRunning { process.terminate() }
+                await process.exited()
+                if Task.isCancelled { throw CancellationError() }
+                if exitedByItself { throw Self.encoderFailure(spec.binary, log: log) }   // quit before taking every frame
+                throw error
             }
-        } catch {
-            producer.cancel(); grader.cancel()
-            // If the encoder quit on its own, its log says why; that beats a broken-pipe or cancellation error.
-            let exitedByItself = !process.isRunning
-            if process.isRunning { process.terminate() }
+            _ = await grader.value
+            let events = try await producer.value
+            try handle.close()
             await process.exited()
-            if exitedByItself { throw Self.encoderFailure(spec.binary, log: log) }   // quit before taking every frame
-            throw error
+            try Task.checkCancellation()
+            guard process.terminationStatus == 0 else { throw Self.encoderFailure(spec.binary, log: log) }
+            // An encoder that "succeeds" without writing pictures (e.g. aomenc two-pass on a pipe) must not pass.
+            let written = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            guard written > 64 || range.isEmpty else {
+                throw LumoraError.toolFailed(spec.binary, "it exited normally but wrote no video (\(written) bytes). "
+                                             + String(((try? String(contentsOf: log, encoding: .utf8)) ?? "").suffix(600)))
+            }
+            return events
+        } onCancel: {
+            if process.isRunning { process.terminate() }
         }
-        _ = await grader.value
-        let events = try await producer.value
-        try handle.close()
-        await process.exited()
-        guard process.terminationStatus == 0 else { throw Self.encoderFailure(spec.binary, log: log) }
-        // An encoder that "succeeds" without writing pictures (e.g. aomenc two-pass on a pipe) must not pass.
-        let written = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-        guard written > 64 || range.isEmpty else {
-            throw LumoraError.toolFailed(spec.binary, "it exited normally but wrote no video (\(written) bytes). "
-                                         + String(((try? String(contentsOf: log, encoding: .utf8)) ?? "").suffix(600)))
-        }
-        return events
     }
 
     private static func encoderFailure(_ binary: String, log: URL) -> LumoraError {

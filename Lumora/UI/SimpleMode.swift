@@ -56,7 +56,7 @@ private struct InfoHUD: View {
     var body: some View {
         if let d = model.descriptor {
             let a = model.analysis
-            let f = Int(model.previewTime * d.fps)
+            let f = AppModel.frameIndex(at: model.previewTime, fps: d.fps)
             let scene = a.map { $0.sceneIndex(for: f) }
             let motion = a.flatMap { an in scene.map { an.sceneMotion($0) } } ?? 0
             VStack(alignment: .leading, spacing: 3) {

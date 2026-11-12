@@ -14,7 +14,7 @@ final class AirPlayPreview {
     func prepare(_ model: AppModel) {
         guard var job = model.draftJob(), let d = model.descriptor else { return }
         busy = true
-        let start = Int(model.previewTime * d.fps)
+        let start = AppModel.frameIndex(at: model.previewTime, fps: d.fps)
         job.codec = .hevc
         job.bitDepth = 10
         job.chroma = .c420

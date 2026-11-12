@@ -16,7 +16,9 @@ enum AutoPresetEngine {
     static func generate(colors: [SourceColor], analysis a: AnalysisResult, report: HDRReportCard?) -> [PresetCandidate] {
         // Every plausible interpretation gets presets, so an uncertain detection (Apple Log vs Apple Log 2)
         // is resolved by simply looking at both.
-        let plausible = colors.filter { $0.confidence >= 0.25 }.prefix(2)
+        // The first reading is the one in use (the detected one, or the one the person chose), so it always gets
+        // presets even when its detection confidence is low.
+        let plausible = (colors.prefix(1) + colors.dropFirst().filter { $0.confidence >= 0.25 }).prefix(2)
         let isHDRSource = colors.first.map { $0.transfer == .pq || $0.transfer == .hlg } ?? false
         var looks: [Look] = [.natural, .punchy, .superPunchy, .cinematic, .brightClean, .moody]
         if isHDRSource { looks.insert(.ripRevive, at: 0) }

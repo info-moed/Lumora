@@ -67,7 +67,14 @@ enum Recommender {
         var delivery: DeliveryFormat = hdrSource || logSource ? .hdr10 : .sdr
         if !hdrSource && !logSource && goal == .watchOnTV {
             delivery = .hdr10
-            look = look == .original ? .natural : look
+            if look == .original {
+                look = .natural
+                // The Look line must state what is applied, not the "keep it as it is" it said before conversion.
+                if let i = items.firstIndex(where: { $0.area == "Look" }) {
+                    items[i] = .init(area: "Look", value: look.displayName,
+                                     why: "Converting to HDR needs a grade; Natural keeps the picture true to the original while rebuilding the highlights.")
+                }
+            }
             items.append(.init(area: "HDR", value: "Convert to HDR10", why: "Your TV can show brighter highlights than this SDR file has. Lumora rebuilds them; this is optional and can be turned off."))
         } else if goal == .share {
             delivery = hdrSource || logSource ? .dolbyVision84 : .sdr

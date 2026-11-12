@@ -71,7 +71,9 @@ enum FormatAdvisor {
                                 "Falls back gracefully on older or non-HDR screens."],
                           alsoMake: nil, watchOut: watch)
         case .homeTheater:
-            return Advice(delivery: .dolbyVision81, codec: .hevc, bitDepth: 10, peakNits: 1000, look: report == nil ? nil : .ripRevive,
+            // Rip Revive only for HDR that measured dim; well-graded HDR and SDR keep the current look.
+            let dim = report.map { $0.verdict == .conservative || $0.verdict == .fakeHDR } ?? false
+            return Advice(delivery: .dolbyVision81, codec: .hevc, bitDepth: 10, peakNits: 1000, look: dim ? .ripRevive : nil,
                           headline: "HDR10 + Dolby Vision 8.1 in HEVC, in an MKV with all audio and subtitles kept.",
                           why: ["Every HDR TV plays the HDR10 layer; Dolby Vision TVs (LG, Sony, TCL, Apple TV 4K) get scene-by-scene tuning on top.",
                                 "MKV keeps every audio track and subtitle from your original.",
