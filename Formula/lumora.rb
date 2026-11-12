@@ -22,7 +22,9 @@ class Lumora < Formula
   def install
     system "xcodegen", "generate"
     system "xcodebuild", "-project", "Lumora.xcodeproj", "-scheme", "Lumora", "-configuration", "Release",
-           "-derivedDataPath", buildpath/"build", "CODE_SIGN_IDENTITY=-", "CODE_SIGNING_REQUIRED=NO", "build"
+           "-derivedDataPath", buildpath/"build", "CODE_SIGN_IDENTITY=-", "CODE_SIGNING_REQUIRED=NO",
+           # Homebrew builds inside a sandbox; the Swift compiler's own sandbox for macro plugins can't nest in it.
+           "OTHER_SWIFT_FLAGS=$(inherited) -disable-sandbox", "build"
     prefix.install buildpath/"build/Build/Products/Release/Lumora.app"
     (bin/"lumora").write <<~SH
       #!/bin/bash
