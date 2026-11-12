@@ -645,6 +645,149 @@ kernel void repairKernel(texture2d<float, access::sample> generated [[texture(0)
 
 
 // ------------------------------------------------------------------------------------------
+// Learned artifact scorer (ArtifactScorer.swift): reference-free per-tile features of a generated frame and of the
+// alternatives it could be replaced with, then a per-tile switch to the chosen candidate.
+// ------------------------------------------------------------------------------------------
+
+// Analysis copy: box-averaged luma of A, B, the primary output P and the alternative output Q, packed as RGBA.
+kernel void qcLumaPackKernel(texture2d<float, access::read>  a   [[texture(0)]],
+                             texture2d<float, access::read>  b   [[texture(1)]],
+                             texture2d<float, access::read>  p   [[texture(2)]],
+                             texture2d<float, access::read>  q   [[texture(3)]],
+                             texture2d<float, access::write> dst [[texture(4)]],
+                             constant QCScoreUniforms& u         [[buffer(0)]],
+                             uint2 gid                           [[thread_position_in_grid]]) {
+    if (gid.x >= uint(u.analysisWidth) || gid.y >= uint(u.analysisHeight)) return;
+    uint W = p.get_width(), H = p.get_height();
+    float4 s = 0.0f;
+    float n = 0.0f;
+    for (int y = 0; y < u.scale; y++) for (int x = 0; x < u.scale; x++) {
+        uint2 c = min(gid * uint(u.scale) + uint2(x, y), uint2(W - 1, H - 1));
+        s += float4(lumaOf(a.read(c).rgb), lumaOf(b.read(c).rgb), lumaOf(p.read(c).rgb), lumaOf(q.read(c).rgb));
+        n += 1.0f;
+    }
+    dst.write(s / n, gid);
+}
+
+inline float4 qcAt(texture2d<float, access::read> t, int2 p, int2 lim) { return t.read(uint2(clamp(p, int2(0), lim))); }
+
+// One threadgroup of 32x32 threads per 64-px analysis tile; each thread samples one pixel of every 2x2 block (like
+// interpQCKernel). Writes QC_FEATS floats per tile: QC_SUMS sums (in this order) then QC_MAXES maxima.
+//  0 luma P   1 |A-B|   2 |P-Q|   3 |P-blend|   4 |Q-blend|   5 |P-nearest|   6 |Q-nearest|   7 texture max(gA, gB)
+//  8 gradient P   9 excess structure P   10 excess structure Q   11 novelty P   12 novelty Q
+//  13 novelty P > 0.04   14 novelty P > 0.10   15 novelty Q > 0.04   16 novelty Q > 0.10
+//  17 |A-B| > 0.02   18 |P-Q| > 0.02   19 luma A   20 luma B   21 sample count
+//  maxima: 22 |P-Q|   23 |A-B|   24 novelty P   25 novelty Q
+// Novelty = distance to the closest luma of A or B within +-3 px: structure that exists in neither neighbor.
+kernel void qcFeatureKernel(texture2d<float, access::read> L  [[texture(0)]],   // qcLumaPackKernel output
+                            device float* out                 [[buffer(0)]],
+                            constant QCScoreUniforms& u       [[buffer(1)]],
+                            uint2 tile                        [[threadgroup_position_in_grid]],
+                            uint2 lid                         [[thread_position_in_threadgroup]],
+                            uint2 tgSize                      [[threads_per_threadgroup]],
+                            uint sgi                          [[simdgroup_index_in_threadgroup]],
+                            uint lane                         [[thread_index_in_simdgroup]]) {
+    threadgroup float partial[32][QC_FEATS];
+    float f[QC_FEATS];
+    for (int k = 0; k < QC_FEATS; k++) f[k] = 0.0f;
+    int2 lim = int2(u.analysisWidth - 1, u.analysisHeight - 1);
+    bool live = int(tile.x) < u.tilesX && int(tile.y) < u.tilesY;
+    // 32 columns of threads; each thread walks down its column of the tile's 32x32 samples.
+    for (uint row = lid.y; live && row < 32; row += tgSize.y) {
+        int2 p = int2(tile * QC_TILE + uint2(lid.x, row) * 2);
+        if (p.x > lim.x || p.y > lim.y) continue;
+        float4 c = qcAt(L, p, lim);
+        float lA = c.x, lB = c.y, lP = c.z, lQ = c.w;
+        float4 g = abs(qcAt(L, p + int2(1, 0), lim) - qcAt(L, p - int2(1, 0), lim))
+                 + abs(qcAt(L, p + int2(0, 1), lim) - qcAt(L, p - int2(0, 1), lim));
+        float bestP = 1e9f, bestQ = 1e9f;
+        for (int dy = -3; dy <= 3; dy++) for (int dx = -3; dx <= 3; dx++) {
+            float2 ab = qcAt(L, p + int2(dx, dy), lim).xy;
+            bestP = min(bestP, min(abs(lP - ab.x), abs(lP - ab.y)));
+            bestQ = min(bestQ, min(abs(lQ - ab.x), abs(lQ - ab.y)));
+        }
+        float lBL = mix(lA, lB, u.t), lN = u.t < 0.5f ? lA : lB;
+        float tex = max(g.x, g.y);
+        float dAB = abs(lA - lB), dPQ = abs(lP - lQ);
+        f[0] += lP; f[1] += dAB; f[2] += dPQ; f[3] += abs(lP - lBL); f[4] += abs(lQ - lBL); f[5] += abs(lP - lN); f[6] += abs(lQ - lN);
+        f[7] += tex; f[8] += g.z; f[9] += max(0.0f, g.z - tex); f[10] += max(0.0f, g.w - tex);
+        f[11] += bestP; f[12] += bestQ;
+        f[13] += bestP > 0.04f ? 1.0f : 0.0f; f[14] += bestP > 0.10f ? 1.0f : 0.0f;
+        f[15] += bestQ > 0.04f ? 1.0f : 0.0f; f[16] += bestQ > 0.10f ? 1.0f : 0.0f;
+        f[17] += dAB > 0.02f ? 1.0f : 0.0f; f[18] += dPQ > 0.02f ? 1.0f : 0.0f;
+        f[19] += lA; f[20] += lB; f[21] += 1.0f;
+        f[22] = max(f[22], dPQ); f[23] = max(f[23], dAB); f[24] = max(f[24], bestP); f[25] = max(f[25], bestQ);
+    }
+    for (int k = 0; k < QC_SUMS; k++) f[k] = simd_sum(f[k]);
+    for (int k = QC_SUMS; k < QC_FEATS; k++) f[k] = simd_max(f[k]);
+    uint groups = (tgSize.x * tgSize.y + 31) / 32;
+    if (lane == 0) for (int k = 0; k < QC_FEATS; k++) partial[sgi][k] = f[k];
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    uint li = lid.y * tgSize.x + lid.x;
+    if (li < QC_FEATS && live) {
+        float s = 0.0f;
+        for (uint k = 0; k < groups; k++) s = li < QC_SUMS ? s + partial[k][li] : max(s, partial[k][li]);
+        out[(tile.y * uint(u.tilesX) + tile.x) * QC_FEATS + li] = s;
+    }
+}
+
+// Statistics of the alternative flow model's prediction per analysis tile. Slots: 0 |motion t->0|, 1 |motion t->1|
+// (in 1920-px-wide picture units), 2 forward/backward inconsistency, 3 inconsistency > 0.35, 4 occlusion (mask near
+// 0 or 1), 5 sample count, 6 unused, 7 max |motion| (float bits, atomic max).
+kernel void qcFlowStatsKernel(device const half* flow      [[buffer(0)]],
+                              device const half* mask      [[buffer(1)]],
+                              device atomic_float* out     [[buffer(2)]],
+                              device atomic_uint* omax     [[buffer(3)]],
+                              constant QCScoreUniforms& u  [[buffer(4)]],
+                              uint2 gid                    [[thread_position_in_grid]]) {
+    if (gid.x >= uint(u.modelWidth) || gid.y >= uint(u.modelHeight)) return;
+    uint plane = uint(u.tensorWidth * u.tensorHeight);
+    uint i = gid.y * uint(u.tensorWidth) + gid.x;
+    float2 f0 = float2(flow[i], flow[plane + i]);
+    float2 f1 = float2(flow[2 * plane + i], flow[3 * plane + i]);
+    float m = float(mask[i]);
+    float toRef = 1920.0f / float(u.modelWidth);
+    float2 ap = (float2(gid) + 0.5f) * float2(float(u.analysisWidth) / float(u.modelWidth), float(u.analysisHeight) / float(u.modelHeight));
+    uint tx = min(uint(ap.x) / uint(QC_TILE), uint(u.tilesX - 1)), ty = min(uint(ap.y) / uint(QC_TILE), uint(u.tilesY - 1));
+    uint t = ty * uint(u.tilesX) + tx;
+    float k = u.t / max(1.0f - u.t, 1e-3f);
+    float err = length(f0 + k * f1) / (1.0f + length(f0) + k * length(f1));
+    device atomic_float* o = out + t * QC_FLOW;
+    atomic_fetch_add_explicit(&o[0], length(f0) * toRef, memory_order_relaxed);
+    atomic_fetch_add_explicit(&o[1], length(f1) * toRef, memory_order_relaxed);
+    atomic_fetch_add_explicit(&o[2], err, memory_order_relaxed);
+    atomic_fetch_add_explicit(&o[3], err > 0.35f ? 1.0f : 0.0f, memory_order_relaxed);
+    atomic_fetch_add_explicit(&o[4], (m < 0.15f || m > 0.85f) ? 1.0f : 0.0f, memory_order_relaxed);
+    atomic_fetch_add_explicit(&o[5], 1.0f, memory_order_relaxed);
+    atomic_fetch_max_explicit(&omax[t], as_type<uint>(max(length(f0), length(f1)) * toRef), memory_order_relaxed);
+}
+
+// Per-tile switch between candidates (hard tile edges, so each tile is exactly the candidate that was scored).
+// choice: 0 primary, 1 alternative model, 2 cross-fade, 3 nearest original, 4 average of primary and alternative.
+kernel void qcComposeKernel(texture2d<float, access::read>  p   [[texture(0)]],
+                            texture2d<float, access::read>  q   [[texture(1)]],
+                            texture2d<float, access::read>  a   [[texture(2)]],
+                            texture2d<float, access::read>  b   [[texture(3)]],
+                            texture2d<float, access::write> dst [[texture(4)]],
+                            device const uchar* choice          [[buffer(0)]],
+                            constant QCScoreUniforms& u         [[buffer(1)]],
+                            uint2 gid                           [[thread_position_in_grid]]) {
+    if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) return;
+    uint full = uint(QC_TILE * u.scale);
+    uint tx = min(gid.x / full, uint(u.tilesX - 1)), ty = min(gid.y / full, uint(u.tilesY - 1));
+    uchar c = choice[ty * uint(u.tilesX) + tx];
+    float4 v;
+    switch (c) {
+        case 1: v = q.read(gid); break;
+        case 2: v = mix(a.read(gid), b.read(gid), u.t); break;
+        case 3: v = u.t < 0.5f ? a.read(gid) : b.read(gid); break;
+        case 4: v = 0.5f * (p.read(gid) + q.read(gid)); break;
+        default: v = p.read(gid); break;
+    }
+    dst.write(v, gid);
+}
+
+// ------------------------------------------------------------------------------------------
 // HDR scopes: waveform on the PQ (ST 2084) scale and CIE 1931 xy chromaticity of the graded output.
 // ------------------------------------------------------------------------------------------
 kernel void scopeKernel(texture2d<float, access::sample> src   [[texture(0)]],

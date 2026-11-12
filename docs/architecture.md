@@ -82,7 +82,7 @@ changes. Aimed at contributors. Read [Building from source](building.md) first.
 | `Core/Analysis/` | One-pass film analysis and HDR judgment | `SceneAnalyzer`, `ContentProfiler`, `CropDetector`, `HDRReportCard`, `ReferenceMatcher`, `HDRLibrary`, `RegressionSet` |
 | `Core/Presets/` | Turning analysis into choices and advice | `AutoPresetEngine`, `Recommender`, `FormatAdvisor` |
 | `Core/Render/` | Metal device, pipelines and pass encoding | `MetalContext`, `GradeRenderer`, `GrainProcessor` |
-| `Core/Interpolation/` | Planning, generating, checking and repairing in-between frames | `InterpolationPlanner`, `InterpolationEngines`, `InterpolationQC`, `MotionRouter`, `MotionScan`, `InterpolationEvaluator`, `ExternalRepair` |
+| `Core/Interpolation/` | Planning, generating, checking and repairing in-between frames | `InterpolationPlanner`, `InterpolationEngines`, `InterpolationQC` (`FrameStream`), `ArtifactScorer`, `MotionRouter`, `MotionScan`, `InterpolationEvaluator`, `ExternalRepair` |
 | `Core/Upscale/` | Crop and upscale before grading | `PreGradeStage`, `Upscaler` |
 | `Core/Quality/` | Metrics, quality-target encoding, planning and forecasting | `QualityMetric`, `MetricSuite`, `VMAFRunner`, `TargetQualityEncoder`, `EncodeMonitor`, `EncodePlanner`, `EncodeRecipes`, `SizeForecaster`, `QualityPredictor` |
 | `Core/Export/` | The export engine and HDR metadata | `ExportEngine`, `ExportJob`, `Codec`, `DeliveryFormat`, `EncoderCatalog`, `HDRMetadata`, `DolbyVisionRetimer`, `ExportManifest` |
@@ -141,7 +141,8 @@ CPU mirrors of the transfer functions live in `TransferMath.swift`, pinned by `C
 
 Other kernel families: analysis (`analyzeKernel`, `measureKernel`, histograms, `contentStatsKernel`), packing for
 encoders (`pack420/422Kernel`, `packPlanarKernel`, `packY416Kernel`), interpolation (`flowProxy`, `flowWarpBlend`,
-`flowConsistency`, `blend`, `interpQC`, `repair`, `temporalBlend`), Core ML tensor bridges, grain (`bilateral`,
+`flowConsistency`, `blend`, `interpQC`, `repair`, `temporalBlend`, and the artifact scorer's `qcLumaPack`, `qcFeature`,
+`qcFlowStats`, `qcCompose`), Core ML tensor bridges, grain (`bilateral`,
 `grainStats`, `regrain`), scopes and probes. `MetalContext` builds a pipeline for each kernel at start-up and fails
 loudly if one is missing.
 
@@ -159,8 +160,8 @@ loudly if one is missing.
    hardware encode engine, or several CLI encoder instances to fill the CPU (or the measured value from
    `MacProfile`).
 5. **Per segment, three stages connected by `BoundedChannel`s:**
-   - *Producer*: `FrameStream` decodes and generates frames (Core ML or blend fallback), `InterpolationQC` checks and
-     repairs them, `PreGradeStage` crops and upscales.
+   - *Producer*: `FrameStream` decodes and generates frames (Core ML or blend fallback), `ArtifactScorer` checks and
+     repairs them per tile, `PreGradeStage` crops and upscales.
    - *Grader*: `GradeRenderer.encodeGrade` then pack to planar Y'CbCr at the target depth and chroma.
    - *Writer*: `AVAssetWriter` + VideoToolbox for HEVC/ProRes, or the CLI encoder fed Y4M through stdin or a FIFO.
 6. **Join** segments: AVFoundation passthrough stitch for hardware `.mov`/`.mp4`, raw concatenation for Annex-B /
@@ -229,6 +230,7 @@ All paths are listed in the [Command-line guide](command-line.md#files-and-folde
 | UI | `UISmokeTests` build every window offscreen with a video loaded and draw it to PNG |
 | Hardware gating | `TestHardware` skips GPU/media-engine tests on machines without them (CI VMs) |
 | Dependencies | `scripts/deps.sh verify` (flags + build + tests), weekly in CI and optionally on your Mac |
+| Interpolation QC | `QCBenchmarkTests` (opt-in, `scripts/qc-bench.sh`): ground truth from a native 60 fps film (frames removed and rebuilt), every run-time candidate and feature per 64-px tile, the current checker against raw model output and a per-tile oracle, and `scripts/qc-bench.sh score <label>` to score a new checker through the real `FrameStream`. `QCScorerTrainingTests` (`scripts/qc-bench.sh scorer-data`) builds the artifact scorer's training data with the app's own feature code, including copies with planted artifacts, and `scripts/qc_scorer/train.py` (numpy) retrains it; `QCScorerTests` pins the trained trees, the never-worse guarantee and the planted-artifact catch rate on a committed fixture of numbers from validation frames, and runs planted artifacts through the real GPU path. Sampled frames are listed in `Tests/LumoraTests/Resources/qc-bench-manifest.json`; the film and caches stay outside the repository |
 
 Test runs are headless: under XCTest, `LumoraMain` starts the app with no windows, no Dock icon and no focus change.
 

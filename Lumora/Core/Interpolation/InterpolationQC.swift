@@ -5,9 +5,9 @@ import MetalPerformanceShaders
 struct QCEvent: Codable, Hashable, Identifiable {
     enum Action: String, Codable {
         case accepted = "Clean"
-        case reRendered = "Re-rendered with stronger model"
-        case patched = "Bad regions patched"
-        case replaced = "Frame replaced (too broken to patch)"
+        case reRendered = "Re-rendered with stronger model"     // no longer produced; kept so saved events decode
+        case patched = "Bad regions replaced"
+        case replaced = "Held the nearest original (shot change)"
     }
     var id: Int { outputIndex }
     var outputIndex: Int
@@ -108,9 +108,10 @@ final class FrameStream {
     private let sceneOf: (Int) -> Int
     private let proxy: GradeUniforms
     private var engines: [String: InterpolationEngine] = [:]
-    private let repairEngine: InterpolationEngine?
     private let blend = BlendInterpolator()
-    private let qc = InterpolationQC()
+    private let scorer = ArtifactScorer()
+    private var altEngine: CoreMLInterpolator?
+    private var altLoaded = false
     private let grain = GrainProcessor()
     private var grainSigma: Float?
     private var cleanCache: [Int: MTLTexture] = [:]
@@ -142,14 +143,6 @@ final class FrameStream {
         self.sceneOf = sceneOf
         self.proxy = proxyUniforms
         self.cursor = plan.startIndex
-        qc.grainAware = settings.grainAware
-        let specs = InterpolationModelSpec.all()
-        if plan.contains(where: { $0.kind == .generated }), settings.artifactRepair, let id = settings.repairModelID,
-           let s = specs.first(where: { $0.id == id }), s.isInstalled {
-            repairEngine = try CoreMLInterpolator(spec: s, proxyUniforms: proxyUniforms)
-        } else {
-            repairEngine = nil
-        }
         let first = plan.first.map { min($0.a, $0.b) } ?? 0
         let last = plan.last.map { max($0.a, $0.b) } ?? 0
         try source.start(at: first, count: last - first + 1)
@@ -257,22 +250,31 @@ final class FrameStream {
         }
     }
 
+    /// The artifact scorer's second opinion: a flow model (the chosen repair model if it is one) at about 960 px wide.
+    private func alternative(forWidth w: Int) -> CoreMLInterpolator? {
+        if !altLoaded {
+            altLoaded = true
+            let flows = InterpolationModelSpec.all().filter { $0.isInstalled && $0.isFlow }
+            let spec = flows.first { $0.id == settings.repairModelID } ?? flows.first { $0.id == "rife-4.25-flow" } ?? flows.first
+            altEngine = spec.flatMap { try? CoreMLInterpolator(spec: $0, proxyUniforms: proxy) }
+        }
+        altEngine?.modelScaleOverride = ArtifactScorer.alternativeModelScale(forWidth: w)
+        return altEngine
+    }
+
     private func generate(_ batch: [(index: Int, t: Float)], a fa: DecodedFrame, b fb: DecodedFrame, pa: Int, pb: Int) throws {
         batchLeases.removeAll()
         defer { batchLeases.removeAll() }
         let scene = sceneOf(pa)
-        let (engine, route) = engine(forScene: scene)
+        let (engine, _) = engine(forScene: scene)
         // Grain-aware: interpolate the clean picture; grain is put back afterwards from the nearest real frame.
         let ga = settings.grainAware ? clean(fa) : fa.texture
         let gb = settings.grainAware ? clean(fb) : fb.texture
-        let tiles = ((ga.width + qc.tileSize - 1) / qc.tileSize, (ga.height + qc.tileSize - 1) / qc.tileSize)
-        // Scenes the map isn't sure about (or that are hard) get two independent generations; keep the cleaner one.
-        let doubleUp = settings.intelligence == .exhaustive && (route.map { $0.status == .uncertain || $0.pain > 0.04 } ?? true)
 
         var results: [InterpolationOutput]
         if let engine {
             let outs = batch.map { _ in scratch(like: ga) }
-            results = try engine.interpolate(ga, gb, times: batch.map(\.t), into: outs, qcTiles: tiles)
+            results = try engine.interpolate(ga, gb, times: batch.map(\.t), into: outs, qcTiles: (1, 1))
         } else {
             results = batch.map { item in
                 let o = scratch(like: ga)
@@ -281,55 +283,33 @@ final class FrameStream {
             }
         }
 
-        func score(_ tex: MTLTexture, _ motion: [Bool]?) -> (Float, [Bool]) {
-            var (_, bad) = qc.score(a: ga, b: gb, mid: tex, sensitivity: settings.sensitivity)
-            if let motion, motion.count == bad.count { bad = zip(bad, motion).map { $0 || $1 } }
-            return (Float(bad.filter { $0 }.count) / Float(max(1, bad.count)), bad)
-        }
-
+        // Artifact repair: the learned scorer (ArtifactScorer) switches only the tiles it predicts are broken to the
+        // candidate it predicts is better there, and holds the nearest original when the pair straddles a shot change
+        // the analyzer missed. The old rules (cross-fade patches, replacing frames with more than 35% flagged tiles,
+        // the flicker check) were measured against ground truth and removed: each one lowered quality.
         var finals: [(tex: MTLTexture, fraction: Float, action: QCEvent.Action)] = []
+        let primaryIsFlow = (engine as? CoreMLInterpolator)?.spec.isFlow ?? false
         for (k, item) in batch.enumerated() {
-            var result = results[k].texture
-            var action = QCEvent.Action.accepted
-            guard settings.artifactRepair, engine != nil else { finals.append((result, 0, .accepted)); continue }
-            var (fraction, bad) = score(result, results[k].motionBad)
-            if (fraction > 0 || doubleUp), let repairEngine {
-                let alt = scratch(like: ga)
-                let r2 = try repairEngine.interpolate(ga, gb, times: [item.t], into: [alt], qcTiles: tiles)
-                let s2 = score(alt, r2[0].motionBad)
-                if s2.0 < fraction { result = alt; fraction = s2.0; bad = s2.1; action = .reRendered }
+            let result = results[k].texture
+            guard settings.artifactRepair, engine != nil, scorer.model != nil else { finals.append((result, 0, .accepted)); continue }
+            var q: MTLTexture?
+            let alt = alternative(forWidth: ga.width)
+            if let alt {
+                let o = scratch(like: ga)
+                _ = try alt.interpolate(ga, gb, times: [item.t], into: [o], qcTiles: (1, 1))
+                q = o
             }
-            if fraction > 0.35 {
-                result = (item.t < 0.5 ? ga : gb)
-                action = .replaced
-            } else if fraction > 0 {
-                let fallback = scratch(like: ga)
-                blend.encode(nil, ga, gb, t: item.t, into: fallback)
-                let patched = scratch(like: ga)
-                qc.patch(generated: result, fallback: fallback, bad: bad, into: patched)
-                result = patched
-                action = .patched
-            }
-            finals.append((result, fraction, action))
-        }
-
-        // Flicker check: steps between consecutive frames (real → generated… → real) should be even.
-        if settings.flickerCheck, finals.count >= 2 {
-            let r = GradeRenderer()
-            var chain = [ga] + finals.map(\.tex) + [gb]
-            var steps: [Float] = []
-            for i in 0..<(chain.count - 1) { steps.append(r.blendErrors(chain[i], chain[i + 1], chain[i + 1], t: 0).motion) }
-            let median = steps.sorted()[steps.count / 2]
-            for k in finals.indices where median > 0.002 {
-                // Generated frame k sits between steps k and k+1; a spike on both sides means it jumps out of line.
-                if steps[k] > median * 2.2 && steps[k + 1] > median * 2.2 {
-                    let fixed = scratch(like: ga)
-                    blend.encode(nil, chain[k], chain[k + 2], t: 0.5, into: fixed)
-                    finals[k].tex = fixed
-                    finals[k].action = .patched
-                    finals[k].fraction = max(finals[k].fraction, 0.01)
-                    chain[k + 1] = fixed
-                }
+            let m = scorer.measure(a: ga, b: gb, primary: result, alternative: q, alternativeEngine: alt, t: item.t,
+                                   primaryIsFlow: primaryIsFlow)
+            let d = scorer.decide(m, sensitivity: settings.sensitivity, refine: settings.intelligence == .exhaustive)
+            if d.shotChange {
+                finals.append((item.t < 0.5 ? ga : gb, 1, .replaced))
+            } else if d.switched > 0 {
+                let out = scratch(like: ga)
+                scorer.compose(primary: result, alternative: q, a: ga, b: gb, t: item.t, decision: d, into: out)
+                finals.append((out, d.fraction, .patched))
+            } else {
+                finals.append((result, 0, .accepted))
             }
         }
 

@@ -9,6 +9,7 @@ struct InterpolationSettings: Codable, Hashable {
     }
     var mode: Mode = .off
     var primaryModelID: String = "rife-4"
+    /// The flow model the artifact scorer asks for a second opinion (any installed flow model when this one isn't).
     var repairModelID: String? = "film"
     var artifactRepair = true
     var sensitivity: Float = 0.5               // 0 = only obvious artifacts, 1 = very strict
@@ -16,7 +17,9 @@ struct InterpolationSettings: Codable, Hashable {
     var intelligence: MotionIntelligence = .eachFrame
     var confidence: Double = 0.97              // per-scene routing keeps testing until this sure
     var grainAware = false                     // de-grain → interpolate → re-grain, and grain-blind artifact checks
-    var flickerCheck = true                    // consecutive generated frames must move evenly
+    /// No longer used. The old flicker check never fired on the ground-truth benchmark (0 of 1,326 frames) and its
+    /// fix was a cross-fade; it was removed. Kept so saved settings still decode.
+    var flickerCheck = true
     var routes: [Int: SceneRoute] = [:]        // scene → chosen model (from the motion map)
 }
 

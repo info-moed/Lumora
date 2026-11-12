@@ -84,9 +84,13 @@ final class CoreMLInterpolator: InterpolationEngine {
     var proxyUniforms: GradeUniforms
     private let model: MLModel
     private let ctx = MetalContext.shared
-    private var dims = (tw: 0, th: 0, cw: 0, ch: 0)
-    private var bufA: MTLBuffer?, bufB: MTLBuffer?, bufOut: MTLBuffer?, bufFlow: MTLBuffer?, bufMask: MTLBuffer?
-    private var tileBuffer: MTLBuffer?
+    // Read-only from outside so the QC benchmark can measure the last prediction's motion, mask and tile counts.
+    private(set) var dims = (tw: 0, th: 0, cw: 0, ch: 0)
+    private(set) var bufA: MTLBuffer?, bufB: MTLBuffer?, bufOut: MTLBuffer?, bufFlow: MTLBuffer?, bufMask: MTLBuffer?
+    private(set) var tileBuffer: MTLBuffer?
+    /// Flow mode only: run the network at this fraction of the frame size instead of the spec's scale. The artifact
+    /// scorer uses it for a cheap second opinion at about 960 px wide.
+    var modelScaleOverride: Float?
 
     init(spec: InterpolationModelSpec, proxyUniforms: GradeUniforms, computeUnits: MLComputeUnits? = nil) throws {
         self.spec = spec
@@ -109,7 +113,7 @@ final class CoreMLInterpolator: InterpolationEngine {
     }
 
     private func prepare(width: Int, height: Int) {
-        let scale: Float = spec.isFlow ? (spec.modelScale ?? (width > 2560 ? 0.5 : 1.0)) : 1.0
+        let scale: Float = spec.isFlow ? (modelScaleOverride ?? spec.modelScale ?? (width > 2560 ? 0.5 : 1.0)) : 1.0
         let cw = max(64, Int(Float(width) * scale)), ch = max(64, Int(Float(height) * scale))
         let m = max(1, spec.padMultiple)
         let tw = (cw + m - 1) / m * m, th = (ch + m - 1) / m * m
