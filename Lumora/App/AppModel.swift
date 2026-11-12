@@ -301,7 +301,12 @@ final class AppModel {
         let scale = Double(1920 * 1080) / Double(max(1, width * height))
         var fps = 160.0 * scale
         if interpolation.mode != .off { fps = min(fps, 24 * scale) }
-        if case .model = upscale { fps = min(fps, 5 * scale) }
+        if case .model(let id, _) = upscale {
+            // Real-ESRGAN's cost follows the input picture (measured per model, see upscale_models.json).
+            let input = Double(max(1, (descriptor?.width ?? 1920) * (descriptor?.height ?? 1080))) / 1_000_000
+            let perMP = UpscaleModelSpec.all().first { $0.id == id }?.secondsPerMegapixel ?? 2
+            fps = min(fps, 1 / (perMP * input))
+        }
         return fps
     }
 

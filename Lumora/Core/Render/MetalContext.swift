@@ -35,7 +35,7 @@ final class MetalContext {
         ])
         for name in ["logLumaKernel", "gradeKernel", "pack420Kernel", "pack422Kernel",
                      "analyzeKernel", "measureKernel", "lutKernel",
-                     "packPlanarKernel", "packY416Kernel", "textureToTensorKernel", "tensorToTextureKernel",
+                     "packPlanarKernel", "packY416Kernel", "textureToTensorKernel", "tensorToTextureKernel", "antiRingKernel",
                      "blendKernel", "interpQCKernel", "repairKernel", "guidedCoeffKernel",
                      "temporalBlendKernel", "scopeKernel", "probeKernel", "rowColMaxKernel", "nitsHistogramKernel", "cropCopyKernel",
                      "flowProxyKernel", "flowWarpBlendKernel", "flowConsistencyKernel", "compareKernel",

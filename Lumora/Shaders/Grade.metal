@@ -581,6 +581,25 @@ kernel void tensorToTextureKernel(device const half* tensor           [[buffer(0
     dst.write(float4(float(tensor[i]), float(tensor[plane + i]), float(tensor[2 * plane + i]), 1.0f), uint2(o));
 }
 
+// Anti-ringing for super-resolution output (in place): every output pixel is clamped to the range of the 3x3 input
+// pixels around the one it came from. GAN upscalers overshoot at edges; on PQ / HLG / log that overshoot is new,
+// far brighter highlights (measured: Real-ESRGAN general v3 put 1% of samples > 0.05 PQ above anything nearby).
+kernel void antiRingKernel(texture2d<float, access::read> src        [[texture(0)]],
+                           texture2d<float, access::read_write> up   [[texture(1)]],
+                           constant int& scale                       [[buffer(0)]],
+                           uint2 gid                                 [[thread_position_in_grid]]) {
+    if (gid.x >= up.get_width() || gid.y >= up.get_height()) return;
+    int2 p = int2(gid) / scale;
+    int2 hi = int2(src.get_width() - 1, src.get_height() - 1);
+    float3 lo = float3(INFINITY), mx = float3(-INFINITY);
+    for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+        float3 v = src.read(uint2(clamp(p + int2(x, y), int2(0), hi))).rgb;
+        lo = min(lo, v); mx = max(mx, v);
+    }
+    float4 v = up.read(gid);
+    up.write(float4(clamp(v.rgb, lo, mx), v.a), gid);
+}
+
 kernel void blendKernel(texture2d<float, access::sample> a [[texture(0)]],
                         texture2d<float, access::sample> b [[texture(1)]],
                         texture2d<float, access::write> dst [[texture(2)]],

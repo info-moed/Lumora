@@ -145,6 +145,7 @@ them on every push.
 | Ingest and analysis | MOV, MP4, MKV, WebM, AVI, Y4M, TS; H.264, HEVC, ProRes, AV1, VP9, MPEG-2; SDR, HDR10, HLG; interlaced, telecined, anamorphic, VFR; letterbox and pillarbox detection; cuts, fades and repeated frames; content types. |
 | Grading | Every look to SDR, HDR10 (1000/2000/4000 nits) and HLG; every control at its extremes; LUT export (matches Lumora's own render through FFmpeg `lut3d`); HDR stills (HEIC, AVIF); presets; reference matching; MetalFX upscaling. |
 | Frame interpolation | RIFE 4.25 converted to Core ML through Model Lab (image and HDR flow models) and run in the real pipeline: +11 to +12 dB over plain blending when rebuilding real frames. Exact frame timing for every mode (2×–8×, 60/59.94, slow motion); never across a cut. |
+| Upscaling | All five official Real-ESRGAN models converted to Core ML (checksums checked, conversion matches PyTorch at 69–73 dB) and run inside real SDR and HDR10 exports: exact output size, HDR10 tags and brightness kept, 10-bit precision through the model, no visible tile edges. Measured against original *Tears of Steel* and *Big Buck Bunny* frames: on compressed sources the general model beats Lanczos by about 5 VMAF NEG points; on clean sources Lanczos and MetalFX stay ahead ([results](docs/features.md#upscaling)). |
 | Artifact checker | Measured against *Big Buck Bunny*'s native 60 fps render on held-out footage: makes 0.36% of frames worse (by at most 0.16 dB), where the previous design made 33–83% worse; catches 88–96% of missed shot changes. Details in the [feature reference](docs/features.md#interpolation-models). |
 | Quality targets and metrics | Encoding to a VMAF target (HEVC, AV1) with dip repair; VMAF, VMAF NEG, XPSNR, CAMBI, MS-SSIM, PSNR-HVS, CIEDE2000; size forecasts vs actual; encoder calibration on this Mac. |
 | Encoder presets | SVT-AV1 presets tuned per content type from measurements on *Tears of Steel* and *Big Buck Bunny*: 10.5% smaller at equal quality on average, up to 45% on low-light footage ([results](docs/encoding/tuning-svtav1.md)). |
@@ -160,8 +161,11 @@ them on every push.
 - **AV2 (AVM):** the reference encoder isn't installed; only its clean "not installed" message is tested.
 - **Hardware or software not available here:** vendor RAW SDKs (BRAW, R3D, ARRIRAW, Canon RAW); real camera Bayer DNGs
   and Apple Log footage; hard-drive sources; AirPlay playback to an Apple TV; Mac notifications; TMDB lookups (need a key).
-- **Models and metrics not installed:** FILM, IFRNet and GMFSS (no converters yet), Real-ESRGAN, ColorVideoVDP,
-  SSIMULACRA 2 and AVQT. Their "missing" paths are tested.
+- **Models and metrics not installed:** FILM, IFRNet and GMFSS (no converters yet), ColorVideoVDP, SSIMULACRA 2 and
+  AVQT. Their "missing" paths are tested.
+- **Real-ESRGAN on grainy film and on true 2D anime:** not measured (the benchmark used a live-action film and a CGI
+  animation). Real-ESRGAN is slow: 0.75–14 s per frame for 1080p→4K here, so a two-hour film takes about 1.5 days
+  with the fastest model and weeks with x4plus.
 - **Optimize for this Mac:** deliberately not run on the development machine yet.
 - **Preset tuning for x265, VVenC and libaom:** in progress (SVT-AV1 is done).
 

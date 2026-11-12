@@ -60,13 +60,13 @@ struct ContentTuning: Codable, Hashable {
                                  interpolationModels: ["rife-4.25-flow", "rife-4.18-flow", "rife-4.26-flow", "rife-4.25", "rife-4"],
                                  repairModel: nil, qcSensitivity: 0.5, smoothDuplicates: false, deband: 0, edgeProtection: 0.6,
                                  punchScale: 1, grain: .keep, encoderTune: "default", vmafModel: "vmaf_v0.6.1",
-                                 targetVMAF: 95, upscaleModel: "realesrgan-x2plus")
+                                 targetVMAF: 95, upscaleModel: "realesr-general-x4v3")
         case .realLifeHeavyGrain:
             return ContentTuning(kind: k, summary: "Film or high-ISO grain. Grain is random by nature, so the artifact check relies more on motion agreement; the encoder models grain instead of spending bits on it.",
                                  interpolationModels: ["rife-4.25-flow", "rife-4.18-flow", "rife-4.25"],
                                  repairModel: nil, qcSensitivity: 0.15, smoothDuplicates: false, deband: 0, edgeProtection: 0.8,
                                  punchScale: 0.7, grain: .synthesize, encoderTune: "grain", vmafModel: "vmaf_v0.6.1",
-                                 targetVMAF: 93, upscaleModel: "realesrgan-x2plus")
+                                 targetVMAF: 93, upscaleModel: "realesr-general-x4v3")
         case .anime:
             return ContentTuning(kind: k, summary: "Modern digital animation. Interpolates between real drawings (skips held frames), protects line art, prevents banding in flat color.",
                                  interpolationModels: ["rife-4.25-flow", "rife-4.22-flow", "rife-4.6-flow", "rife-4.25"],
@@ -84,7 +84,7 @@ struct ContentTuning: Codable, Hashable {
                                  interpolationModels: ["rife-4.25-flow", "rife-4.26-flow", "rife-4.25"],
                                  repairModel: nil, qcSensitivity: 0.6, smoothDuplicates: false, deband: 0.3, edgeProtection: 0.7,
                                  punchScale: 0.8, grain: .keep, encoderTune: "default", vmafModel: "vmaf_v0.6.1",
-                                 targetVMAF: 95, upscaleModel: "realesrgan-x2plus")
+                                 targetVMAF: 95, upscaleModel: "realesr-general-x4v3")
         case .screenContent:
             return ContentTuning(kind: k, summary: "Text, UI and sharp graphics. Interpolation is usually unnecessary; the encoder uses screen-content tools.",
                                  interpolationModels: ["rife-4.25-lite", "rife-4.25"],
@@ -96,13 +96,13 @@ struct ContentTuning: Codable, Hashable {
                                  interpolationModels: ["rife-4.25-flow", "rife-4.18-flow", "rife-4.25"],
                                  repairModel: nil, qcSensitivity: 0.2, smoothDuplicates: false, deband: 0.3, edgeProtection: 0.8,
                                  punchScale: 0.6, grain: .synthesize, encoderTune: "grain", vmafModel: "vmaf_v0.6.1",
-                                 targetVMAF: 93, upscaleModel: "realesrgan-x2plus")
+                                 targetVMAF: 93, upscaleModel: "realesr-general-x4v3")
         case .fastMotion:
             return ContentTuning(kind: k, summary: "Big, fast movement. Strongest motion models first and a strict artifact check, since large motion is where interpolation breaks.",
                                  interpolationModels: ["rife-4.25-flow", "rife-4.26-flow", "rife-4.18-flow", "rife-4.25"],
                                  repairModel: nil, qcSensitivity: 0.7, smoothDuplicates: false, deband: 0, edgeProtection: 0.6,
                                  punchScale: 0.9, grain: .keep, encoderTune: "default", vmafModel: "vmaf_v0.6.1",
-                                 targetVMAF: 95, upscaleModel: "realesrgan-x2plus")
+                                 targetVMAF: 95, upscaleModel: "realesr-general-x4v3")
         }
     }
 }

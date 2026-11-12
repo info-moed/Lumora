@@ -313,7 +313,50 @@ cp -R RIFE4.mlpackage RIFE4Flow.mlpackage ~/Library/Application\ Support/Lumora/
 
 Options: `--max-size` (largest dimension, default 4096), `--mask-is-probability` (only for a modified IFNet whose
 mask is already 0…1; every RIFE 4.x returns raw mask logits, so a sigmoid is applied by default). The converter checks
-the converted model against PyTorch at a second size before saving it. Real-ESRGAN: `scripts/convert_realesrgan_coreml.py --model <name> --weights <file.pth>`.
+the converted model against PyTorch at a second size before saving it.
+
+### Real-ESRGAN (upscaling)
+
+The converter needs only `torch`, `coremltools` and `numpy` (Model Lab's environment has them; no BasicSR or
+`realesrgan` package). Download the official weights from the
+[Real-ESRGAN releases](https://github.com/xinntao/Real-ESRGAN/releases):
+
+| `--model` | Weights file (release) | Installed as | Tile |
+|---|---|---|---|
+| `x4plus` | `RealESRGAN_x4plus.pth` (v0.1.0) | `RealESRGAN_x4plus.mlpackage` | 256 |
+| `x2plus` | `RealESRGAN_x2plus.pth` (v0.2.1) | `RealESRGAN_x2plus.mlpackage` | 512 |
+| `x4plus-anime` | `RealESRGAN_x4plus_anime_6B.pth` (v0.2.2.4) | `RealESRGAN_x4plus_anime_6B.mlpackage` | 256 |
+| `animevideov3` | `realesr-animevideov3.pth` (v0.2.5.0) | `RealESR_AnimeVideoV3.mlpackage` | 384 |
+| `general-x4v3` | `realesr-general-x4v3.pth` (v0.2.5.0) | `RealESR_GeneralX4v3.mlpackage` | 384 |
+
+```bash
+python scripts/convert_realesrgan_coreml.py --model x2plus --weights RealESRGAN_x2plus.pth
+```
+
+The model is written straight to `~/Library/Application Support/Lumora/Models/` (`--out-dir` to change it), and an
+older compiled copy is removed so Lumora recompiles it. The converter:
+
+- refuses a weights file whose SHA-256 isn't the official release file's (`--allow-unknown-weights` for fine-tunes);
+  the expected hashes are in the script;
+- loads every tensor of the checkpoint strictly (a wrong network layout fails instead of converting random layers);
+- compares the Core ML model (fp16) with PyTorch (fp32) on a test picture and refuses to save below 40 dB PSNR
+  (the official models convert at 69–73 dB).
+
+`--tile` changes the square tile size; Lumora reads the tile size from the model, so any multiple of 4 works, but the
+defaults were measured to be fastest on the Neural Engine. `--check-catalog` only checks that the recipes match
+[`upscale_models.json`](https://github.com/info-moed/Lumora/blob/main/Lumora/Resources/upscale_models.json) (file,
+tile, scale). The benchmark behind the [upscaling results](features.md#upscaling) is
+`RealESRGANTests/test9_Benchmark`:
+
+```bash
+TEST_RUNNER_LUMORA_UPSCALE_BENCH=1 xcodebuild -project Lumora.xcodeproj -scheme Lumora test -only-testing:LumoraTests/RealESRGANTests/test9_Benchmark
+```
+
+It reads *Tears of Steel* and *Big Buck Bunny* from `~/Library/Caches/Lumora-Bench` and writes
+`upscale/results.json` there. Options (each with the `TEST_RUNNER_` prefix): `LUMORA_UPSCALE_FRAMES` (default 4),
+`LUMORA_UPSCALE_MODELS` (comma-separated ids, also `bicubic`, `lanczos`, `metalfx`), `LUMORA_UPSCALE_SETS`,
+`LUMORA_UPSCALE_RAW=1` (also score without the anti-ringing clamp), `LUMORA_UPSCALE_UNITS=gpu|ane`,
+`LUMORA_UPSCALE_SPEED=0` (skip the 1080p→4K timing).
 
 ---
 
