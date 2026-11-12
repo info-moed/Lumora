@@ -42,6 +42,6 @@ final class PlannerTests: XCTestCase {
         let args = r.options.flatMap(\.args)
         XCTAssert(args.contains("--aq-mode"))
         XCTAssert(args.contains("--limit-sao"))
-        XCTAssertEqual(r.rungs.first?.presetValue, "fast")
+        XCTAssertEqual(r.rungs.first?.presetValue, "faster")
     }
 }

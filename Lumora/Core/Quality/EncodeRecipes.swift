@@ -145,18 +145,23 @@ enum EncodeRecipes {
                                 ],
                                 options: opts, baseFps1080: 55)
         case .hevc12:
-            let opts: [EncodeOption] = [
+            // Values, speed costs and savings measured on this Mac at preset slow (docs/encoding/tuning-x265.md).
+            let psy = x265Psy(kind)
+            var opts: [EncodeOption] = [
                 EncodeOption(id: "aq3", title: "Protect dark scenes",
-                             detail: "AQ mode 3: adaptive quantization with a bias toward dark areas, where banding and blocking show first. A staple for anime.",
-                             args: ["--aq-mode", "3"], visualOnly: true,
+                             detail: "AQ mode 3: adaptive quantization with a bias toward dark areas, where banding and blocking show first."
+                                + (x265AQStrength(kind).map { " Strength \($0) for flat animation, which saves bits on plain areas." } ?? ""),
+                             args: ["--aq-mode", "3"] + (x265AQStrength(kind).map { ["--aq-strength", $0] } ?? []), visualOnly: true,
                              recommendedFor: ContentKind.allCases.filter { $0 != .screenContent }),
                 EncodeOption(id: "bframes", title: anime ? "16 B-frames" : "8 B-frames",
-                             detail: "More bidirectional frames; helps static and slow scenes. Cost is small.",
-                             args: ["--bframes", anime ? "16" : "8"], speedCost: anime ? 1.08 : 1.04, vmafSaving: 0.02),
-                EncodeOption(id: "ref", title: "6 reference frames", detail: "More frames to predict from.",
-                             args: ["--ref", "6"], speedCost: 1.10, vmafSaving: 0.01),
-                EncodeOption(id: "rclook", title: "60-frame look-ahead", detail: "Better rate planning over longer stretches.",
-                             args: ["--rc-lookahead", "60"], speedCost: 1.03, vmafSaving: 0.01),
+                             detail: "More bidirectional frames. Measured here: no smaller at equal quality, and clearly slower.",
+                             args: ["--bframes", anime ? "16" : "8"], speedCost: anime ? 1.54 : 1.19, vmafSaving: 0),
+                EncodeOption(id: "ref", title: "6 reference frames", detail: "More frames to predict from. Measured here: no smaller, 12% slower.",
+                             args: ["--ref", "6"], speedCost: 1.12, vmafSaving: 0),
+                EncodeOption(id: "rclook", title: "60-frame look-ahead",
+                             detail: kind == .anime ? "Rate planning over longer stretches; about 2% smaller on flat animation, 11% slower."
+                                                    : "Rate planning over longer stretches. Measured here: no smaller, 10% slower.",
+                             args: ["--rc-lookahead", "60"], speedCost: 1.10, vmafSaving: kind == .anime ? 0.02 : 0),
                 EncodeOption(id: "sao", title: anime ? "Limited SAO" : "SAO off (keep detail)",
                              detail: anime ? "Limits the edge-smoothing filter so line art and gradients stay clean." : "Turns off the filter that smooths fine detail and grain.",
                              args: anime ? ["--limit-sao"] : ["--no-sao"], visualOnly: true),
@@ -164,25 +169,33 @@ enum EncodeRecipes {
                              detail: "Less deblocking keeps texture; live action tolerates -2, animation -1.",
                              args: ["--deblock", anime ? "-1:-1" : "-2:-2"], visualOnly: true),
                 EncodeOption(id: "psy", title: grainy ? "Preserve grain energy" : "Preserve texture",
-                             detail: grainy ? "Higher psy-rdoq keeps grain looking like grain instead of blotches."
-                                            : "Psycho-visual tuning keeps detail the eye notices (psy-rd 2, psy-rdoq 1.5).",
-                             args: ["--psy-rd", "2.0", "--psy-rdoq", grainy ? "4.0" : "1.5"], visualOnly: true),
+                             detail: grainy ? "Higher psy-rdoq keeps grain looking like grain instead of blotches (psy-rd \(psy.rd), psy-rdoq \(psy.rdoq))."
+                                            : "Psycho-visual tuning keeps detail the eye notices (psy-rd \(psy.rd), psy-rdoq \(psy.rdoq)).",
+                             args: ["--psy-rd", psy.rd, "--psy-rdoq", psy.rdoq], visualOnly: true),
                 EncodeOption(id: "nosis", title: "No strong intra smoothing", detail: "Keeps sharp edges in intra-coded blocks.",
                              args: ["--no-strong-intra-smoothing"], visualOnly: true),
-                EncodeOption(id: "rd6", title: "Full rate-distortion analysis", detail: "rd 6: the most thorough decisions. Slow; helps grain.",
-                             args: ["--rd", "6"], speedCost: 1.25, vmafSaving: 0.01, recommendedFor: [.realLifeHeavyGrain, .oldAnime])
+                EncodeOption(id: "rd6", title: "Full rate-distortion analysis", detail: "rd 6: the most thorough decisions. Much slower; pays off on noisy dark footage.",
+                             args: ["--rd", "6"], speedCost: 1.78, vmafSaving: x265RD6Saving(kind), recommendedFor: x265RD6Kinds)
             ]
+            if kind == .screenContent {
+                opts.append(EncodeOption(id: "tskip", title: "Transform skip for text and UI",
+                                         detail: "Lets small blocks skip the transform, which keeps sharp synthetic edges such as text.",
+                                         args: ["--tskip"], probeFlag: "--tskip", vmafSaving: 0.08, recommendedFor: [.screenContent]))
+            }
             return EncodeRecipe(codec: codec, kind: kind, title: "HEVC 12-bit archival · \(kind.displayName.lowercased())",
                                 summary: "x265. Slow to slower is the usual archival range; veryslow and placebo add little.",
+                                // Measured on an M3 Max at 1080p (docs/encoding/tuning-x265.md): CPU-time speed relative to
+                                // `faster`, and saving at equal quality (mean of the VMAF and XPSNR BD-rates). `fast` is left
+                                // out: it was slower than `medium` (it turns off early skip) and 3% larger.
                                 rungs: [
-                                    EncodeRung(id: "fast", label: "fast", presetValue: "fast", seedSpeed: 1.0, seedSaving: 0),
-                                    EncodeRung(id: "medium", label: "medium", presetValue: "medium", seedSpeed: 0.55, seedSaving: 0.03),
-                                    EncodeRung(id: "slow", label: "slow", presetValue: "slow", seedSpeed: 0.25, seedSaving: 0.09),
-                                    EncodeRung(id: "slower", label: "slower", presetValue: "slower", seedSpeed: 0.09, seedSaving: 0.12),
-                                    EncodeRung(id: "veryslow", label: "veryslow", presetValue: "veryslow", seedSpeed: 0.045, seedSaving: 0.135),
-                                    EncodeRung(id: "placebo", label: "placebo", presetValue: "placebo", seedSpeed: 0.012, seedSaving: 0.14)
+                                    EncodeRung(id: "faster", label: "faster", presetValue: "faster", seedSpeed: 1.0, seedSaving: 0),
+                                    EncodeRung(id: "medium", label: "medium", presetValue: "medium", seedSpeed: 0.62, seedSaving: 0.073),
+                                    EncodeRung(id: "slow", label: "slow", presetValue: "slow", seedSpeed: 0.19, seedSaving: 0.215),
+                                    EncodeRung(id: "slower", label: "slower", presetValue: "slower", seedSpeed: 0.048, seedSaving: 0.26),
+                                    EncodeRung(id: "veryslow", label: "veryslow", presetValue: "veryslow", seedSpeed: 0.029, seedSaving: 0.269),
+                                    EncodeRung(id: "placebo", label: "placebo", presetValue: "placebo", seedSpeed: 0.0124, seedSaving: 0.287)
                                 ],
-                                options: opts, baseFps1080: 40)
+                                options: opts, baseFps1080: 39)
         case .av1Pro:
             return EncodeRecipe(codec: codec, kind: kind, title: "AV1 12-bit / 4:4:4 (libaom)",
                                 summary: "libaom: slower than SVT-AV1 but supports 12-bit and full color.",
@@ -286,30 +299,124 @@ enum EncodeRecipes {
         return out
     }
 
-    /// Flags the installed encoder actually understands (parsed once from its --help), so options from
+    /// Flags the installed encoder actually understands (parsed once from its help), so options from
     /// newer versions or forks are only offered when they'll work.
     private static var flagCache: [String: Set<String>] = [:]
     private static let lock = NSLock()
+
+    /// Help arguments to try per encoder, most complete first. x265's `--help` leaves out about 50 options that
+    /// `--fullhelp` lists (`--y4m`, `--qcomp`, `--zones`, …; compared on 4.3+1), so x265 is asked for `--fullhelp`
+    /// and falls back to `--help` on builds that don't know it.
+    static func helpArguments(_ binary: String) -> [String] {
+        binary == "x265" ? ["--fullhelp", "--help"] : ["--help"]
+    }
+
+    /// Every `--flag` in a help text. `--[no-]name` (x265, VVenC) counts as both `--name` and `--no-name`, and
+    /// `-b/--bframes` (x265's short/long pairs) as `--bframes`.
+    static func parseFlags(_ text: String) -> Set<String> {
+        var flags = Set<String>()
+        for word in text.split(whereSeparator: { $0.isWhitespace || $0 == "," || $0 == "=" || $0 == "/" }) {
+            var w = String(word)
+            if w.hasPrefix("--[no-]") {
+                let name = String(w.dropFirst(7)).split(separator: "[").first.map(String.init) ?? ""
+                if !name.isEmpty { flags.insert("--" + name); flags.insert("--no-" + name) }
+                continue
+            }
+            if let bracket = w.firstIndex(of: "[") { w = String(w[..<bracket]) }
+            if w.hasPrefix("--"), w.count > 2 { flags.insert(w) }
+        }
+        return flags
+    }
 
     static func supportedFlags(_ binary: String) -> Set<String>? {
         lock.lock(); defer { lock.unlock() }
         if let c = flagCache[binary] { return c }
         guard let exe = ToolLocator.url(for: binary) else { return nil }
-        let p = Process()
-        p.executableURL = exe
-        p.arguments = ["--help"]
-        let pipe = Pipe()
-        p.standardOutput = pipe
-        p.standardError = pipe
-        guard (try? p.run()) != nil else { return nil }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        p.waitUntilExit()
-        let text = String(decoding: data, as: UTF8.self)
-        let flags = Set(text.split(whereSeparator: { $0.isWhitespace || $0 == "," || $0 == "=" || $0 == "[" })
-                        .map(String.init).filter { $0.hasPrefix("--") })
+        var flags = Set<String>()
+        for arg in helpArguments(binary) {
+            let p = Process()
+            p.executableURL = exe
+            p.arguments = [arg]
+            let pipe = Pipe()
+            p.standardOutput = pipe
+            p.standardError = pipe
+            p.standardInput = FileHandle.nullDevice
+            guard (try? p.run()) != nil else { return nil }
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            p.waitUntilExit()
+            flags = parseFlags(String(decoding: data, as: UTF8.self))
+            // An unknown help argument prints an error (and maybe a short usage line), not the option list.
+            if flags.count >= 20 { break }
+        }
         flagCache[binary] = flags
         Log.debug(.tools, "\(binary) supports \(flags.count) flags")
         return flags
+    }
+
+    // MARK: - x265 rules applied to the final command line
+
+    static let x265Binary = "x265"
+
+    /// psy-rd / psy-rdoq per content type. Live action, CG, fast motion and screen content: 1.0 / 1.0 (about 2% smaller
+    /// than 2.0 / 1.5 on VMAF and XPSNR). Grainy kinds keep psy-rdoq 4.0, which holds the grain (lower values look
+    /// better to VMAF and worse to XPSNR and to the grain measurement). Anime keeps 2.0 / 1.5 (1.0 missed the 1% bar).
+    static func x265Psy(_ kind: ContentKind) -> (rd: String, rdoq: String) {
+        switch kind {
+        case .realLifeHeavyGrain, .lowLightNoisy, .oldAnime: return ("2.0", "4.0")
+        case .anime: return ("2.0", "1.5")
+        case .realLife, .cgiAnimation, .fastMotion, .screenContent: return ("1.0", "1.0")
+        }
+    }
+
+    /// AQ strength with AQ mode 3, where it differs from x265's 1.0: 0.8 for flat modern anime (3% smaller).
+    static func x265AQStrength(_ kind: ContentKind) -> String? {
+        kind == .anime ? "0.8" : nil
+    }
+
+    /// Content types where `--rd 6` saves bits: 4% on low light, 7% on old anime (mean of the VMAF and XPSNR BD-rates),
+    /// for 64-91% more CPU time. Nothing on heavy grain, where it used to be offered.
+    static let x265RD6Kinds: [ContentKind] = [.lowLightNoisy, .oldAnime]
+    static func x265RD6Saving(_ kind: ContentKind) -> Double {
+        switch kind {
+        case .lowLightNoisy: return 0.04
+        case .oldAnime: return 0.07
+        default: return 0
+        }
+    }
+
+    /// x265 presets that leave rate-distortion optimized quantization off (`--rdoq-level 0`); x265's preset table.
+    static let x265PresetsWithoutRDOQ: Set<String> = ["ultrafast", "superfast", "veryfast", "faster", "fast", "medium"]
+
+    /// The x265 command line with the options that can't work in this combination removed:
+    /// - `--hdr10-opt` (PQ-aware QP) works only for 10-bit 4:2:0; at 12-bit or 4:2:2/4:4:4 x265 logs an error,
+    ///   disables it and still exits 0 ([x265-cli]; checked on 4.3+1).
+    /// - `--psy-rdoq` acts inside RDOQ, which the presets up to `medium` turn off (`--rdoq-level 0`), so there it is
+    ///   dropped unless the command line also sets `--rdoq-level` 1 or 2 ([x265-cli]; bit-identical output measured).
+    ///
+    /// Without a plan (`planned` false) the content type's base extras are appended, the same ones the planner always
+    /// turns on, so an export with and without the planner encodes a content type the same way. x265's own
+    /// `--tune grain` and `--tune animation` are not used: explicit options override what a tune sets, and on the
+    /// measured clips both tunes lost to Lumora's per-type settings (docs/encoding/tuning-x265.md).
+    static func x265Args(_ args: [String], bits: Int, chroma: ChromaFormat, preset: String,
+                         kind: ContentKind? = nil, planned: Bool = true) -> [String] {
+        var out: [String] = []
+        let args = args + (planned || kind == nil ? [] : x265BaseOptions(kind!).flatMap(\.args))
+        let explicitRDOQ = args.firstIndex(of: "--rdoq-level").flatMap { args.indices.contains($0 + 1) ? args[$0 + 1] : nil }
+        let rdoqOn = explicitRDOQ.map { $0 != "0" } ?? !x265PresetsWithoutRDOQ.contains(preset)
+        var i = 0
+        while i < args.count {
+            let a = args[i]
+            if a == "--hdr10-opt" && !(bits == 10 && chroma == .c420) { i += 1; continue }
+            if a == "--psy-rdoq" && !rdoqOn { i += 2; continue }
+            out.append(a)
+            i += 1
+        }
+        return out
+    }
+
+    /// The x265 extras the planner always enables for a content type: recommended for it and cheap (at most 5% slower).
+    static func x265BaseOptions(_ kind: ContentKind) -> [EncodeOption] {
+        recipe(codec: .hevc12, kind: kind).options.filter { $0.recommendedFor.contains(kind) && $0.speedCost <= 1.05 && available($0, codec: .hevc12) }
     }
 
     static func available(_ o: EncodeOption, codec: Codec) -> Bool {
