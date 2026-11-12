@@ -11,8 +11,10 @@ import Metal
 ///   1. how good the primary output is in that tile (its PSNR), and
 ///   2. how many dB each alternative would gain there.
 /// A tile is switched only when it is predicted to be poor AND an alternative is predicted to gain more than a
-/// margin; both thresholds come from the sensitivity setting. A frame pair that straddles a shot change the analyzer
-/// missed is detected from frame-level statistics and held on the nearest original instead.
+/// margin; both thresholds come from the sensitivity setting. A third ensemble, trained on copies of the training
+/// frames with planted artifacts (holes, checkerboards, noise, tears, misplaced content, color shifts), recognizes
+/// blatant damage; such tiles are replaced at every sensitivity. A frame pair that straddles a shot change the
+/// analyzer missed is detected from frame-level statistics and held on the nearest original instead.
 final class ArtifactScorer {
     enum Choice: UInt8 { case primary = 0, alternative = 1, blend = 2, nearest = 3, average = 4 }
 
@@ -191,7 +193,8 @@ final class ArtifactScorer {
     /// accepted in order of expected benefit while the frame's pessimistic total stays within a small budget of its
     /// predicted error, so a few wrong calls can never cost a frame much. Sensitivity 0 = only obvious problems (low
     /// ceiling, big margin, small budget); 1 = strict. `refine` (exhaustive intelligence) also takes any tile where
-    /// an alternative is better with high confidence, broken or not.
+    /// an alternative is better with high confidence, broken or not. Tiles the blatant-damage classifier flags are
+    /// replaced at every sensitivity by the alternative with the best predicted gain.
     func decide(_ m: Measurement, sensitivity: Float, refine: Bool = false) -> Decision {
         var choices = [UInt8](repeating: Choice.primary.rawValue, count: m.count)
         guard let model, let set = model.set(alternative: m.hasAlternative), !set.options.isEmpty else {
@@ -208,13 +211,16 @@ final class ArtifactScorer {
         var candidates: [Int] = []
         var errorSum = 0.0
         var g = [Float](repeating: 0, count: k), r = [Float](repeating: 0, count: k)
+        var blatant = [Int](repeating: -1, count: m.count)
         for i in 0..<m.count {
             let x = m.features[i]
             let q = set.quality.predict(x)
             let mse = pow(10, -Double(q) / 10)
             errorSum += mse
-            guard q < p.ceiling || refine else { continue }      // the gain and risk trees only matter here
+            let isBlatant = set.blatant.map { $0.predict(x) > set.policy.blatantThreshold } ?? false
+            guard q < p.ceiling || refine || isBlatant else { continue }      // the gain and risk trees only matter here
             for j in 0..<k { g[j] = set.options[j].gain.predict(x); r[j] = set.options[j].risk.predict(x) }
+            if isBlatant { blatant[i] = (0..<k).max { g[$0] < g[$1] } ?? 0 }
             var b = 0, bv: Float = r[0] > p.floor ? g[0] : -99
             var rb = 0
             for j in 1..<k {
@@ -239,6 +245,7 @@ final class ArtifactScorer {
                 choices[i] = set.options[bestRisk[i]].choice.rawValue
             }
         }
+        for i in 0..<m.count where blatant[i] >= 0 { choices[i] = set.options[blatant[i]].choice.rawValue }
         return Decision(choices: choices, shotChange: false)
     }
 
@@ -297,7 +304,7 @@ struct TreeEnsemble {
 }
 
 /// Thresholds as straight lines in the sensitivity s (0...1): [ceiling, margin, floor, budget] at s = 0 and 1, then the
-/// exhaustive refinement margin.
+/// exhaustive refinement margin and the blatant-damage threshold (classifier logit, the same at every sensitivity).
 struct ScorerPolicy {
     var values: [Float]
     struct Point { var ceiling: Float, margin: Float, floor: Float, budget: Float }
@@ -306,11 +313,13 @@ struct ScorerPolicy {
         return Point(ceiling: v(0), margin: v(1), floor: v(2), budget: v(3))
     }
     var refineMargin: Float { values.count > 8 ? values[8] : .infinity }
+    var blatantThreshold: Float { values.count > 9 ? values[9] : .infinity }
 }
 
 struct ScorerSet {
     struct Option { var choice: ArtifactScorer.Choice; var gain: TreeEnsemble; var risk: TreeEnsemble }
     var quality: TreeEnsemble
+    var blatant: TreeEnsemble?     // logit that the tile shows blatant damage
     var options: [Option]          // in training order (scripts/qc_scorer/train.py GAIN_CANDIDATES)
     var policy: ScorerPolicy
     var cutWeights: [Float]      // logistic regression on frameFeatureNames, then bias
@@ -363,7 +372,7 @@ final class QCScorerModel {
                     options.append(ScorerSet.Option(choice: choice, gain: g, risk: r))
                 }
             }
-            sets[alt] = ScorerSet(quality: q, options: options, policy: ScorerPolicy(values: p),
+            sets[alt] = ScorerSet(quality: q, blatant: ensembles["blatant.\(tag)"], options: options, policy: ScorerPolicy(values: p),
                                   cutWeights: Array(cut.dropLast()), cutThreshold: cut.last ?? .infinity)
         }
         if sets.isEmpty { return nil }

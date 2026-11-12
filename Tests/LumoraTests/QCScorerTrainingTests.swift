@@ -32,6 +32,9 @@ final class QCScorerTrainingTests: XCTestCase {
         var primary: String
         var grain = false
         var fakeCuts = false
+        /// Plant synthetic artifacts (holes, checkerboards, noise, tears, misplaced content, color shifts) into ~4% of
+        /// the primary's tiles, so the scorer also learns blatant failures the film rarely shows.
+        var planted = false
     }
 
     static func sets(_ m: QCManifest) -> [DataSet] {
@@ -62,6 +65,10 @@ final class QCScorerTrainingTests: XCTestCase {
             DataSet(name: "trainCuts", windows: train, primary: QCBench.imageModel, fakeCuts: true),
             DataSet(name: "valCuts", windows: val, primary: QCBench.imageModel, fakeCuts: true),
             DataSet(name: "trainHDRCuts", windows: variant(train, "trainHDR", "hdr"), primary: QCBench.flowModel, fakeCuts: true),
+            DataSet(name: "trainPlanted", windows: train, primary: QCBench.imageModel, planted: true),
+            DataSet(name: "trainHDRPlanted", windows: variant(train, "trainHDR", "hdr"), primary: QCBench.flowModel, planted: true),
+            DataSet(name: "valPlanted", windows: val, primary: QCBench.imageModel, planted: true),
+            DataSet(name: "valHDRPlanted", windows: variant(val, "valHDR", "hdr"), primary: QCBench.flowModel, planted: true),
         ]
     }
 
@@ -77,7 +84,7 @@ final class QCScorerTrainingTests: XCTestCase {
         for set in all {
             let started = Date()
             var tiles = (["set", "window", "mode", "ti", "t", "stratum", "motion", "primary", "tilesX", "tilesY", "scale", "tile"]
-                         + ArtifactScorer.featureNames + ["px"] + Self.candidates.map { "p_\($0)" } + ["broken"]).joined(separator: ",") + "\n"
+                         + ArtifactScorer.featureNames + ["px"] + Self.candidates.map { "p_\($0)" } + ["broken", "planted"]).joined(separator: ",") + "\n"
             var frames = (["set", "window", "mode", "ti", "t", "stratum", "motion", "primary", "fakeCut"] + ArtifactScorer.frameFeatureNames
                           + Self.candidates.map { "psnr_\($0)" }).joined(separator: ",") + "\n"
             let refs = (try? QCBenchmarkTests.loadRefs(set.name)) ?? [:]
@@ -85,7 +92,9 @@ final class QCScorerTrainingTests: XCTestCase {
             if let l = QCBench.env["LUMORA_QC_LIMIT"].flatMap(Int.init) { ws = Array(ws.prefix(l)) }
             for (i, w) in ws.enumerated() {
                 let partner = set.fakeCuts ? ws[(i + ws.count / 2 + 1) % ws.count] : nil
-                let o = try autoreleasepool { try builder.process(w, set: set, partner: partner, refs: set.primary == QCBench.imageModel ? refs : [:]) }
+                let o = try autoreleasepool {
+                    try builder.process(w, set: set, partner: partner, refs: set.primary == QCBench.imageModel && !set.planted ? refs : [:])
+                }
                 tiles += o.tiles.joined(separator: "\n") + (o.tiles.isEmpty ? "" : "\n")
                 frames += o.frames.joined(separator: "\n") + "\n"
                 if i % 20 == 19 || i == ws.count - 1 { QCBench.log("scorer data \(set.name): \(i + 1)/\(ws.count) windows, \(Int(Date().timeIntervalSince(started))) s") }
@@ -170,8 +179,18 @@ final class ScorerDataBuilder {
             }
             let n = tr.times.count
             let res = "\(A.width)"
-            let P = (0..<n).map { _ in gpu.like(A) }
+            var P = (0..<n).map { _ in gpu.like(A) }
             _ = try timed("primary \(set.primary) \(res)", n) { try primary.interpolate(A, B, times: tr.times, into: P, qcTiles: (1, 1)) }
+            var plantedTiles: [[Bool]] = Array(repeating: [], count: n)
+            if set.planted {
+                let s = ArtifactScorer.scale(forWidth: A.width), tile = 64 * s
+                let tx = (A.width / s + 63) / 64, ty = (A.height / s + 63) / 64
+                for k in 0..<n {
+                    let plan = ArtifactPlanter.plan(tilesX: tx, tilesY: ty, tile: tile, seed: ArtifactPlanter.seed("\(set.name)|\(w.id)|\(tr.mode)|\(k)"))
+                    P[k] = gpu.plant(P[k], a: A, b: B, words: plan.words, tile: tile, tilesX: tx)
+                    plantedTiles[k] = plan.planted
+                }
+            }
             alt.modelScaleOverride = ArtifactScorer.alternativeModelScale(forWidth: A.width)
             for k in 0..<n {
                 let t = tr.times[k]
@@ -206,7 +225,12 @@ final class ScorerDataBuilder {
                         row += meas.features[i].map { fmt($0, 6) }
                         row.append(fmt(errs[0].px[i], 0))
                         row += errs.map { fmt(Float($0.tilePSNR(i)), 3) }
-                        row.append(broken.map { $0.count == meas.count && $0[i] ? "1" : "0" } ?? "")
+                        if set.planted {
+                            let pl = plantedTiles[k].count == meas.count && plantedTiles[k][i]
+                            row += [pl ? "1" : "0", pl ? "1" : "0"]
+                        } else {
+                            row += [broken.map { $0.count == meas.count && $0[i] ? "1" : "0" } ?? "", "0"]
+                        }
                         out.tiles.append(row.joined(separator: ","))
                     }
                 }

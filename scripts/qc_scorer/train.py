@@ -1,13 +1,24 @@
 """Trains the learned artifact scorer (Lumora/Core/Interpolation/ArtifactScorer.swift) and writes its weights to
 Lumora/Core/Interpolation/QCScorerWeights.swift.
 
-Data: ~/Library/Caches/Lumora-Bench/qc-scorer/<set>.csv, built by QCScorerTrainingTests.test4_ScorerDataset with the
-app's own feature code. Fitting uses only the train sets (train part of the story: SDR with the image model as primary,
-SDR with the flow model as primary, HDR10 with the flow model); tree counts and the policy thresholds are chosen on
-the validation sets (validation part of the story, plus its film-grain and UHD variants). Held-out data is never read.
+Data: ~/Library/Caches/Lumora-Bench/qc-scorer/<set>.csv, built by QCScorerTrainingTests.test4_ScorerDataset
+(`scripts/qc-bench.sh scorer-data`) with the app's own feature code. Fitting uses only the train sets (train part of
+the story: SDR with the image model as primary, SDR with the flow model as primary, HDR10 with the flow model, and
+copies of the SDR and HDR10 sets with planted artifacts); tree counts and the policy thresholds are chosen on the
+validation sets (validation part of the story, plus its film-grain, UHD and planted-artifact variants). Held-out data
+is never read.
 
-    python3 scripts/qc_scorer/train.py            # train, report validation curves and the policy table, write weights
-    python3 scripts/qc_scorer/train.py --dry-run  # same, without writing the Swift file
+Per configuration (with or without the alternative flow model) it fits small depth-4 gradient-boosted tree ensembles:
+the primary's tile PSNR, and per candidate the mean gain and a pessimistic (20% quantile) gain, on the film's own
+tiles only; plus a blatant-damage classifier on the planted copies as well. Every fit early-stops on validation loss
+(the curves are in the report). The policy grid then keeps the never-worse limits on every validation set with
+headroom (at most 0.5% of frames more than 0.1 dB worse, at most 0.2 dB worst drop).
+
+    python3 scripts/qc_scorer/train.py                  # train, report validation curves and the policy, write weights
+    python3 scripts/qc_scorer/train.py --dry-run        # same, without writing the Swift file
+    python3 scripts/qc_scorer/train.py --refit          # ignore the cached fits (models-*.pkl in the data folder)
+    python3 scripts/qc_scorer/train.py --refit-blatant  # refit only the blatant-damage classifiers
+    QC_SCORER_WORKERS=1 ...                             # fits in parallel processes (default 3)
 
 Standard library + numpy only.
 """
@@ -28,8 +39,13 @@ DATA = os.path.expanduser('~/Library/Caches/Lumora-Bench/qc-scorer')
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 WEIGHTS = os.path.join(REPO, 'Lumora/Core/Interpolation/QCScorerWeights.swift')
 
-TRAIN_SETS = ['train', 'trainFlow', 'trainHDR']
+TRAIN_SETS = ['train', 'trainFlow', 'trainHDR', 'trainPlanted', 'trainHDRPlanted']
 VAL_SETS = ['val', 'valFlow', 'valHDR', 'valGrain', 'val4k']
+# Validation copies with planted artifacts (holes, checkerboards, noise, tears, misplaced content, color shifts in
+# ~3% of tiles). They steer the loss curves and the policy's catch rate, but not the never-worse limits: their frames
+# are compared with the damaged primary.
+PLANTED_VAL_SETS = ['valPlanted', 'valHDRPlanted']
+WORKERS = int(os.environ.get('QC_SCORER_WORKERS', '3'))     # parallel tree fits (the Mac is shared)
 # Candidate columns in the data -> names the Swift loader expects.
 GAIN_CANDIDATES = {'Q': 'alternative', 'blend': 'blend', 'nearest': 'nearest', 'average': 'average'}
 NOALT_CANDIDATES = {'blend': 'blend', 'nearest': 'nearest'}
@@ -42,6 +58,10 @@ NOALT_FRAME_ZERO = ['frFlErr', 'frDPQ']
 QUALITY_CLIP = (10.0, 50.0)
 GAIN_CLIP = (-15.0, 15.0)
 GAIN_TRAIN_BELOW = 36.0      # gain models learn from tiles where the primary is below this PSNR (where they're used)
+BLATANT_GAIN = 3.0           # a planted artifact counts as damage when some candidate is this much better (dB)
+# The blatant-damage classifier judges a tile on local evidence: whole-frame levels (how much the frame moves, how
+# much the models disagree overall) are held constant while it is fitted, so it never splits on them.
+BLATANT_IGNORE = ['frDAB', 'frDPQ', 'frNovP04', 'frFlErr']
 
 
 def read_csv(path, string_cols):
@@ -67,6 +87,8 @@ def load_tiles(name):
             d = {k: z[k] for k in z.files}
         return d
     d, _ = read_csv(src, {'set', 'window', 'mode', 'stratum', 'primary'})
+    if 'planted' not in d:                                  # sets built before planted artifacts existed
+        d['planted'] = np.zeros(len(d['t']), np.float32)
     if os.environ.get('QC_SCORER_CACHE') == '1':           # opt-in: the cache is as large as the CSVs
         np.savez(cache, **d)
     return d
@@ -100,7 +122,9 @@ def matrix(d, names, noalt=False):
 def fit_cut(log):
     """Shot-change test: logistic regression on frame statistics, fake shot changes vs real frame pairs."""
     pos = concat([load_frames(n) for n in ['trainCuts', 'trainHDRCuts'] if os.path.exists(os.path.join(DATA, f'{n}-frames.csv'))])
-    neg = concat([load_frames(n) for n in TRAIN_SETS])
+    neg = concat([load_frames(n) for n in TRAIN_SETS if 'Planted' not in n])
+    planted = [load_frames(n) for n in TRAIN_SETS + PLANTED_VAL_SETS
+               if 'Planted' in n and os.path.exists(os.path.join(DATA, f'{n}-frames.csv'))]
     vpos = load_frames('valCuts')
     vneg = concat([load_frames(n) for n in VAL_SETS])
     result = {}
@@ -134,14 +158,35 @@ def fit_cut(log):
         tp_val = float(np.mean(score(vpos) > thr))
         log(f'[cut {tag}] weights {np.round(wr, 3).tolist()} bias {br:.3f} threshold {thr:.2f}: '
             f'fake shot changes caught train {100 * tp_train:.1f}% val {100 * tp_val:.1f}%, '
-            f'real pairs flagged train {100 * np.mean(score(neg) > thr):.2f}% val {100 * np.mean(score(vneg) > thr):.2f}%')
+            f'real pairs flagged train {100 * np.mean(score(neg) > thr):.2f}% val {100 * np.mean(score(vneg) > thr):.2f}%'
+            + (f', frames with planted artifacts flagged {100 * np.mean(score(concat(planted)) > thr):.2f}%' if planted else ''))
         result[tag] = [float(v) for v in wr] + [float(br), thr]
     return result
 
 
+def _fit_job(job):
+    key, loss, seed, tau, xt, yt, xv, yv = job
+    m = GBDT(depth=4, trees=400 if loss == 'l2' else 250, lr=0.06 if loss == 'l2' else 0.1, lam=50, min_leaf=300,
+             subsample=0.7, seed=seed, loss=loss, tau=tau)
+    m.fit(xt, yt, xv=xv, yv=yv, log_every=50, patience=2, quiet=True)
+    return key, m
+
+
+def is_planted_set(d):
+    return np.char.find(d['set'].astype(str), 'Planted') >= 0
+
+
+def blatant_label(d, cands):
+    """Planted artifact that some candidate repairs by at least BLATANT_GAIN dB."""
+    best = np.max(np.stack([d['p_' + c] for c in cands], 1), 1)
+    return (d['planted'] > 0) & (best - d['p_P'] >= BLATANT_GAIN)
+
+
 class Scorer:
     """The fitted ensembles for one configuration (with or without the alternative model):
-    quality (the primary's tile PSNR), and per candidate the mean gain and a pessimistic gain (20% quantile)."""
+    quality (the primary's tile PSNR), and per candidate the mean gain and a pessimistic gain (20% quantile), all
+    fitted on the film's own failures only; plus a classifier for blatant damage (holes, checkerboards, noise, tears,
+    misplaced content, color shifts), fitted on the planted-artifact copies as well."""
 
     RISK_TAU = 0.2
 
@@ -158,21 +203,39 @@ class Scorer:
         keep = (pt < GAIN_TRAIN_BELOW) | (rng.random(len(pt)) < 0.35)
         keep_v = (pv < GAIN_TRAIN_BELOW) | (np.random.default_rng(8).random(len(pv)) < 0.35)
         hard_t, hard_v = pt < GAIN_TRAIN_BELOW, pv < GAIN_TRAIN_BELOW
-        jobs = [('quality', None, 'l2', keep, keep_v)]
+        # The film's own failures teach quality, gain and risk; planted copies would make them overconfident.
+        real_t, real_v = ~is_planted_set(tr), ~is_planted_set(va)
+        jobs = [('quality', None, 'l2', keep & real_t, keep_v & real_v)]
         for c in self.cands:
-            jobs.append((f'gain.{c}', c, 'l2', hard_t, hard_v))
-            jobs.append((f'risk.{c}', c, 'quantile', keep, keep_v))
-        for key, c, loss, st, sv in jobs:
+            jobs.append((f'gain.{c}', c, 'l2', hard_t & real_t, hard_v & real_v))
+            jobs.append((f'risk.{c}', c, 'quantile', keep & real_t, keep_v & real_v))
+        jobs.append(('blatant', 'blatant', 'logistic', keep, keep_v))
+        todo = []
+        for seed, (key, c, loss, st, sv) in enumerate(jobs):
             if key in self.models:
                 continue
             if c is None:
                 yt, yv = np.clip(pt, *QUALITY_CLIP), np.clip(pv, *QUALITY_CLIP)
+            elif c == 'blatant':
+                yt = blatant_label(tr, self.cands).astype(np.float32)
+                yv = blatant_label(va, self.cands).astype(np.float32)
             else:
                 yt, yv = np.clip(tr['p_' + c] - pt, *GAIN_CLIP), np.clip(va['p_' + c] - pv, *GAIN_CLIP)
             log(f'[{self.tag}] {key}: {st.sum()} training tiles, loss {loss}')
-            m = GBDT(depth=4, trees=400 if loss == 'l2' else 250, lr=0.06 if loss == 'l2' else 0.1, lam=50, min_leaf=300,
-                     subsample=0.7, seed=len(self.models) + 1, loss=loss, tau=self.RISK_TAU)
-            m.fit(xt[st], yt[st], xv=xv[sv], yv=yv[sv], log_every=50)
+            a, b = xt[st], xv[sv]
+            if key == 'blatant':
+                a, b = a.copy(), b.copy()
+                for nme in BLATANT_IGNORE:
+                    a[:, self.names.index(nme)] = 0
+                    b[:, self.names.index(nme)] = 0
+            todo.append((key, loss, seed + 1, a, yt[st], b, yv[sv]))
+        if WORKERS > 1 and len(todo) > 1:
+            import multiprocessing as mp
+            with mp.get_context('fork').Pool(min(WORKERS, len(todo))) as pool:
+                fitted = pool.map(_fit_job, [(k, l, sd, self.RISK_TAU, a, b, c, d) for k, l, sd, a, b, c, d in todo])
+        else:
+            fitted = [_fit_job((k, l, sd, self.RISK_TAU, a, b, c, d)) for k, l, sd, a, b, c, d in todo]
+        for key, m in fitted:
             best = min(m.history, key=lambda h: h[2])
             m.trees = m.trees[:best[0]]
             line = (f'    {self.tag} {key}: validation curve (trees:train/val loss) '
@@ -185,10 +248,10 @@ class Scorer:
         x = matrix(d, self.names, self.noalt)
         cs = list(self.cands)
         return (self.models['quality'].predict(x), np.stack([self.models[f'gain.{c}'].predict(x) for c in cs], 1),
-                np.stack([self.models[f'risk.{c}'].predict(x) for c in cs], 1))
+                np.stack([self.models[f'risk.{c}'].predict(x) for c in cs], 1), self.models['blatant'].predict(x))
 
 
-def decide(q, G, R, fid, p, refine=False):
+def decide(q, G, R, fid, p, refine=False, B=None, blatant=np.inf):
     """The run-time policy (ArtifactScorer.decide), vectorized where possible. p = (ceiling, margin, floor, budget).
     A tile is a candidate when its predicted primary PSNR is below the ceiling, the best predicted gain (among
     alternatives whose pessimistic gain is above the floor) exceeds the margin. Per frame, candidates are taken in
@@ -221,13 +284,19 @@ def decide(q, G, R, fid, p, refine=False):
         ref = (~use) & (rv > refine)
         choice[ref] = rb[ref]
         use |= ref
+    if B is not None and np.isfinite(blatant):
+        # Blatant damage (classifier logit above the threshold) is replaced at every sensitivity, by the candidate
+        # with the best predicted gain.
+        bl = B > blatant
+        choice[bl] = np.argmax(G[bl], 1)
+        use |= bl
     return use, choice
 
 
-def simulate(d, pre, cands, p, refine=False):
-    q, G, R = pre
+def simulate(d, pre, cands, p, refine=False, blatant=np.inf):
+    q, G, R, B = pre
     fid = pol.frame_index(d['window'], d['mode'], d['ti'])
-    use, choice = decide(q, G, R, fid, p, refine)
+    use, choice = decide(q, G, R, fid, p, refine, B, blatant)
     P = np.stack([d['p_' + c] for c in cands], 1)
     out = np.where(use, P[np.arange(len(P)), choice], d['p_P'])
     broken = d['broken'] > 0 if not np.isnan(d['broken']).all() else np.zeros(len(out), bool)
@@ -237,7 +306,13 @@ def simulate(d, pre, cands, p, refine=False):
 DROP_LIMIT, MAX_LIMIT = 0.5, 0.2      # half of the objective's limits (1% / 0.3 dB): headroom for held-out data
 
 
-def choose_policy(scorer, vals, preds, log):
+def planted_recall(scorer, planted, ppreds, p, refine=False, blatant=np.inf):
+    if not planted:
+        return 100.0
+    return float(np.mean([simulate(planted[n], ppreds[n], list(scorer.cands), p, refine, blatant)['recall'] for n in planted]))
+
+
+def choose_policy(scorer, vals, preds, log, planted=None, ppreds=None):
     """Grid on the validation sets. s=1: the best gain on the worst 10% of frames (plus a little recall) that keeps
     every validation set within DROP_LIMIT / MAX_LIMIT. s=0: a stricter point (lower ceiling, higher margin and floor,
     smaller budget) that is also within the limits."""
@@ -275,6 +350,21 @@ def choose_policy(scorer, vals, preds, log):
             break
     params.append(refine)
     _ = mid
+    # Blatant-damage threshold (classifier logit), the same at every sensitivity: the lowest that keeps every
+    # validation set within the limits together with the strict point, with and without the exhaustive refinement.
+    blatant = np.inf
+    for bt in [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 8.0]:
+        ok = True
+        for rr in [False, refine]:
+            ms = {n: simulate(vals[n], preds[n], cands, strict, refine=rr if rr != 99.0 else False, blatant=bt) for n in vals}
+            ok = ok and all(m['drop%'] <= DROP_LIMIT and m['max'] <= MAX_LIMIT for m in ms.values())
+        if ok:
+            blatant = bt
+            break
+    pr0 = planted_recall(scorer, planted, ppreds, at(params, 0))
+    pr1 = planted_recall(scorer, planted, ppreds, at(params, 0), blatant=blatant)
+    log(f'[{scorer.tag}] blatant-damage threshold {blatant}: planted damage caught at s=0 {pr0:.1f}% without, {pr1:.1f}% with it')
+    params.append(float(blatant) if np.isfinite(blatant) else 99.0)
     return params, rows
 
 
@@ -300,6 +390,7 @@ def write_weights(names, scorers, policies, cut, summary):
         if policies.get(s.tag) is None:
             continue
         ens.append((f'quality.{s.tag}', s.models['quality']))
+        ens.append((f'blatant.{s.tag}', s.models['blatant']))
         for c in s.cands:
             ens.append((f'gain.{s.cands[c]}.{s.tag}', s.models[f'gain.{c}']))
             ens.append((f'risk.{s.cands[c]}.{s.tag}', s.models[f'risk.{c}']))
@@ -366,23 +457,25 @@ def write_fixture(scorers, policies, vals, summary):
         q = s.models['quality'].predict(x)
         G = np.stack([s.models[f'gain.{c}'].predict(x) for c in cs], 1)
         R = np.stack([s.models[f'risk.{c}'].predict(x) for c in cs], 1)
+        Bz = s.models['blatant'].predict(x)
         for i in range(len(idx)):
-            parity.append({'tag': s.tag, 'x': [r6(v) for v in x[i]], 'quality': float(q[i]),
+            parity.append({'tag': s.tag, 'x': [r6(v) for v in x[i]], 'quality': float(q[i]), 'blatant': float(Bz[i]),
                            'gains': {s.cands[c]: float(G[i, k]) for k, c in enumerate(cs)},
                            'risks': {s.cands[c]: float(R[i, k]) for k, c in enumerate(cs)}})
     s = next(sc for sc in scorers if sc.tag == 'alt')
     p1 = at(policies['alt'], 1)
-    for name, count in [('val', 1), ('valHDR', 1), ('val4k', 1)]:
+    for name, count in [('val', 2), ('valHDR', 2), ('val4k', 1), ('valPlanted', 1), ('valHDRPlanted', 1)]:
         if name not in vals:
             continue
         d = vals[name]
         fid = pol.frame_index(d['window'], d['mode'], d['ti'])
-        pre = s.predict(d)
-        use, _ = decide(*pre, fid, p1)
+        q_, G_, R_, B_ = s.predict(d)
+        use, _ = decide(q_, G_, R_, fid, p1, False, B_, policies['alt'][9])
         nsw = np.bincount(fid, use, minlength=fid.max() + 1)
         picks = list(np.argsort(-nsw)[:count])
         others = np.maximum.reduce([d['p_Q'], d['p_blend'], d['p_nearest']])
         broken = (d['p_P'] < 30) & (others - d['p_P'] >= 2)
+        plant = blatant_label(d, ['Q', 'blend', 'nearest', 'average'])
         for f in picks:
             sel = np.where(fid == f)[0]
             sub = {k: v[sel] for k, v in d.items()}
@@ -392,7 +485,8 @@ def write_fixture(scorers, policies, vals, summary):
                            'frame': load_frames_cached(name)[key],
                            'tiles': [{'x': [r6(v) for v in x[i]], 'px': float(sub['px'][i]),
                                       'psnr': {c: round(float(sub['p_' + c][i]), 3) for c in ['P', 'Q', 'blend', 'nearest', 'average']},
-                                      'broken': bool(broken[sel][i])} for i in range(len(sel))]})
+                                      'broken': bool(broken[sel][i]), 'planted': bool(plant[sel][i])}
+                                     for i in range(len(sel))]})
     with open(FIXTURE, 'w') as fh:
         json.dump({'trained': summary, 'parity': parity, 'frames': frames}, fh, separators=(',', ':'))
 
@@ -407,7 +501,10 @@ def main():
     names = feature_names()
     tr = concat([load_tiles(n) for n in TRAIN_SETS])
     vals = {n: load_tiles(n) for n in VAL_SETS if os.path.exists(os.path.join(DATA, f'{n}.csv'))}
-    va = concat([vals[n] for n in ['val', 'valFlow', 'valHDR'] if n in vals])
+    planted = {n: load_tiles(n) for n in PLANTED_VAL_SETS if os.path.exists(os.path.join(DATA, f'{n}.csv'))}
+    for d in planted.values():
+        d['broken'] = blatant_label(d, ['Q', 'blend', 'nearest', 'average']).astype(np.float32)   # planted damage
+    va = concat([vals[n] for n in ['val', 'valFlow', 'valHDR'] if n in vals] + list(planted.values()))
     log(f'training tiles {len(tr["t"])} ({", ".join(TRAIN_SETS)}), validation tiles {sum(len(v["t"]) for v in vals.values())} ({", ".join(vals)})')
     policies, scorers = {}, []
     for tag, cands, noalt in [('alt', GAIN_CANDIDATES, False), ('noalt', NOALT_CANDIDATES, True)]:
@@ -416,13 +513,17 @@ def main():
         if os.path.exists(pkl) and '--refit' not in sys.argv:
             with open(pkl, 'rb') as fh:
                 s.models, s.log = pickle.load(fh)
+            if '--refit-blatant' in sys.argv:
+                s.models.pop('blatant', None)
+                s.log = [line for line in s.log if ' blatant:' not in line]
             for line in s.log:
                 log(line + ' (cached)')
         s.fit(tr, va, log)
         with open(pkl, 'wb') as fh:
             pickle.dump((s.models, s.log), fh)
         preds = {n: s.predict(vals[n]) for n in vals}
-        p, rows = choose_policy(s, vals, preds, log)
+        ppreds = {n: s.predict(planted[n]) for n in planted}
+        p, rows = choose_policy(s, vals, preds, log, planted, ppreds)
         policies[tag] = p
         scorers.append(s)
         log(f'[{tag}] policy grid on validation (ceiling, margin, floor, budget): per set gain/w10/drop%/max/recall/precision')
@@ -433,9 +534,12 @@ def main():
             log(f'[{tag}] chosen policy {[round(v, 4) for v in p]}')
             for sv in [0, 0.5, 1]:
                 for n in vals:
-                    log(f'    s={sv}: {n:9s} ' + pol.fmt(simulate(vals[n], preds[n], list(cands), at(p, sv))))
+                    log(f'    s={sv}: {n:9s} ' + pol.fmt(simulate(vals[n], preds[n], list(cands), at(p, sv), blatant=p[9])))
+            for sv in [0, 0.5, 1]:
+                for n in planted:
+                    log(f'    s={sv}: {n:9s} ' + pol.fmt(simulate(planted[n], ppreds[n], list(cands), at(p, sv), blatant=p[9])))
             for n in vals:
-                log(f'    exhaustive s=0.5: {n:9s} ' + pol.fmt(simulate(vals[n], preds[n], list(cands), at(p, 0.5), refine=p[8])))
+                log(f'    exhaustive s=0.5: {n:9s} ' + pol.fmt(simulate(vals[n], preds[n], list(cands), at(p, 0.5), refine=p[8], blatant=p[9])))
         imp = np.zeros(len(names))
         for m in s.models.values():
             imp += m.importance(len(names))
@@ -444,7 +548,7 @@ def main():
     summary = f'trained on {"+".join(TRAIN_SETS)}; policy from {"+".join(vals)}'
     if not dry:
         write_weights(names, scorers, policies, cut, summary)
-        write_fixture(scorers, policies, vals, summary)
+        write_fixture(scorers, policies, {**vals, **planted}, summary)
         log(f'wrote {WEIGHTS} and {FIXTURE}')
     with open(os.path.join(DATA, 'train-report.txt'), 'w') as fh:
         fh.write('\n'.join(report) + '\n')

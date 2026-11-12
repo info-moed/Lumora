@@ -31,12 +31,14 @@ class GBDT:
         self.base = 0.0
         self.history = []
 
-    def fit(self, x, y, w=None, xv=None, yv=None, wv=None, log_every=50):
+    def fit(self, x, y, w=None, xv=None, yv=None, wv=None, log_every=50, patience=0, quiet=False):
+        """patience: stop after that many checkpoints (every log_every trees) without a better validation loss."""
         rng = np.random.default_rng(self.seed)
         n, nf = x.shape
         w = np.ones(n, np.float64) if w is None else w.astype(np.float64)
         self.binner = Binner(x)
-        xb = self.binner.transform(x)
+        xbT = np.ascontiguousarray(self.binner.transform(x).T)     # one contiguous row of bins per feature
+        ar = np.arange(n)
         nb = 65
         self.base = float(np.sum(w * y) / np.sum(w))
         if self.loss == 'logistic':
@@ -58,24 +60,28 @@ class GBDT:
             else:
                 g = (pred - y) * w
                 h = w.copy()
-            if self.subsample < 1:
-                m = rng.random(n) < self.subsample
-                g = g * m
-                h = h * m
-            node = np.zeros(n, np.int64)
+            # Histograms come from the sampled rows only; bins route exactly like the float thresholds
+            # (x < edges[b]  <=>  bin(x) <= b).
+            rows = np.nonzero(rng.random(n) < self.subsample)[0] if self.subsample < 1 else np.arange(n)
+            gs, hs = g[rows], h[rows]
+            ns = np.zeros(len(rows), np.int64)
             feats = np.zeros(nint, np.int32)
             thr = np.full(nint, np.inf, np.float32)
+            tbin = np.full(nint, 255, np.int32)
+            cols = None
             for level in range(self.depth):
                 first = 2 ** level - 1
                 count = 2 ** level
-                local = node - first
+                local = ns - first
                 best_gain = np.full(count, -np.inf)
                 best_f = np.zeros(count, np.int32)
                 best_b = np.zeros(count, np.int32)
+                if cols is None:
+                    cols = [xbT[j][rows] for j in range(nf)]
                 for j in range(nf):
-                    idx = local * nb + xb[:, j]
-                    G = np.bincount(idx, g, minlength=count * nb).reshape(count, nb)
-                    H = np.bincount(idx, h, minlength=count * nb).reshape(count, nb)
+                    idx = local * nb + cols[j]
+                    G = np.bincount(idx, gs, minlength=count * nb).reshape(count, nb)
+                    H = np.bincount(idx, hs, minlength=count * nb).reshape(count, nb)
                     GL = np.cumsum(G, axis=1)[:, :-1]
                     HL = np.cumsum(H, axis=1)[:, :-1]
                     GT = G.sum(1, keepdims=True)
@@ -96,25 +102,27 @@ class GBDT:
                     if np.isfinite(best_gain[k]) and best_gain[k] > 0:
                         feats[ni] = best_f[k]
                         thr[ni] = self.binner.edges[best_f[k]][best_b[k]]
+                        tbin[ni] = best_b[k]
                     else:
                         feats[ni] = 0
                         thr[ni] = np.inf      # everything goes left
+                        tbin[ni] = 255
                 # route: left child = 2i+1, right = 2i+2
-                f_of = feats[node]
-                t_of = thr[node]
-                xv_ = x[np.arange(n), f_of]
-                right = ~(xv_ < t_of)
-                node = 2 * node + 1 + right
+                right = xbT[feats[ns], rows] > tbin[ns]
+                ns = 2 * ns + 1 + right
+            node = np.zeros(n, np.int64)
+            for level in range(self.depth):
+                node = 2 * node + 1 + (xbT[feats[node], ar] > tbin[node])
             leaf = node - nint
-            G = np.bincount(leaf, g, minlength=nint + 1)
-            H = np.bincount(leaf, h, minlength=nint + 1)
+            leaf_s = ns - nint
+            G = np.bincount(leaf_s, gs, minlength=nint + 1)
+            H = np.bincount(leaf_s, hs, minlength=nint + 1)
             leaves = (-G / (H + self.lam) * self.lr).astype(np.float32)
             if self.loss == 'quantile':
                 # Refit each leaf to the tau-quantile of the residuals that reach it (sampled rows only).
-                live = h > 0
-                r = (y - pred)
+                r = (y[rows] - pred[rows])
                 for k in range(nint + 1):
-                    sel = live & (leaf == k)
+                    sel = leaf_s == k
                     if sel.sum() >= self.min_leaf * self.subsample:
                         leaves[k] = np.float32(self.lr * np.quantile(r[sel], self.tau))
                     else:
@@ -126,7 +134,12 @@ class GBDT:
             if log_every and (it % log_every == log_every - 1 or it == self.ntrees - 1):
                 tr, va = self.metric(pred, y, w), (np.nan if pv is None else self.metric(pv, yv, wv))
                 self.history.append((it + 1, tr, va))
-                print(f'    tree {it + 1:4d}  loss train {tr:.4f}  val {va:.4f}', flush=True)
+                if not quiet:
+                    print(f'    tree {it + 1:4d}  loss train {tr:.4f}  val {va:.4f}', flush=True)
+                if patience and pv is not None:
+                    best = min(range(len(self.history)), key=lambda k: self.history[k][2])
+                    if len(self.history) - 1 - best >= patience:
+                        break
         return self
 
     def metric(self, pred, y, w=None):

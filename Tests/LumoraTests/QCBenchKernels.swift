@@ -227,7 +227,116 @@ enum QCBenchKernels {
         float g = (y - kr * r - kb * b) / kg;
         dst.write(float4(r, g, b, 1.0f), gid);
     }
+
+    // Planted artifacts (scorer training data and tests): per tile of `grid.x` px, an optional corruption of the
+    // generated frame P. rect = sub-rectangle inside the tile; info = (kind, dx or period, dy, source 0 = A / 1 = B).
+    struct PlantTile { int4 rect; int4 info; float4 c0; float4 c1; };
+    inline float plantHash(uint2 p, uint s) {
+        uint h = p.x * 1973u + p.y * 9277u + s * 26699u + 0x9e3779b9u;
+        h = (h ^ (h >> 15)) * 2246822519u; h = (h ^ (h >> 13)) * 3266489917u; h ^= h >> 16;
+        return float(h & 0xFFFFFFu) / 16777216.0f;
+    }
+    kernel void plantArtifacts(texture2d<float, access::read>  P    [[texture(0)]],
+                               texture2d<float, access::read>  A    [[texture(1)]],
+                               texture2d<float, access::read>  B    [[texture(2)]],
+                               texture2d<float, access::write> dst  [[texture(3)]],
+                               constant PlantTile* plan             [[buffer(0)]],
+                               constant int2& grid                  [[buffer(1)]],
+                               uint2 gid                            [[thread_position_in_grid]]) {
+        uint W = dst.get_width(), H = dst.get_height();
+        if (gid.x >= W || gid.y >= H) return;
+        int ts = grid.x;
+        PlantTile pt = plan[(int(gid.y) / ts) * grid.y + int(gid.x) / ts];
+        float4 v = P.read(gid);
+        int lx = int(gid.x) % ts, ly = int(gid.y) % ts;
+        if (pt.info.x != 0 && lx >= pt.rect.x && lx < pt.rect.z && ly >= pt.rect.y && ly < pt.rect.w) {
+            uint2 o = uint2(clamp(int2(gid) + pt.info.yz, int2(0), int2(int(W) - 1, int(H) - 1)));
+            switch (pt.info.x) {
+                case 1: v.rgb = pt.c0.rgb; break;                                              // hole / flat fill
+                case 2: { uint per = uint(max(1, pt.info.y));                                   // checkerboard
+                          v.rgb = (((gid.x / per) + (gid.y / per)) & 1u) != 0u ? pt.c0.rgb : pt.c1.rgb; break; }
+                case 3: v.rgb = mix(pt.c0.rgb, pt.c1.rgb, float3(plantHash(gid, 1u), plantHash(gid, 2u), plantHash(gid, 3u))); break;
+                case 4: v.rgb = (pt.info.w == 0 ? A.read(o) : B.read(o)).rgb; break;            // tear: far content
+                case 5: v.rgb = P.read(o).rgb; break;                                          // misplaced content
+                case 6: v.rgb = clamp(v.rgb + pt.c0.rgb, 0.0f, 1.0f); break;                   // color shift
+                default: break;
+            }
+        }
+        dst.write(v, gid);
+    }
     """
+}
+
+/// Seeded planted-artifact plans for plantArtifacts (deterministic per frame).
+enum ArtifactPlanter {
+    struct Rng: RandomNumberGenerator {
+        var state: UInt64
+        mutating func next() -> UInt64 {
+            state &+= 0x9E37_79B9_7F4A_7C15
+            var z = state
+            z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+            z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+            return z ^ (z >> 31)
+        }
+    }
+
+    static func seed(_ s: String) -> UInt64 { s.utf8.reduce(1469598103934665603) { ($0 ^ UInt64($1)) &* 1099511628211 } }
+
+    /// One plan entry: 16 x 32-bit words (rect, info, c0, c1).
+    static func plan(tilesX: Int, tilesY: Int, tile: Int, seed: UInt64, rate: Double = 0.03) -> (words: [UInt32], planted: [Bool]) {
+        var rng = Rng(state: seed)
+        let n = tilesX * tilesY
+        var words = [UInt32](repeating: 0, count: n * 16), planted = [Bool](repeating: false, count: n)
+        var chosen = (0..<n).filter { _ in Double.random(in: 0..<1, using: &rng) < rate }
+        if Double.random(in: 0..<1, using: &rng) < 0.4, tilesX > 2, tilesY > 2 {           // a 2x2 block
+            let x = Int.random(in: 0..<(tilesX - 1), using: &rng), y = Int.random(in: 0..<(tilesY - 1), using: &rng)
+            chosen += [y * tilesX + x, y * tilesX + x + 1, (y + 1) * tilesX + x, (y + 1) * tilesX + x + 1]
+        }
+        func f(_ v: Float) -> UInt32 { v.bitPattern }
+        func signed(_ lo: Int, _ hi: Int) -> Int { Int.random(in: lo...hi, using: &rng) * (Bool.random(using: &rng) ? 1 : -1) }
+        func level() -> Float { Float.random(in: 0...1, using: &rng) }
+        for i in Set(chosen) {
+            let u = Double.random(in: 0..<1, using: &rng)
+            let kind = u < 0.18 ? 1 : u < 0.30 ? 2 : u < 0.42 ? 3 : u < 0.64 ? 4 : u < 0.82 ? 5 : 6
+            var rect = [0, 0, tile, tile]
+            if Double.random(in: 0..<1, using: &rng) < 0.45 {
+                let w = Int.random(in: (tile / 4)...tile, using: &rng), h = Int.random(in: (tile / 4)...tile, using: &rng)
+                let x = Int.random(in: 0...(tile - w), using: &rng), y = Int.random(in: 0...(tile - h), using: &rng)
+                rect = [x, y, x + w, y + h]
+            }
+            var info = [kind, 0, 0, Int.random(in: 0...1, using: &rng)]
+            var c0: [Float] = [0, 0, 0, 1], c1: [Float] = [0, 0, 0, 1]
+            switch kind {
+            case 1:
+                let r = Double.random(in: 0..<1, using: &rng)
+                if r < 0.4 { let v = Float.random(in: 0...0.05, using: &rng); c0 = [v, v, v, 1] }
+                else if r < 0.55 { let v = Float.random(in: 0.9...1, using: &rng); c0 = [v, v, v, 1] }
+                else { c0 = [level(), level(), level(), 1] }
+            case 2:
+                info[1] = [1, 1, 2, 4].randomElement(using: &rng)!
+                let a = level(), b = level()
+                c0 = [a, a, a, 1]; c1 = [b, b, b, 1]
+            case 3:
+                let m = level()
+                c0 = [max(0, m - 0.3), max(0, m - 0.3), max(0, m - 0.3), 1]; c1 = [min(1, m + 0.3), min(1, m + 0.3), min(1, m + 0.3), 1]
+            case 4:
+                info[1] = signed(24, 320); info[2] = signed(24, 200)
+            case 5:
+                info[1] = signed(12, 160); info[2] = signed(12, 120)
+            default:
+                if Bool.random(using: &rng) {
+                    let d = Float.random(in: 0.04...0.3, using: &rng) * (Bool.random(using: &rng) ? 1 : -1); c0 = [d, d, d, 0]
+                } else {
+                    c0 = (0..<3).map { _ in Float.random(in: 0.04...0.25, using: &rng) * (Bool.random(using: &rng) ? 1 : -1) } + [0]
+                }
+            }
+            let ints = rect + info
+            for k in 0..<8 { words[i * 16 + k] = UInt32(bitPattern: Int32(ints[k])) }
+            for k in 0..<4 { words[i * 16 + 8 + k] = f(c0[k]); words[i * 16 + 12 + k] = f(c1[k]) }
+            planted[i] = true
+        }
+        return (words, planted)
+    }
 }
 
 /// Thin wrapper around the app's Metal context plus the benchmark kernels.
@@ -238,7 +347,7 @@ final class BenchGPU {
 
     private init() {
         let lib = try! ctx.device.makeLibrary(source: QCBenchKernels.source, options: nil)
-        for n in ["nv12ToRGB", "boxDown", "hist64", "blockMatch", "tileErr", "tileFeat", "flowStats", "flipH", "quant10"] {
+        for n in ["nv12ToRGB", "boxDown", "hist64", "blockMatch", "tileErr", "tileFeat", "flowStats", "flipH", "quant10", "plantArtifacts"] {
             psos[n] = try! ctx.device.makeComputePipelineState(function: lib.makeFunction(name: n)!)
         }
     }
@@ -282,6 +391,21 @@ final class BenchGPU {
     func blend(_ a: MTLTexture, _ b: MTLTexture, t: Float) -> MTLTexture {
         let o = like(a)
         BlendInterpolator().encode(nil, a, b, t: t, into: o)
+        return o
+    }
+
+    /// P with the planted artifacts of `words` (ArtifactPlanter.plan) on a grid of `tile`-px tiles.
+    func plant(_ p: MTLTexture, a: MTLTexture, b: MTLTexture, words: [UInt32], tile: Int, tilesX: Int) -> MTLTexture {
+        let o = like(p)
+        let buf = ctx.device.makeBuffer(bytes: words, length: max(64, words.count * 4), options: .storageModeShared)!
+        var g = SIMD2<Int32>(Int32(tile), Int32(tilesX))
+        run { cb in
+            dispatch(cb, "plantArtifacts", w: p.width, h: p.height) { e in
+                e.setTexture(p, index: 0); e.setTexture(a, index: 1); e.setTexture(b, index: 2); e.setTexture(o, index: 3)
+                e.setBuffer(buf, offset: 0, index: 0)
+                e.setBytes(&g, length: 8, index: 1)
+            }
+        }
         return o
     }
 
