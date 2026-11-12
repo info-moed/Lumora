@@ -197,7 +197,7 @@ enum EncodePlanner {
             notes.append("\(o.title) isn't used at \(pickedRung.label): it would cost more time than the faster setting saves.")
         }
         let pickedEncoder = recipe.rungs[pick.rung].encoderKey
-        if pickedEncoder == "aomenc" { notes.append("This setting uses libaom: marginally smaller files than SVT-AV1's slowest presets, for a very long encode.") }
+        if pickedEncoder == "aomenc" { notes.append("This setting uses libaom: about as small as SVT-AV1's slowest presets, or a little smaller at cpu-used 3 and 2, for a very long encode.") }
         let plan = EncodePlan(choice: choice(pick), seconds: pick.seconds, saving: pick.saving, measured: cal != nil,
                               options: offered.filter { $0.encoderKey == pickedEncoder }, enabled: Set(pick.opts.map(\.id)), upgrade: upgrade, notes: notes)
         Log.debug(.encode, "Plan \(mode.rawValue): \(plan.headline), ~\(duration(plan.seconds)), saving \(Int(plan.saving * 100))% vs fastest")

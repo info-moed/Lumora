@@ -283,13 +283,13 @@ Sources: [source](https://codecs.wiki/docs/encoders/aomenc), [source](https://ao
 
 | Flag | Values | Default | What it does | HDR | Lumora |
 |---|---|---|---|---|---|
-| [`--tune`](#tune) | psnr, ssim, vmaf_with_preprocessing, vmaf_without_preprocessing, vmaf, vmaf_neg, butteraugli, vmaf_saliency_map, iq, ssimulacra2 | not stated | Chooses which quality metric rate-distortion decisions optimize for. | ✓ |  |
-| [`--enable-chroma-deltaq`](#enable-chroma-deltaq) | 0: false (default), 1: true | 0 | Lets the encoder use a different quantizer offset for chroma than for luma, which usually gives chroma more bits. | ✓ |  |
+| [`--tune`](#tune) | psnr, ssim, vmaf_with_preprocessing, vmaf_without_preprocessing, vmaf, vmaf_neg, butteraugli, vmaf_saliency_map, iq, ssimulacra2 | not stated | Chooses which quality metric rate-distortion decisions optimize for. | ✓ | ✓ |
+| [`--enable-chroma-deltaq`](#enable-chroma-deltaq) | 0: false (default), 1: true | 0 | Lets the encoder use a different quantizer offset for chroma than for luma, which usually gives chroma more bits. | ✓ | ✓ |
 | [`--enable-qm`](#enable-qm) | 0: false (default), 1: true | 0 | Uses frequency-weighted quantization matrices, which spend fewer bits on high frequencies the eye notices less. | ✓ | ✓ |
 | [`--qm-min`](#qm-min) | 0..15 | 5 (4 for all intra mode) | Lowest (steepest) QM flatness level the encoder may pick. |  |  |
 | [`--qm-max`](#qm-max) | 0..15 | 9 (10 for all intra mode) | Highest (flattest) QM level the encoder may pick. |  |  |
 | [`--aq-mode`](#aq-mode) | 0: off (default), 1: variance 2: complexity, 3: cyclic refresh | 0 | Segment-based adaptive quantization. |  |  |
-| [`--deltaq-mode`](#deltaq-mode) | 0: off, 1: deltaq objective (default), 2: deltaq placeholder, 3: key frame visual quality, 4: user rating based visual quality optimization, 5: HDR video, 6: Variance Boost | 1 | Changes the quantizer per superblock. | ✓ |  |
+| [`--deltaq-mode`](#deltaq-mode) | 0: off, 1: deltaq objective (default), 2: deltaq placeholder, 3: key frame visual quality, 4: user rating based visual quality optimization, 5: HDR video, 6: Variance Boost | 1 | Changes the quantizer per superblock. | ✓ | ✓ |
 | [`--deltaq-strength`](#deltaq-strength) | percent (library allows 0..1000) | not stated | Scales how strong delta-q modulation is for modes 4 and 6. |  |  |
 | [`--tune-content`](#tune-content) | default, screen, film | not stated | Tells the encoder what kind of content it has. |  | ✓ |
 | [`--vmaf-model-path`](#vmaf-model-path) | file path | not stated | VMAF model file used by the vmaf tune modes. |  |  |
@@ -304,13 +304,13 @@ Sources: [source](https://codecs.wiki/docs/encoders/aomenc), [source](https://ao
 |---|---|---|---|---|---|
 | [`--enable-keyframe-filtering`](#enable-keyframe-filtering) | 0: no filter, 1: filter without overlay (default), 2: filter with overlay - experimental, may break random access in players | 1 | Applies the temporal (ARNR) filter to keyframes, removing noise before coding them. |  |  |
 | [`--arnr-maxframes`](#arnr-maxframes) | 0..15 | not stated | How many neighboring frames the alt-ref temporal filter averages. |  |  |
-| [`--arnr-strength`](#arnr-strength) | 0..6 | not stated | Strength of the alt-ref temporal filter. |  |  |
+| [`--arnr-strength`](#arnr-strength) | 0..6 | not stated | Strength of the alt-ref temporal filter. |  | ✓ |
 | [`--noise-sensitivity`](#noise-sensitivity) | frames to blur (library allows 0..6) | not stated | Turns on the temporal denoiser (luma only) used by realtime and SVC encoding. |  |  |
 | [`--film-grain-test`](#film-grain-test) | 0: none (default), 1: test-1 2: test-2, ... 16: test-16 | 0 | Applies one of 16 built-in test grain parameter sets. |  |  |
 | [`--film-grain-table`](#film-grain-table) | file path | not stated | Loads film grain parameters from a table file, from libaom's noise_model or photon_noise_table tools or another estimator, instead of estimating grain internally. | ✓ | ✓ |
 | [`--denoise-noise-level`](#denoise-noise-level) | 0 (don't denoise) to 50 | not stated | Turns on libaom's internal noise model. | ✓ | ✓ |
 | [`--denoise-block-size`](#denoise-block-size) | pixels | 32 | Block size the noise model uses to find flat areas and estimate grain. |  |  |
-| [`--enable-dnl-denoising`](#enable-dnl-denoising) | 0: false, 1: true (default) | 1 | Controls whether the frame is actually denoised when denoise-noise-level is on. |  |  |
+| [`--enable-dnl-denoising`](#enable-dnl-denoising) | 0: false, 1: true (default) | 1 | Controls whether the frame is actually denoised when denoise-noise-level is on. |  | ✓ |
 
 ### Color and HDR
 
@@ -692,7 +692,7 @@ Total number of encoding passes. Two passes collect first-pass statistics before
 | piped/stdin input | `1` | Each pass reopens the input. Stdin cannot be rewound, so the second pass sees no frames and the output holds only an IVF header (reproduced locally on a synthetic clip). | [source](https://aomedia.googlesource.com/aom/+/refs/tags/v3.15.3/apps/aomenc.c) |
 | archive | `2` | Codec Wiki says aomenc is designed around two passes to reach full efficiency. This needs a seekable input file. | [source](https://codecs.wiki/docs/encoders/aomenc) |
 
-**In Lumora:** Not set. Lumora pipes Y4M on stdin (inputArg '-') and so gets aomenc's default of 2 passes in good mode, which leaves the output empty. Add `--passes=1`, or write a temporary Y4M file.
+**In Lumora:** Always `--passes=1` (once): Lumora pipes Y4M on stdin, and aomenc's default of two passes in good mode would reopen the input.
 
 **Notes:** Listed twice in the help text (global and AV1 sections); it is one option. In aomenc.c the default is 2 for AV1 in good-quality mode. Realtime and all-intra modes force 1.
 
@@ -1192,7 +1192,7 @@ Main speed/efficiency control. Lower numbers search more and compress better but
 | speed | `6` | Codec Wiki suggests 6 for speed and warns that higher values have the worst efficiency. | [source](https://codecs.wiki/docs/encoders/aomenc) |
 | speed (good mode ceiling) | `6` | The good-quality speed-feature tables stop at 6, so 7-9 in good mode add little beyond 6 even though the library accepts them. | [source](https://aomedia.googlesource.com/aom/+/refs/tags/v3.15.3/av1/encoder/speed_features.c) |
 
-**In Lumora:** Passed as `--cpu-used={preset}.` The AV1 Pro ladder runs 6, 5, 4, 3, 2 and the archival AV1 ladder adds libaom rungs 4, 3, 2, 1, 0. The encoders.json default is 4.
+**In Lumora:** Passed as `--cpu-used={preset}.` The AV1 Pro ladder runs 6, 5, 4, 3, 2 (measured on an M3 Max, CPU time per frame relative to 6 / size saved against 6: 5 0.82 / 3%, 4 0.40 / 15%, 3 0.26 / 17%, 2 0.099 / 22%); the archival AV1 ladder adds libaom rungs 4, 3, 2, 1, 0 measured against SVT-AV1 (cpu-used 4 at 0.033 of preset 10's speed, about as small as preset 1). The encoders.json default is 4 (docs/encoding/tuning-aomenc.md).
 
 **Notes:** Library default is 0 in good mode, which is extremely slow, so always set it.
 
@@ -1478,6 +1478,8 @@ Chooses which quality metric rate-distortion decisions optimize for. psnr is the
 | video with iq/ssimulacra2 (disagreement) | `test before adopting` | The 3.15.3 header says iq and ssimulacra2 are not recommended for video, but the 3.14.0 changelog says both now work in good-quality and realtime modes. Supported is not the same as recommended. | [source](https://aomedia.googlesource.com/aom/+/refs/tags/v3.15.3/aom/aomcx.h) |
 | HDR / 10-12-bit | `avoid butteraugli` | tune=butteraugli rejects input above 8-bit. The Homebrew build also lacks it and errors out (checked locally). | [source](https://aomedia.googlesource.com/aom/+/refs/tags/v3.15.3/av1/av1_cx_iface.c) |
 
+**In Lumora:** Not set (psnr). tune=ssim was 5-24% larger at equal VMAF though 1-10% smaller at equal XPSNR; tune=iq was 33-62% larger (docs/encoding/tuning-aomenc.md).
+
 **Notes:** Lumora never sets `--tune` for aomenc, so it runs at psnr. vmaf* modes look for the model at /usr/local/share/model/vmaf_v0.6.1.json by default, which does not exist with Homebrew on Apple silicon; pass `--vmaf-model-path`. ssimulacra2 uses hand-made heuristics and does not call the metric itself.
 
 <a id="enable-chroma-deltaq"></a>
@@ -1494,6 +1496,8 @@ Lets the encoder use a different quantizer offset for chroma than for luma, whic
 |---|---|---|---|
 | general / 4:4:4 / wide gamut | `1` | Codec Wiki lists it as a free efficiency gain from testing. tune=iq turns it on too. | [source](https://codecs.wiki/docs/encoders/aomenc) |
 
+**In Lumora:** Not set. It moved BD-rate by under 0.3% for 3-18% more time (docs/encoding/tuning-aomenc.md).
+
 <a id="enable-qm"></a>
 
 #### `--enable-qm`
@@ -1508,7 +1512,7 @@ Uses frequency-weighted quantization matrices, which spend fewer bits on high fr
 |---|---|---|---|
 | all content | `1` | Codec Wiki lists it as a free efficiency gain from testing. tune=iq turns it on too. | [source](https://codecs.wiki/docs/encoders/aomenc) |
 
-**In Lumora:** Offered as the optional 'Quantization matrices' option (`--enable-qm=1`) on the AV1 Pro and archival libaom rungs, scored with an expected 1.5% saving.
+**In Lumora:** Offered as the optional 'Quantization matrices' option (`--enable-qm=1`) on the AV1 Pro and archival libaom rungs, but no longer recommended for any content type: it was larger at equal XPSNR on every tuning clip (+0.8% to +5.8%) and 4-16% slower (docs/encoding/tuning-aomenc.md).
 
 <a id="qm-min"></a>
 
@@ -1564,6 +1568,8 @@ Changes the quantizer per superblock. Mode 1 follows the TPL model for objective
 | HDR | `do not expect per-block HDR tuning from 5` | In 3.15.3 the per-block HDR luma offsets are compiled out (DISABLE_HDR_LUMA_DELTAQ 1), so mode 5 keeps every block at the base q. At exactly 10-bit with bt2020 primaries it still lowers chroma q through frame-level Cb/Cr offsets, and choosing it turns off the default mode 1. | [source](https://aomedia.googlesource.com/aom/+/refs/tags/v3.15.3/av1/encoder/encoder.h) |
 | still images / flat-area protection | `6` | Variance Boost was added for all-intra in 3.12 and extended to good-quality and realtime modes in 3.14. tune=iq turns it on. | [source](https://aomedia.googlesource.com/aom/+/refs/heads/main/CHANGELOG) |
 
+**In Lumora:** Not set (default 1). 0, 5 (HDR, on PQ clips) and 6 (variance boost) were all larger, by 1-18% (docs/encoding/tuning-aomenc.md).
+
 **Notes:** Modes 1-5 are silently ignored in non-RD mode (cpu-used 8 and up in all-intra, 7 and up in realtime). Mode 1 requires `--enable-tpl-model=1.`
 
 <a id="deltaq-strength"></a>
@@ -1593,7 +1599,7 @@ Tells the encoder what kind of content it has. screen turns on screen-content to
 | screen content | `screen` | Forces screen-content tools and intra block copy instead of leaving it to automatic detection. | [source](https://aomedia.googlesource.com/aom/+/refs/tags/v3.15.3/av1/encoder/encoder.c) |
 | live action / heavy grain (caution) | `avoid film unless you want generic grain` | In 3.15.3, film writes the same synthetic grain parameters into every frame (one luma scaling point, no measurement of the source) and enables film grain in the sequence header. | [source](https://aomedia.googlesource.com/aom/+/refs/tags/v3.15.3/av1/encoder/encoder.c) |
 
-**In Lumora:** The screen tune adds `--tune-content=screen.`
+**In Lumora:** The screen tune adds `--tune-content=screen.` On Lumora's screen clip it produced the same stream as automatic screen detection (docs/encoding/tuning-aomenc.md).
 
 **Notes:** There is no 'animation' value in libaom. Library default is default.
 
@@ -1716,6 +1722,8 @@ Strength of the alt-ref temporal filter. Higher values denoise more, which helps
 | anime / 2D animation / CGI | `1` | Codec Wiki suggests 1 for 3D/CGI-like and 2D animation, where strong temporal filtering harms flat areas and lines. | [source](https://codecs.wiki/docs/encoders/aomenc) |
 | live action | `4` | Codec Wiki suggests 4 for live action, and possibly higher at low bitrates. | [source](https://codecs.wiki/docs/encoders/aomenc) |
 
+**In Lumora:** Not set (library default 5). 1 saved under 1% on CG and anime* and cost faces 3.4%; 3 saved under 0.7% (docs/encoding/tuning-aomenc.md).
+
 **Notes:** Library default is 5 (av1_cx_iface.c). Codec Wiki describes 4 as the default, which does not match the 3.15.3 source.
 
 <a id="noise-sensitivity"></a>
@@ -1774,7 +1782,7 @@ Turns on libaom's internal noise model. It estimates the grain, writes AV1 film 
 | heavy grain / live action | `8` | Codec Wiki uses 8 and warns that above 12 the grain starts to look patterned. | [source](https://codecs.wiki/docs/encoders/aomenc) |
 | heavy grain (caution) | `test by eye` | A Doom9 user found that raising it gave artificial-looking noise and that the built-in denoiser was heavy-handed. | [source](https://forum.doom9.org/archive/index.php/t-184143.html) |
 
-**In Lumora:** The grain tune adds `--denoise-noise-level=10.` The libaom grain options use 10 (AV1 Pro) or {grainLevel} (archival). Recommended for real-life heavy grain, old anime and low-light noisy content.
+**In Lumora:** Offered as 'Film grain synthesis' on both libaom ladders at level 4, but no longer recommended, and the encoders.json grain tune no longer adds it: on heavy grain, low light and old anime* it was 3-26% larger at equal VMAF and XPSNR than coding the grain, against both the de-grained master and the noise-free original, at every level from 4 to 16, and 15-35% slower. When used, ExportEngine now scores it with the synthetic grain stripped (docs/encoding/tuning-aomenc.md).
 
 **Notes:** Library default is 0 (off). Lumora's 10 is inside Codec Wiki's limit of 12 but above its suggested 8.
 
@@ -1805,6 +1813,8 @@ Controls whether the frame is actually denoised when denoise-noise-level is on. 
 | grain synthesis (Codec Wiki default) | `0` | Codec Wiki turns off the built-in denoiser when using grain synthesis because it removes too much. | [source](https://codecs.wiki/docs/encoders/aomenc) |
 | very noisy sources | `1` | Codec Wiki suggests keeping denoising on for very noisy sources. | [source](https://codecs.wiki/docs/encoders/aomenc) |
 
+**In Lumora:** Not set (default 1).
+
 **Notes:** Lumora leaves it at the default (1), so its denoise-noise-level option both denoises and synthesizes.
 
 ### Color and HDR
@@ -1823,7 +1833,7 @@ AV1 bitstream profile. Main covers 8/10-bit 4:2:0 and mono. High adds 4:4:4 at 8
 | 4:2:2 at 8 or 10-bit | `2` | Only the Professional profile allows 4:2:2. An explicit `--profile=2` with 10-bit 4:2:2 Y4M encodes fine in 3.15.3 (checked locally). | [source](https://en.wikipedia.org/wiki/AV1) |
 | 12-bit input (Y4M) | `leave unset (or 0)` | aomenc raises the profile to 2 by itself for 12-bit input. An explicit `--profile=2` with 12-bit 4:2:2 or 4:4:4 Y4M takes a different code path that fails in 3.15.3 with 'Failed to set chroma subsampling x' (checked locally). | [source](https://aomedia.googlesource.com/aom/+/refs/tags/v3.15.3/apps/aomenc.c) |
 
-**In Lumora:** Passed as `--profile={aom_profile}.` ExportEngine maps 12-bit or 4:2:2 to 2, 4:4:4 to 1, and everything else to 0. BUG: for 12-bit 4:2:2 or 4:4:4, the explicit `--profile=2` makes aomenc 3.15.3 exit with 'Failed to set chroma subsampling x' (checked locally), so those exports fail. Pass 0 (or omit the flag) for 12-bit jobs and let aomenc raise it.
+**In Lumora:** Passed as `--profile={aom_profile}` from EncodeRecipes.aomProfile: 0 for 10-bit 4:2:0, 1 for 10-bit 4:4:4, 2 for 10-bit 4:2:2 and 12-bit 4:2:0, and 0 for 12-bit 4:2:2 and 4:4:4, which aomenc raises to 2 itself (an explicit 2 makes aomenc 3.15.3 exit with 'Failed to set chroma subsampling x'). Lumora therefore exports 12-bit 4:2:2 and 4:4:4 (docs/encoding/tuning-aomenc.md).
 
 **Notes:** aomenc adjusts the profile to fit the input format and bit depth and prints a warning (hidden by `--quiet`). It can lower it too: `--profile=2` with 10-bit 4:2:0 input becomes 0, and with 10-bit 4:4:4 becomes 1. Library default is 0.
 
@@ -1891,7 +1901,7 @@ CICP transfer function written to the sequence header. smpte2084 marks PQ (HDR10
 | HDR10 / PQ | `smpte2084` | The CICP name for the PQ curve in aomenc's list. | [source](https://aomedia.googlesource.com/aom/+/refs/tags/v3.15.3/av1/arg_defs.c) |
 | HLG | `hlg` | aomenc spells HLG 'hlg'. 'arib-std-b67' is not in its list and makes aomenc exit (checked locally). | [source](https://aomedia.googlesource.com/aom/+/refs/tags/v3.15.3/av1/arg_defs.c) |
 
-**In Lumora:** Passed as `--transfer-characteristics={tc_name}.` BUG: encoders.json maps hlg to 'arib-std-b67', which aomenc 3.15.3 rejects, so every HLG export through aomenc fails. It should be 'hlg'. pq maps to smpte2084 and sdr to bt709, both valid.
+**In Lumora:** Passed as `--transfer-characteristics={tc_name}:` smpte2084 for HDR10, hlg for HLG (checked: tagged arib-std-b67 in the stream), bt709 for SDR.
 
 **Notes:** Library default is unspecified. Integer CICP codes are also accepted (16 = PQ, 18 = HLG).
 
@@ -2477,7 +2487,7 @@ Caps the number of worker threads. Effective use of threads needs row-mt, tiles 
 |---|---|---|---|
 | chunked parallel encoding (Av1an) | `2` | Codec Wiki says aomenc largely lacks good multithreading and recommends Av1an for parallelism; its Av1an parameter set uses `--threads=2` per chunk. | [source](https://codecs.wiki/docs/encoders/aomenc) |
 
-**In Lumora:** Passed as `--threads={threads}` (the chip's core count).
+**In Lumora:** Passed as `--threads={threads}:` the cores one instance fills (cpuCores / instances for segments, cpuCores for a single encode). Measured at 1920x800, cpu-used 4: 2 threads kept 1.75 cores busy, 4 threads 2.36 and 8 threads 2.55, with the same output; more instances of fewer threads would use the CPU better, which 'Measure on this Mac' can find (docs/encoding/tuning-aomenc.md).
 
 **Notes:** Codec Wiki warns that above about 12 threads, still-image (AVIF) encodes can get slower.
 

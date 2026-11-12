@@ -147,7 +147,7 @@ them on every push.
 | Frame interpolation | RIFE 4.25 converted to Core ML through Model Lab (image and HDR flow models) and run in the real pipeline: +11 to +12 dB over plain blending when rebuilding real frames. Exact frame timing for every mode (2×–8×, 60/59.94, slow motion); never across a cut. |
 | Artifact checker | Measured against *Big Buck Bunny*'s native 60 fps render on held-out footage: makes 0.36% of frames worse (by at most 0.16 dB), where the previous design made 33–83% worse; catches 88–96% of missed shot changes. Details in the [feature reference](docs/features.md#interpolation-models). |
 | Quality targets and metrics | Encoding to a VMAF target (HEVC, AV1) with dip repair; VMAF, VMAF NEG, XPSNR, CAMBI, MS-SSIM, PSNR-HVS, CIEDE2000; size forecasts vs actual; encoder calibration on this Mac. |
-| Encoder presets | SVT-AV1 presets tuned per content type from measurements on *Tears of Steel* and *Big Buck Bunny*: 10.5% smaller at equal quality on average, up to 45% on low-light footage ([results](docs/encoding/tuning-svtav1.md)). |
+| Encoder presets | Every software encoder tuned per content type by BD-rate on *Tears of Steel* and *Big Buck Bunny* clips. SVT-AV1: 10.5% smaller at equal quality on average, up to 45% on low-light footage ([results](docs/encoding/tuning-svtav1.md)). x265: up to 8% smaller on screen content and 17% faster on live action ([results](docs/encoding/tuning-x265.md)). VVenC: about 20% smaller with a 5 s intra period, 25% less CPU on HDR10 ([results](docs/encoding/tuning-vvenc.md)). libaom: measured speed ladder, 12-bit 4:2:2/4:4:4 enabled ([results](docs/encoding/tuning-aomenc.md)). |
 | Packaging and batches | Plex/Infuse naming, metadata policies, track selection, Dolby Digital Plus compatibility tracks, chapters, every appendix (NFO, checksums, settings…), verification, batch queue resume after interruption, run rules, webhooks, archive verification. |
 | Robustness and security | Corrupt, truncated and hostile files fail cleanly; hostile names and paths; cancellation leaves nothing behind; 17 security tests (see [SECURITY.md](SECURITY.md)). |
 | User interface | Every window and sheet built and drawn with a video loaded (see the screenshots, generated from the real app); app flows driven end to end; Simple mode at the minimum window size. |
@@ -163,7 +163,6 @@ them on every push.
 - **Models and metrics not installed:** FILM, IFRNet and GMFSS (no converters yet), Real-ESRGAN, ColorVideoVDP,
   SSIMULACRA 2 and AVQT. Their "missing" paths are tested.
 - **Optimize for this Mac:** deliberately not run on the development machine yet.
-- **Preset tuning for x265, VVenC and libaom:** in progress (SVT-AV1 is done).
 
 Found something that works, or doesn't? Please [open an issue](https://github.com/info-moed/Lumora/issues). Reports
 from other Macs are especially useful.

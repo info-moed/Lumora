@@ -72,7 +72,6 @@
       "-o",
       "{out}",
       "--cpu-used={preset}",
-      "--passes=1",
       "--end-usage=q",
       "--cq-level={quality}",
       "--bit-depth={bits}",
@@ -104,9 +103,7 @@
     },
     "tunes": {
       "default": [],
-      "grain": [
-        "--denoise-noise-level=10"
-      ],
+      "grain": [],
       "anime": [],
       "screen": [
         "--tune-content=screen"
@@ -197,6 +194,10 @@
       "{quality}",
       "--threads",
       "{threads}",
+      "--refreshsec",
+      "5",
+      "--qpa",
+      "{vvenc_qpa}",
       "--sdr",
       "{vvenc_sdr}",
       "--hdr",

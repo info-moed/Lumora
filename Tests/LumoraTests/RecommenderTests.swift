@@ -47,6 +47,8 @@ final class RecommenderTests: XCTestCase {
         let aom = r.rungs.filter { $0.encoderKey == "aomenc" }
         XCTAssertFalse(aom.isEmpty)
         let fastestSVT = r.rungs.first { $0.encoderKey == nil }!
-        XCTAssert(aom.allSatisfy { $0.seedSpeed < 0.03 && $0.seedSpeed < fastestSVT.seedSpeed })
+        // Measured (tuning-aomenc.md): libaom cpu-used 4 runs at 0.033 of preset 10's speed, between SVT-AV1 presets 2 and 1.
+        let preset2 = r.rungs.first { $0.id == "p2" }!
+        XCTAssert(aom.allSatisfy { $0.seedSpeed < preset2.seedSpeed && $0.seedSpeed < fastestSVT.seedSpeed })
     }
 }

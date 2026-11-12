@@ -396,24 +396,25 @@ How the encoders relate to each other cannot be read from this table, because no
 
 ## Appendix: where Lumora's current settings differ from this guide
 
-These come from reading Lumora's code against the references above. None was confirmed by running the app.
+This list came from reading Lumora's code against the references above. Every item has since been fixed and
+checked on real exports (the encoder tuning pages give the measurements). It stays here as a record of what changed.
 
-| Area | What Lumora does | What the references say | Source |
+| Area | Was | Now | Where it is checked |
 |---|---|---|---|
-| aomenc and AVM HLG | `encoders.json` maps HLG transfer to `arib-std-b67` for both | both encoders spell it `hlg` and reject `arib-std-b67` | [aom-argdefs], [avm-argdefs]; `Lumora/Resources/encoders.json` |
-| SVT-AV1 `--lp` | passes the core count (or cores per instance) | `--lp` is a 0-6 level; anything above 6 is clamped, so every instance runs at maximum parallelism and memory | [svt-handle]; `Lumora/Resources/encoders.json` |
-| SVT-AV1 luminance bias | `--luminance-qp-bias 25` offered for real life, heavy grain, low light and old anime regardless of output transfer | not for PQ (HDR10) | [cw-svt-p2]; `Lumora/Core/Quality/EncodeRecipes.swift` |
-| SVT-AV1 grain | the `grain` tune uses `--film-grain 10 --film-grain-denoise 0`; the recipe option uses 12/8/4 with denoise 1 | the two paths behave differently; the FAQ suggests up to about 10 for grainy animation, Lumora uses 4 for old anime | [svt-faq]; both Lumora files |
-| SVT-AV1 grain at fast presets | grain options can combine with presets 8 and 10 | SVT-AV1 warns that grain above preset 6 is costly; at 4K preset 10 becomes 9 | [svt-handle]; `EncodeRecipes.swift` |
-| x265 `--hdr10-opt` on the 12-bit path | passed for HDR10 jobs | does nothing at 12-bit (error logged, exit 0; checked on 4.3+1) | [x265-cli]; `encoders.json` |
-| x265 grain tune | `--tune grain`, then the recipe adds `--aq-mode 3` and `--psy-rd 2.0` | explicit options override the tune, undoing its AQ-off and psy-rd 4 | [x265-presets]; both Lumora files |
-| x265 `psy-rdoq` on fast rungs | offered on every rung | needs `--rdoq-level` 1 or 2, which only `slow` and up set | [x265-cli]; `EncodeRecipes.swift` |
-| x265 flag probing | `supportedFlags()` runs `x265 --help` | `--help` omits about 50 flags that `--fullhelp` lists (compared on 4.3+1) | [x265-cli]; `EncodeRecipes.swift` |
-| VVenC HLG and metadata | `hdrArgs` are appended only for HDR10; no `MasteringDisplayColourVolume` or `MaxContentLightLevel` | HLG needs `--hdr hlg_2020`; HDR10 static metadata needs `--additional` | [vvenc-usage], [vvenc-cfg]; `encoders.json` |
-| VVenC SDR | no `--sdr` flag, so SDR encodes carry no color description and no brightness-dependent QPA | `--sdr sdr_709` gives explicit signaling | [vvenc-usage], [vvenc-bitalloc]; `encoders.json` |
-| AVM grain | passes `--fgs-table` | avmenc uses `--film-grain-table` with a `filmgrn2` table | [avm-argdefs], [avm-grain] |
-| FFmpeg MP4 fallback remux | passes neither `-tag:v hvc1` nor `-strict unofficial` | HEVC may be tagged `hev1`, and Dolby Vision loses `dvcC` | [ff-movenc], [apple-hls] |
-| MKV color | no mkvmerge color or mastering flags | mkvmerge leaves Matroska `Colour` empty for raw HEVC | [mkvmerge] |
+| aomenc and AVM HLG | HLG transfer mapped to `arib-std-b67`, which both encoders reject | `hlg` | `encoders.json`; codec test matrix |
+| SVT-AV1 `--lp` | the core count, clamped by the encoder to 6 | a 1-6 level from the cores each instance gets | [SVT-AV1 tuning](tuning-svtav1.md) |
+| SVT-AV1 luminance bias | `--luminance-qp-bias 25` even for PQ | dropped for HDR10 (measured worse) | [SVT-AV1 tuning](tuning-svtav1.md) |
+| SVT-AV1 grain | the tune and the recipe used different levels and denoise settings | one measured table: 12 heavy grain, 8 old anime, 4 low light, denoise 1 | [SVT-AV1 tuning](tuning-svtav1.md) |
+| SVT-AV1 grain at fast presets | offered on presets 8 and 10 | only on presets 6 and slower, priced per preset | [SVT-AV1 tuning](tuning-svtav1.md) |
+| x265 `--hdr10-opt` on the 12-bit path | passed, ignored by x265 | passed only at 10-bit 4:2:0 | [x265 tuning](tuning-x265.md) |
+| x265 grain tune | `--tune grain`, partly undone by explicit options | no tune; measured psy settings per content type | [x265 tuning](tuning-x265.md) |
+| x265 `psy-rdoq` on fast rungs | offered on every rung | only where `--rdoq-level` is on | [x265 tuning](tuning-x265.md) |
+| x265 flag probing | `--help`, which omits about 50 flags | `--fullhelp` | [x265 tuning](tuning-x265.md) |
+| VVenC HLG and metadata | HLG not signaled; no HDR10 static metadata | `--hdr hlg_2020` with HLG in the VUI; mastering display and light level through `--additional` | [VVenC tuning](tuning-vvenc.md) |
+| VVenC SDR | no color description | `--sdr sdr_709` | [VVenC tuning](tuning-vvenc.md) |
+| AVM grain | `--fgs-table`, which avmenc does not know | no grain option is offered for AV2 | `EncodeRecipes.swift` |
+| FFmpeg MP4 fallback remux | no `-tag:v hvc1`, no `-strict unofficial` | both, so Apple players accept HEVC and Dolby Vision keeps `dvcC` | `Packager.swift` |
+| MKV color | no Matroska color or mastering metadata | added with mkvmerge for raw HEVC and AV1 | `ExportEngine.swift` |
 
 ---
 

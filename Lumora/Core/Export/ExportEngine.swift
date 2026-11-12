@@ -87,7 +87,7 @@ final class ExportEngine {
             return "\(job.codec.displayName) supports \(job.codec.chromaFormats.map(\.label).joined(separator: ", ")) color only."
         }
         if !job.codec.supports(bitDepth: job.bitDepth, chroma: job.chroma) {
-            return "\(job.codec.displayName) can't encode \(job.bitDepth)-bit \(job.chroma.label). Choose 10-bit for 4:2:2 or 4:4:4, or 12-bit 4:2:0."
+            return "\(job.codec.displayName) can't encode \(job.bitDepth)-bit \(job.chroma.label). Choose another bit depth or chroma format."
         }
         if !job.delivery.supported(by: job.codec) {
             let able = Codec.allCases.filter { job.delivery.supported(by: $0) }.map(\.displayName)
@@ -154,10 +154,13 @@ final class ExportEngine {
         let ids = Set(job.encodeChoice?.optionIDs ?? [])
         let av1 = job.codec == .av1 || job.codec == .av1Pro
         let measured = av1 && ids.contains("grainTable")
-        // Without a plan the content tune applies; SVT-AV1's grain tune synthesizes grain like the "grain" extra does.
+        // Without a plan the content tune applies; the SVT-AV1 and libaom grain tunes synthesize grain like the grain extras do.
         let tuneGrain = av1 && job.encodeChoice == nil
-            && (encoderSpec(job)?.tunes?[ContentTuning.preset(job.contentKind).encoderTune] ?? []).contains("--film-grain")
-        let encoderGrain = ids.contains("grain") || ids.contains("aomgrain") || tuneGrain
+            && EncodeRecipes.synthesizesGrain(encoderSpec(job)?.tunes?[ContentTuning.preset(job.contentKind).encoderTune] ?? [])
+        // libaom's grain (--denoise-noise-level, on either AV1 ladder) counts too: before, only SVT-AV1's was recognized,
+        // so libaom grain synthesis was scored with the synthetic grain applied, against the grainy master.
+        let encoderGrain = ids.contains("grain") || ids.contains("aomgrain") || ids.contains("aomgrain10")
+            || (av1 && EncodeRecipes.synthesizesGrain(job.encodeChoice?.extraArgs ?? [])) || tuneGrain
         let texture = av1 && job.filmTexture != .off
         guard measured || encoderGrain || texture else { return g }
         g.strip = true
@@ -718,13 +721,14 @@ final class ExportEngine {
             "cp": nums.0, "tc": nums.1, "mc": nums.2,
             "cp_name": names["cp"] ?? "", "tc_name": names["tc"] ?? "", "mc_name": names["mc"] ?? "",
             "vvenc_hdr": names["vvenc_hdr"] ?? "off", "vvenc_sdr": names["vvenc_sdr"] ?? "off",
+            "vvenc_qpa": EncodeRecipes.vvencQPA(kind: job.contentKind, pq: kindKey == "pq") ? "1" : "0",
             // VVenC takes HDR10 static metadata (SEI) only through --additional.
             "vvenc_additional": kindKey == "pq"
                 ? "MasteringDisplayColourVolume=\(HDRMetadata.vvencMastering(meta)) MaxContentLightLevel=\(max(1, Int(meta.maxCLL))),\(max(1, Int(meta.maxFALL)))"
                 : (names["vvenc_additional"] ?? ""),
             "maxcll": "\(Int(meta.maxCLL))", "maxfall": "\(Int(meta.maxFALL))",
             "svt_mastering": HDRMetadata.svtMastering(meta), "x265_mastering": HDRMetadata.x265Mastering(meta),
-            "aom_profile": (job.bitDepth == 12 || job.chroma == .c422) ? "2" : (job.chroma == .c444 ? "1" : "0"),
+            "aom_profile": EncodeRecipes.aomProfile(bitDepth: job.bitDepth, chroma: job.chroma),
             "x265_profile": "main\(profile)\(job.bitDepth)",
             "grain_table": ctx.grain.table?.path ?? "",
             "svt_grain": "\(EncodeRecipes.svtGrainLevel(job.contentKind))"
