@@ -34,12 +34,12 @@ typedef struct {
     float exposure;                   // linear multiplier, includes per-scene auto exposure
     float midGreyNits;                // where scene 0.18 lands on the display
     float peakNits;                   // target display peak
-    float contrast;                   // slope around mid grey, in stops-per-stop
+    float contrast;                   // slope around mid gray, in stops-per-stop
     float toe;                        // shadow density
     float shoulder;                   // highlight roll-off hardness (higher = brighter, snappier highlights)
     float localContrast;              // "punch": detail/clarity in log-luminance
     float saturation;
-    float vibrance;                   // boosts low-chroma colours more than already-saturated ones
+    float vibrance;                   // boosts low-chroma colors more than already-saturated ones
     float skinProtect;                // 0..1, holds skin hues back from saturation boosts
     float highlightDesat;             // pulls near-peak highlights toward neutral, like film
     float blackNits;

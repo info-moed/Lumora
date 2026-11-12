@@ -39,7 +39,7 @@ targets:
         CFBundleVersion: "1"
         LSMinimumSystemVersion: "27.0"
         LSApplicationCategoryType: public.app-category.video
-        NSHumanReadableCopyright: "© 2026 info-moed. MIT licence."
+        NSHumanReadableCopyright: "© 2026 info-moed. MIT license."
     postBuildScripts:
       - name: Bundle helper tools (optional)
         script: '"$SRCROOT/scripts/bundle-tools.sh" || true'

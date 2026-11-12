@@ -130,7 +130,7 @@ inline float decodeChannel(float v, int tf) {
         case TF_BT1886:    return pow(max(v, 0.0f), 2.4f);
         case TF_SRGB:      return (v <= 0.04045f) ? v / 12.92f : pow((max(v, 0.0f) + 0.055f) / 1.055f, 2.4f);
         case TF_PQ:        return pqToNits(v) / 144.0f;     // ~26 nits -> 0.18
-        case TF_HLG:       return hlgInverseOETF(v) * 3.75f; // HLG grey -> ~0.18
+        case TF_HLG:       return hlgInverseOETF(v) * 3.75f; // HLG gray -> ~0.18
         default:           return v;
     }
 }
@@ -174,7 +174,7 @@ inline float3 colorBoost(float3 rgbRel, constant GradeUniforms& u) {
     return u.xyzToWorking * oklabToXYZ(float3(lab.x, lab.yz * boost));
 }
 
-// Luminance-preserving soft gamut compression: pull out-of-gamut colours toward neutral just enough.
+// Luminance-preserving soft gamut compression: pull out-of-gamut colors toward neutral just enough.
 inline float3 softGamut(float3 o, float3 luma) {
     float Y = dot(o, luma);
     if (Y <= 0.0f) return float3(0.0f);
@@ -198,7 +198,7 @@ inline float3 gradeToNits(float3 w, float2 guide, constant GradeUniforms& u) {
     float d = clamp(I - (guide.x * I + guide.y), -2.5f, 2.5f);
     e += u.localContrast * d / (1.0f + 0.2f * d * d);
 
-    // Tone curve: contrast around mid grey, generalised Reinhard shoulder to peak, toe for density.
+    // Tone curve: contrast around mid gray, generalized Reinhard shoulder to peak, toe for density.
     float L = u.midGreyNits * exp2(u.contrast * e);
     float n = max(u.shoulder, 0.5f);
     float outN = L / pow(1.0f + pow(L / u.peakNits, n), 1.0f / n);
@@ -214,7 +214,7 @@ inline float3 gradeToNits(float3 w, float2 guide, constant GradeUniforms& u) {
     float hd = smoothstep(0.5f * u.peakNits, u.peakNits, max3(rgbN.r, rgbN.g, rgbN.b)) * u.highlightDesat;
     rgbN = mix(rgbN, float3(Yn), hd);
 
-    // Colour work relative to diffuse white so the vibrance thresholds behave the same at any peak.
+    // Color work relative to diffuse white so the vibrance thresholds behave the same at any peak.
     float rel = u.midGreyNits / 0.18f;
     rgbN = colorBoost(rgbN / rel, u) * rel;
 
@@ -377,7 +377,7 @@ kernel void gradeKernel(texture2d<float, access::sample> src   [[texture(0)]],
     }
     float3 out = encodeOutput(nits, u);
     if (u.ditherAmplitude > 0.0f) {
-        // Triangular (TPDF) dither of one code value hides banding when quantising to 10/12 bits.
+        // Triangular (TPDF) dither of one code value hides banding when quantizing to 10/12 bits.
         float n = ign(float2(gid), u.frameSeed) + ign(float2(gid) + 113.0f, u.frameSeed + 7) - 1.0f;
         out += n * u.ditherAmplitude;
     }
@@ -602,7 +602,7 @@ inline float qcLuma(texture2d<float, access::read> t, int2 p, uint w, uint h, in
 }
 
 // Artifact scan: an interpolated frame should only contain structure that exists in one of its two
-// neighbours (allowing a few pixels of motion). Structure in neither = warping, tearing or ghosting.
+// neighbors (allowing a few pixels of motion). Structure in neither = warping, tearing or ghosting.
 // Writes per-tile counts of suspicious pixels.
 kernel void interpQCKernel(texture2d<float, access::read> a   [[texture(0)]],
                            texture2d<float, access::read> b   [[texture(1)]],
@@ -910,7 +910,7 @@ kernel void flowProxyKernel(texture2d<float, access::sample> src [[texture(0)]],
     uint2 q = min(gid, uint2(f.contentWidth - 1, f.contentHeight - 1));
     float2 uv = (float2(q) + 0.5f) / float2(f.contentWidth, f.contentHeight);
     float3 w = max(toWorking(src.sample(linearSampler, uv).rgb, u), 0.0f) * 2.0f;
-    float3 v = pow(w / (1.0f + w), 1.0f / 2.2f);            // Reinhard + gamma: mid grey ~0.55, like SDR video
+    float3 v = pow(w / (1.0f + w), 1.0f / 2.2f);            // Reinhard + gamma: mid gray ~0.55, like SDR video
     uint plane = uint(f.tensorWidth * f.tensorHeight);
     uint i = gid.y * uint(f.tensorWidth) + gid.x;
     tensor[i] = half(v.r); tensor[plane + i] = half(v.g); tensor[2 * plane + i] = half(v.b);
@@ -1016,8 +1016,8 @@ kernel void compareKernel(texture2d<float, access::read> a [[texture(0)]],
     atomic_fetch_add_explicit(&out[2], 1.0f, memory_order_relaxed);
 }
 
-// How a generated frame relates to its two real neighbours: error vs a plain cross-fade (ghosting),
-// vs either neighbour (a duplicated "fake" frame), and how different the neighbours are (motion amount).
+// How a generated frame relates to its two real neighbors: error vs a plain cross-fade (ghosting),
+// vs either neighbor (a duplicated "fake" frame), and how different the neighbors are (motion amount).
 kernel void blendErrorKernel(texture2d<float, access::read> a   [[texture(0)]],
                              texture2d<float, access::read> b   [[texture(1)]],
                              texture2d<float, access::read> mid [[texture(2)]],
@@ -1040,8 +1040,8 @@ kernel void pqLumaHistKernel(texture2d<float, access::read> a [[texture(0)]],
     atomic_fetch_add_explicit(&hist[bin], 1u, memory_order_relaxed);
 }
 
-// Tone normalisation for fair comparison when the interpolated file was regraded (e.g. HDR added):
-// shift each pixel's PQ luma along a fitted 256-entry curve, keeping its colour offsets.
+// Tone normalization for fair comparison when the interpolated file was regraded (e.g. HDR added):
+// shift each pixel's PQ luma along a fitted 256-entry curve, keeping its color offsets.
 kernel void toneMatchKernel(texture2d<float, access::read>  a   [[texture(0)]],
                             texture2d<float, access::write> dst [[texture(1)]],
                             constant float* curve               [[buffer(0)]],
@@ -1057,7 +1057,7 @@ kernel void toneMatchKernel(texture2d<float, access::read>  a   [[texture(0)]],
 
 // ------------------------------------------------------------------------------------------
 // Content test: what kind of picture is this? Per 8x8 block of the (encoded, perceptual) luma:
-// detail (Sobel), flat-area share, grain/noise in flat areas, hard-edge share, colourfulness.
+// detail (Sobel), flat-area share, grain/noise in flat areas, hard-edge share, colorfulness.
 // out (atomic float): 0 sobel sum, 1 edge px, 2 flat blocks, 3 noise sum (flat), 4 noise count,
 //                     5 blocks, 6 pixels, 7 chroma sum
 // ------------------------------------------------------------------------------------------
@@ -1145,7 +1145,7 @@ kernel void grainStatsKernel(texture2d<float, access::read> orig  [[texture(0)]]
 }
 
 // Re-grains an interpolated clean frame with real grain from the nearest source frame, shifted by a fresh random
-// offset so it never "freezes" and keeps exactly the source's grain size, colour and strength.
+// offset so it never "freezes" and keeps exactly the source's grain size, color and strength.
 kernel void regrainKernel(texture2d<float, access::read>  cleanMid  [[texture(0)]],
                           texture2d<float, access::read>  origNear  [[texture(1)]],
                           texture2d<float, access::read>  cleanNear [[texture(2)]],

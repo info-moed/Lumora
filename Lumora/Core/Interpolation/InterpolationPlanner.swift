@@ -10,7 +10,7 @@ struct InterpolationSettings: Codable, Hashable {
     var mode: Mode = .off
     var primaryModelID: String = "rife-4"
     /// The flow model the artifact scorer asks for a second opinion (any installed flow model when this one isn't).
-    var repairModelID: String? = "film"
+    var repairModelID: String? = nil           // second-opinion flow model for the artifact checker; nil = best installed
     var artifactRepair = true
     var sensitivity: Float = 0.5               // 0 = only obvious artifacts, 1 = very strict
     var smoothDuplicates = true                // interpolate across repeated frames (animation on twos, VFR padding)

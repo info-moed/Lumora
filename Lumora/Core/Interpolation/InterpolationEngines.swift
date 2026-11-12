@@ -80,7 +80,7 @@ struct InterpolationModelSpec: Codable, Hashable, Identifiable {
 final class CoreMLInterpolator: InterpolationEngine {
     let spec: InterpolationModelSpec
     var name: String { spec.displayName }
-    /// Decode uniforms for the source colour (used to build the SDR proxy in flow mode).
+    /// Decode uniforms for the source color (used to build the SDR proxy in flow mode).
     var proxyUniforms: GradeUniforms
     private let model: MLModel
     private let ctx = MetalContext.shared

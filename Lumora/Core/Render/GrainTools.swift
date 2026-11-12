@@ -77,7 +77,7 @@ final class GrainProcessor {
             bins.append(v)
             total += s[i]; n += Float(c[i])
         }
-        // Fill empty bands from neighbours so the curve is continuous.
+        // Fill empty bands from neighbors so the curve is continuous.
         for i in bins.indices where bins[i] == 0 {
             bins[i] = bins[..<i].last(where: { $0 > 0 }) ?? bins[i...].first(where: { $0 > 0 }) ?? 0
         }

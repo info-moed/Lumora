@@ -23,7 +23,7 @@ enum InterpolationEvaluator {
         var originalsPSNR: Float           // how faithfully the original frames survive (dB, PQ domain)
         var originalsSSIM: Float
         var generatedChecked: Int
-        var artifactRate: Float            // share of generated frames with structure in neither neighbour
+        var artifactRate: Float            // share of generated frames with structure in neither neighbor
         var ghostingRate: Float            // generated frames that are only cross-fades
         var duplicateRate: Float           // generated frames that are copies (not real interpolation)
         var cutMorphs: Int                 // frames that morph between two different shots
@@ -99,7 +99,7 @@ enum InterpolationEvaluator {
             return (j0...max(j0, j1)).map { ($0, ((Double($0) / b.fps) - t0) / (t1 - t0)) }.filter { $0.index >= 0 }
         }
 
-        // 2. Tone normalisation: if the interpolated version was regraded (e.g. HDR added), fit a curve from
+        // 2. Tone normalization: if the interpolated version was regraded (e.g. HDR added), fit a curve from
         //    original to interpolated on the aligned original frames, so we compare motion, not grading.
         var hA = [Double](repeating: 0, count: 256), hB = hA
         for i in intervals.prefix(12) {
@@ -156,7 +156,7 @@ enum InterpolationEvaluator {
                     let e = r.blendErrors(A0, A1, B, t: Float(f.t))
                     let (fraction, _) = qc.score(a: A0, b: A1, mid: B, sensitivity: 0.5)
                     let seconds = Double(f.index) / b.fps
-                    // A copy matches one neighbour as a whole frame. (The per-pixel nearer-neighbour error is small
+                    // A copy matches one neighbor as a whole frame. (The per-pixel nearer-neighbour error is small
                     // for genuine half-way motion too, which flagged real interpolation as copies.)
                     let copyError = min(r.blendErrors(A0, A1, B, t: 0).vsBlend, r.blendErrors(A0, A1, B, t: 1).vsBlend)
                     if isCut && e.vsNearest > 0.01 {

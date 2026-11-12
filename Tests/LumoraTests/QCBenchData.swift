@@ -235,7 +235,7 @@ final class NV12Reader {
         guard let track = try await asset.loadTracks(withMediaType: .video).first else { throw LumoraError.noVideoTrack }
         let r = try AVAssetReader(asset: asset)
         // After a seek AVAssetReader also returns the frame overlapping the range start, with its PTS clamped to the
-        // start: frame k-1 arrives labelled k (measured by test0b_SeekCheck). Start half a frame early and drop it.
+        // start: frame k-1 arrives labeled k (measured by test0b_SeekCheck). Start half a frame early and drop it.
         skipFirst = frame > 0
         if frame > 0 {
             let t = CMTime(value: CMTimeValue((frame + QCBench.ptsOffset) * 1000 - 500), timescale: 60_000)

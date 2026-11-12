@@ -55,6 +55,9 @@ jobs:
           brew update --quiet
           brew install xcodegen ffmpeg svt-av1 aom x265 vvenc
 
+      - name: US English
+        run: python3 scripts/us-english.py --check
+
       - name: Dependency status
         run: scripts/deps.sh status
 

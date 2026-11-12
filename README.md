@@ -130,41 +130,43 @@ Prefer Xcode? After `xcodegen`, run `open Lumora.xcodeproj` and press **⌘R**.
 
 ## Project status
 
-Lumora's source was written as a complete design first and compiled later. Version 0.11.1 is the first version that
-builds. "Verified" below means an automated test runs it for real (actual files, actual GPU, actual encoders) and
-checks the result.
+Lumora's source was written as a complete design first and compiled later; 0.11.1 was the first version that built.
+Since then every area has been tested end to end. "Verified" means an automated test runs it for real (actual files,
+the actual GPU and encoders) and checks the result with independent tools (ffprobe, dovi_tool, hdr10plus_tool,
+metrics against ground truth). **320 automated tests pass** on macOS 27.3 with Xcode 27 (Apple M3 Max), and CI runs
+them on every push.
 
-**Verified** (built with Xcode 27.0 on macOS 27.3, Apple M3 Max; 83 automated tests passing):
+**Verified**
 
 | Area | What's checked |
 |---|---|
-| Build | The app and test bundle compile cleanly; all 32 Metal kernels load. |
-| Color math | Transfer curves (PQ, HLG, camera logs), gamut matrices and HDR10 metadata encoding against published reference values. |
-| Ingest and analysis | Opening H.264 and HEVC files; detecting PQ HDR; scene-cut detection; auto-generated looks. |
-| SDR → HDR10 | Hardware HEVC, 10-bit, PQ, BT.2020; correct frame count; picture neither black nor clipped. |
-| HDR10 → SDR | Hardware HEVC, BT.709; correct frame count and exposure. |
-| HDR10 → ProRes 4444 XQ | 12-bit 4:4:4, PQ tags kept. |
-| SDR → HDR10 AV1 | SVT-AV1, 10-bit, PQ. |
-| Frame interpolation (2×) | Correct frame count, never across a cut, using the built-in blend fallback (no ML model installed). |
-| Security | 17 hostile-input tests: path traversal, source overwrite, absurd frame rates and sizes, disguised playlists, metadata leaks, unpinned model archives, Keychain storage. See [SECURITY.md](SECURITY.md). |
-| Dependencies | Every encoder flag Lumora uses is accepted by the installed SVT-AV1, libaom, x265 and VVenC (`scripts/deps.sh verify`). |
-| User interface | Every window (main window in Simple and Pro mode, Compare, Model Lab, Encode monitor, Library, AirPlay, Regression, Optimize, Log, Settings) builds and draws without crashing, with and without a video loaded. |
+| Every codec × bit depth × chroma × HDR format | 102 real exports (hardware HEVC, ProRes 422 HQ/4444 XQ, SVT-AV1, libaom, x265 12-bit, VVenC) from SDR and HDR10 sources: codec, profile, bit depth, chroma, color tags, frame count, audio, exposure, HDR10 static metadata; unsupported combinations refused with a clear reason. |
+| HDR10+ and Dolby Vision | HDR10+ (hardware HEVC, x265) and Dolby Vision 8.1 (hardware HEVC, x265) and 8.4 (hardware HEVC) verified with `hdr10plus_tool` and `dovi_tool`: one RPU / metadata entry per frame, correct profile, MP4 and MKV. A film's original Dolby Vision is retimed through interpolation and black-bar cropping. |
+| Ingest and analysis | MOV, MP4, MKV, WebM, AVI, Y4M, TS; H.264, HEVC, ProRes, AV1, VP9, MPEG-2; SDR, HDR10, HLG; interlaced, telecined, anamorphic, VFR; letterbox and pillarbox detection; cuts, fades and repeated frames; content types. |
+| Grading | Every look to SDR, HDR10 (1000/2000/4000 nits) and HLG; every control at its extremes; LUT export (matches Lumora's own render through FFmpeg `lut3d`); HDR stills (HEIC, AVIF); presets; reference matching; MetalFX upscaling. |
+| Frame interpolation | RIFE 4.25 converted to Core ML through Model Lab (image and HDR flow models) and run in the real pipeline: +11 to +12 dB over plain blending when rebuilding real frames. Exact frame timing for every mode (2×–8×, 60/59.94, slow motion); never across a cut. |
+| Artifact checker | Measured against *Big Buck Bunny*'s native 60 fps render on held-out footage: makes 0.36% of frames worse (by at most 0.16 dB), where the previous design made 33–83% worse; catches 88–96% of missed shot changes. Details in the [feature reference](docs/features.md#interpolation-models). |
+| Quality targets and metrics | Encoding to a VMAF target (HEVC, AV1) with dip repair; VMAF, VMAF NEG, XPSNR, CAMBI, MS-SSIM, PSNR-HVS, CIEDE2000; size forecasts vs actual; encoder calibration on this Mac. |
+| Encoder presets | SVT-AV1 presets tuned per content type from measurements on *Tears of Steel* and *Big Buck Bunny*: 10.5% smaller at equal quality on average, up to 45% on low-light footage ([results](docs/encoding/tuning-svtav1.md)). |
+| Packaging and batches | Plex/Infuse naming, metadata policies, track selection, Dolby Digital Plus compatibility tracks, chapters, every appendix (NFO, checksums, settings…), verification, batch queue resume after interruption, run rules, webhooks, archive verification. |
+| Robustness and security | Corrupt, truncated and hostile files fail cleanly; hostile names and paths; cancellation leaves nothing behind; 17 security tests (see [SECURITY.md](SECURITY.md)). |
+| User interface | Every window and sheet built and drawn with a video loaded (see the screenshots, generated from the real app); app flows driven end to end; Simple mode at the minimum window size. |
+| Dependencies | Every encoder flag Lumora uses is accepted by the installed encoders, and the [encoder settings reference](docs/encoding/index.md) matches their `--help` (`scripts/deps.sh verify`). |
 
-**Written but not yet verified.** These may work, may need fixes, or may depend on VERIFY items in the
-[feature reference](docs/features.md#verify-before-relying-on-it):
+**Not verified yet, and why**
 
-- The on-screen HDR (EDR) preview. Tests draw windows offscreen, and the Metal preview layer can't be captured that way. The Simple-mode layout also hasn't been checked on a real screen yet.
-- Dolby Vision 8.1 / 8.4 and HDR10+ metadata, and keeping a film's original Dolby Vision.
-- VVC (VVenC), AV2 (AVM), 12-bit HEVC (x265) and libaom AV1 exports.
-- RIFE / FILM / IFRNet / GMFSS Core ML models, artifact repair, per-scene model routing and Model Lab conversion.
-- Upscaling (MetalFX and Real-ESRGAN).
-- Encoding to a VMAF / quality target, and the extra metrics (ColorVideoVDP, CAMBI, SSIMULACRA 2…).
-- RAW formats, vendor RAW plug-ins, Apple Log 2 color.
-- Packaging (naming, metadata, TMDB lookup, appendices), batch queue, run rules and notifications.
-- AirPlay preview, Optimize for this Mac, size-forecast accuracy.
+- **On a real screen:** the HDR (EDR) preview and the live window. Tests run headless, and the GPU preview layer can't
+  be captured offscreen (its frames are checked directly on the GPU instead).
+- **AV2 (AVM):** the reference encoder isn't installed; only its clean "not installed" message is tested.
+- **Hardware or software not available here:** vendor RAW SDKs (BRAW, R3D, ARRIRAW, Canon RAW); real camera Bayer DNGs
+  and Apple Log footage; hard-drive sources; AirPlay playback to an Apple TV; Mac notifications; TMDB lookups (need a key).
+- **Models and metrics not installed:** FILM, IFRNet and GMFSS (no converters yet), Real-ESRGAN, ColorVideoVDP,
+  SSIMULACRA 2 and AVQT. Their "missing" paths are tested.
+- **Optimize for this Mac:** deliberately not run on the development machine yet.
+- **Preset tuning for x265, VVenC and libaom:** in progress (SVT-AV1 is done).
 
-If you try one of these, please [open an issue](https://github.com/info-moed/Lumora/issues) with what happened, even
-when it works. That's how items move up to "verified".
+Found something that works, or doesn't? Please [open an issue](https://github.com/info-moed/Lumora/issues). Reports
+from other Macs are especially useful.
 
 ---
 

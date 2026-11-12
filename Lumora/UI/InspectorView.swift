@@ -321,10 +321,19 @@ struct InterpolationSection: View {
             Toggle("Find and fix artifacts", isOn: $model.interpolation.artifactRepair)
             Toggle("Smooth repeated frames (animation)", isOn: $model.interpolation.smoothDuplicates)
             if model.interpolation.artifactRepair {
-                Picker("Repair model", selection: Binding(get: { model.interpolation.repairModelID ?? "" },
-                                                          set: { model.interpolation.repairModelID = $0.isEmpty ? nil : $0 })) {
-                    Text("Patch only").tag("")
-                    ForEach(specs) { s in Text(s.displayName).tag(s.id) }
+                // The artifact checker compares each generated frame with an independent second generation from a
+                // flow model; only installed flow models can serve.
+                let secondOpinions = InterpolationModelSpec.all().filter { $0.isInstalled && $0.isFlow }
+                if secondOpinions.isEmpty {
+                    Text("The artifact checker needs an HDR flow model as its second opinion. Install one in Tools → Model Lab.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Picker("Second opinion", selection: Binding(get: { model.interpolation.repairModelID ?? "" },
+                                                                set: { model.interpolation.repairModelID = $0.isEmpty ? nil : $0 })) {
+                        Text("Automatic").tag("")
+                        ForEach(secondOpinions) { s in Text(s.displayName).tag(s.id) }
+                    }
+                    .help("A second model generates each frame independently; tile by tile, Lumora keeps whichever version is better.")
                 }
                 ParamSlider(label: "Artifact strictness", value: $model.interpolation.sensitivity, range: 0...1,
                             defaultValue: ContentTuning.preset(model.contentKind).qcSensitivity)

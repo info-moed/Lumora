@@ -98,7 +98,7 @@ AV1, VVC and AV2 are always software encodes: the M5 media engine decodes AV1 bu
 Notes from the codec test matrix (`CampaignCodecTests`):
 
 - aomenc (libaom 3.15) refuses 12-bit 4:2:2 and 4:4:4, so Lumora offers 12-bit AV1 in 4:2:0 only; use 10-bit for 4:2:2/4:4:4.
-- aomenc can't write HDR10 static metadata into the stream, so for `.mkv` output Lumora adds MaxCLL/MaxFALL and the mastering display to the Matroska colour metadata with mkvmerge.
+- aomenc can't write HDR10 static metadata into the stream, so for `.mkv` output Lumora adds MaxCLL/MaxFALL and the mastering display to the Matroska color metadata with mkvmerge.
 - x265 and VVenC write raw streams without timestamps; Lumora wraps them with MP4Box (or mkvmerge for HEVC) before muxing.
 - ProRes 4444 XQ is always coded at 12 bits; choosing 10-bit only lowers the grading precision.
 
@@ -341,7 +341,9 @@ Open **Tools → Compare original vs interpolated…** to:
 Put converted `.mlpackage` files in `~/Library/Application Support/Lumora/Models/`. Models are described in `Resources/interpolation_models.json`.
 
 - **RIFE 4.x** (MIT) is the default. Convert it with `scripts/convert_rife_coreml.py`.
-- **FILM** (Apache-2.0) is the default repair model, because it is better on large motion.
+- **RIFE 4.x HDR flow** is the artifact checker's default *second opinion* (Motion → **Second opinion** → Automatic
+  picks the best installed flow model).
+- **FILM** (Apache-2.0) is described in the catalog but has no converter yet, so it can't be installed.
 - **IFRNet** and **GMFSS** are optional. **Check each model's license before you distribute it.**
 
 If no model is installed, generated frames fall back to blending, so the app still works.
@@ -367,6 +369,25 @@ trees add a few milliseconds per frame. With **Find and fix artifacts** off, nei
 
 The earlier rules (cross-fade patches, replacing a frame when more than 35% of it was flagged, and the flicker check)
 were measured against the same ground truth and removed: each lowered quality, and the flicker check never fired.
+
+**Measured results.** Scored on frames removed from *Big Buck Bunny*'s native 60 fps render and rebuilt (30→60, 15→60,
+20→60 and 12→60), on footage the checker was never tuned on, plus 4K, HDR10, heavy-grain, near-cut and fade sets.
+Quality is PSNR against the real frame, compared with RIFE's raw output:
+
+| | Previous checker | Current checker |
+|---|---|---|
+| Average change vs raw RIFE | −1.9 to −4.4 dB | +0.01 dB at default strictness, up to +1.0 dB with *Exhaustive* |
+| Frames made worse by more than 0.1 dB | 33–83% | 0.36% (worst 0.16 dB) |
+| Missed shot changes held on the real frame instead of morphed | 46–75%, +10 to +20 dB | 88–96%, +21 to +34 dB |
+| Fades and dissolves | −4.9 dB, worst −17.7 dB | +0.03 dB, worst −0.08 dB |
+| Visible steps along tile edges | — | none |
+| Added time per frame at 1080p | — | +33–56% (4K: +10–22%) |
+
+In short: it no longer harms good frames, and it reliably catches the shot changes RIFE would otherwise smear. A
+perfect per-tile choice among today's candidates would gain about +1.6 dB, so the remaining headroom needs better
+candidates (for example a second model family), not a stricter detector. Known limits: one-pixel lines moving fast at
+15→60 can still lose up to 1.4 dB, and at strictness 1 a frame can lose up to 0.45 dB. The benchmark is
+`scripts/qc-bench.sh`; the verification sets are `QCVerifyTests`.
 
 **Scan for interpolation problems** runs this check at proxy resolution and lists every repaired frame before you commit to a full export.
 

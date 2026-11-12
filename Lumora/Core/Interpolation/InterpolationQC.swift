@@ -132,7 +132,7 @@ final class FrameStream {
     private var batchLeases: [ScratchLease] = []
     private(set) var events: [QCEvent] = []
 
-    /// - proxyUniforms: decode uniforms for the source colour (flow models estimate motion on an SDR-like proxy).
+    /// - proxyUniforms: decode uniforms for the source color (flow models estimate motion on an SDR-like proxy).
     /// - sceneOf: source frame → scene index (for per-scene routing).
     init(source: FrameSource, plan: ArraySlice<PlannedFrame>, settings: InterpolationSettings,
          proxyUniforms: GradeUniforms, proxyWidth: Int? = nil, sceneOf: @escaping (Int) -> Int = { _ in 0 }) throws {

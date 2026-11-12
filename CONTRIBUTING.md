@@ -44,6 +44,9 @@ GitHub's macOS 27 / Xcode 27 runner for every push and pull request.
 - **Keep the one grading path.** Preview, analysis and export must share `gradeKernel` and `UniformBuilder`.
 - **Never write next to the source**; use `ScratchManager.jobDirectory`.
 - **No shell.** Launch tools through `ToolLocator` with argument arrays.
+- **Write US English** in code comments, interface text and docs. `python3 scripts/us-english.py --check` lists
+  British spellings (CI runs it); `python3 scripts/us-english.py` fixes them. Tool options and identifiers keep
+  their real spelling (put them in `code` formatting).
 - **Explain choices in plain English** wherever the UI makes a decision for the user.
 - **Update the docs** you affect, and add a line to `CHANGELOG.md` under *Unreleased*.
 - Regenerate the project with `xcodegen` after adding files; don't commit `Lumora.xcodeproj`.

@@ -3,7 +3,7 @@ import Metal
 import CoreML
 @testable import Lumora
 
-/// Frame interpolation and Model Lab, end to end: the planner's frame maths, FrameStream + QC on real decoded
+/// Frame interpolation and Model Lab, end to end: the planner's frame math, FrameStream + QC on real decoded
 /// frames, exports whose frame counts and timestamps are checked with ffprobe, the evaluator / benchmark /
 /// external repair / motion tools, and (in the `testModelLab…` methods, which use the network) the real
 /// RIFE 4.25 download → Core ML conversion → interpolation quality against the blend fallback.
@@ -37,7 +37,7 @@ final class CampaignInterpolationTests: XCTestCase {
         return try EndToEndTests.sh(fp, ["-v", "error"] + args)
     }
 
-    /// Frame-level colour tags (FFmpeg 9 writes the frames' tags, not -color_trc, into the file).
+    /// Frame-level color tags (FFmpeg 9 writes the frames' tags, not -color_trc, into the file).
     static let tag709 = ",setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709"
     static let tagPQ = ",setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc"
 
@@ -72,7 +72,7 @@ final class CampaignInterpolationTests: XCTestCase {
 
     static func inspect(_ url: URL) async throws -> (SourceDescriptor, SourceColor) {
         let (d, colors) = try await SourceInspector.inspect(url)
-        return (d, try XCTUnwrap(colors.first, "no colour interpretation for \(url.lastPathComponent)"))
+        return (d, try XCTUnwrap(colors.first, "no color interpretation for \(url.lastPathComponent)"))
     }
 
     /// One scene, no cuts, no fades, no repeats, for `n` frames (so the planner's output is fully predictable).
@@ -119,7 +119,7 @@ final class CampaignInterpolationTests: XCTestCase {
         return dst
     }
 
-    /// PSNR (dB, PQ domain) of `b` against `a`, both in source colour `color`.
+    /// PSNR (dB, PQ domain) of `b` against `a`, both in source color `color`.
     static func psnr(_ a: MTLTexture, _ b: MTLTexture, color: SourceColor) -> Float {
         let r = GradeRenderer()
         return r.compare(r.comparable(a, color: color, width: 320), r.comparable(b, color: color, width: 320)).psnr
@@ -144,7 +144,7 @@ final class CampaignInterpolationTests: XCTestCase {
         return (n == 0 ? 0 : sum / Float(n), total, stream.events)
     }
 
-    /// A flat grey field whose level rises by `step` (8-bit codes) every frame, with a sine track. Any output
+    /// A flat gray field whose level rises by `step` (8-bit codes) every frame, with a sine track. Any output
     /// frame's expected level follows from its timestamp alone, so frame order, timing and blend weights are checked.
     static func makeRamp(_ name: String, rate: String, fps: Double, frames: Int, step: Int = 6) throws -> URL {
         let url = work.appendingPathComponent(name)
@@ -238,7 +238,7 @@ final class CampaignInterpolationTests: XCTestCase {
 
     static var installedModels: [InterpolationModelSpec] { InterpolationModelSpec.all().filter(\.isInstalled) }
 
-    // MARK: - Planner (pure frame maths)
+    // MARK: - Planner (pure frame math)
 
     func testPlannerOffIsIdentity() {
         let (plan, rate) = InterpolationPlanner.plan(sourceFrames: 30, sourceRate: (24000, 1001), settings: InterpolationSettings(),
@@ -495,7 +495,7 @@ final class CampaignInterpolationTests: XCTestCase {
         let qc = InterpolationQC()
         let clean = qc.score(a: src[4], b: src[6], mid: src[5], sensitivity: 0.5)
         XCTAssertLessThan(clean.fraction, 0.1, "a real in-between frame should pass")
-        // A frame from further along the pan has structure the neighbours don't have in many places.
+        // A frame from further along the pan has structure the neighbors don't have in many places.
         let far = qc.score(a: src[4], b: src[6], mid: src[12], sensitivity: 0.5)
         XCTAssertGreaterThan(far.fraction, clean.fraction + 0.2)
         XCTAssertEqual(far.bad.count, 5 * 3)    // 64-px tiles over 320x180

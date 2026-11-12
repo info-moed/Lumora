@@ -58,31 +58,31 @@ struct ContentTuning: Codable, Hashable {
         case .realLife:
             return ContentTuning(kind: k, summary: "Natural camera footage. Balanced motion model, standard artifact checks.",
                                  interpolationModels: ["rife-4.25-flow", "rife-4.18-flow", "rife-4.26-flow", "rife-4.25", "rife-4"],
-                                 repairModel: "film", qcSensitivity: 0.5, smoothDuplicates: false, deband: 0, edgeProtection: 0.6,
+                                 repairModel: nil, qcSensitivity: 0.5, smoothDuplicates: false, deband: 0, edgeProtection: 0.6,
                                  punchScale: 1, grain: .keep, encoderTune: "default", vmafModel: "vmaf_v0.6.1",
                                  targetVMAF: 95, upscaleModel: "realesrgan-x2plus")
         case .realLifeHeavyGrain:
             return ContentTuning(kind: k, summary: "Film or high-ISO grain. Grain is random by nature, so the artifact check relies more on motion agreement; the encoder models grain instead of spending bits on it.",
                                  interpolationModels: ["rife-4.25-flow", "rife-4.18-flow", "rife-4.25"],
-                                 repairModel: "film", qcSensitivity: 0.15, smoothDuplicates: false, deband: 0, edgeProtection: 0.8,
+                                 repairModel: nil, qcSensitivity: 0.15, smoothDuplicates: false, deband: 0, edgeProtection: 0.8,
                                  punchScale: 0.7, grain: .synthesize, encoderTune: "grain", vmafModel: "vmaf_v0.6.1",
                                  targetVMAF: 93, upscaleModel: "realesrgan-x2plus")
         case .anime:
             return ContentTuning(kind: k, summary: "Modern digital animation. Interpolates between real drawings (skips held frames), protects line art, prevents banding in flat color.",
                                  interpolationModels: ["rife-4.25-flow", "rife-4.22-flow", "rife-4.6-flow", "rife-4.25"],
-                                 repairModel: "film", qcSensitivity: 0.6, smoothDuplicates: true, deband: 0.4, edgeProtection: 0.9,
+                                 repairModel: nil, qcSensitivity: 0.6, smoothDuplicates: true, deband: 0.4, edgeProtection: 0.9,
                                  punchScale: 0.6, grain: .keep, encoderTune: "anime", vmafModel: "vmaf_v0.6.1",
                                  targetVMAF: 95, upscaleModel: "realesr-animevideov3")
         case .oldAnime:
             return ContentTuning(kind: k, summary: "Cel or early-digital animation: film grain, telecine, softer lines. Restores 24p, interpolates between real drawings, keeps the grain's character.",
                                  interpolationModels: ["rife-4.22-flow", "rife-4.25-flow", "rife-4.6-flow", "rife-4.25"],
-                                 repairModel: "film", qcSensitivity: 0.3, smoothDuplicates: true, deband: 0.5, edgeProtection: 0.9,
+                                 repairModel: nil, qcSensitivity: 0.3, smoothDuplicates: true, deband: 0.5, edgeProtection: 0.9,
                                  punchScale: 0.5, grain: .synthesize, encoderTune: "grain", vmafModel: "vmaf_v0.6.1",
                                  targetVMAF: 94, upscaleModel: "realesr-animevideov3")
         case .cgiAnimation:
             return ContentTuning(kind: k, summary: "Rendered 3D animation: clean surfaces, smooth gradients, real motion on every frame.",
                                  interpolationModels: ["rife-4.25-flow", "rife-4.26-flow", "rife-4.25"],
-                                 repairModel: "film", qcSensitivity: 0.6, smoothDuplicates: false, deband: 0.3, edgeProtection: 0.7,
+                                 repairModel: nil, qcSensitivity: 0.6, smoothDuplicates: false, deband: 0.3, edgeProtection: 0.7,
                                  punchScale: 0.8, grain: .keep, encoderTune: "default", vmafModel: "vmaf_v0.6.1",
                                  targetVMAF: 95, upscaleModel: "realesrgan-x2plus")
         case .screenContent:
@@ -94,13 +94,13 @@ struct ContentTuning: Codable, Hashable {
         case .lowLightNoisy:
             return ContentTuning(kind: k, summary: "Dark, noisy footage. Gentler artifact checks (noise isn't an artifact), banding protection in the shadows.",
                                  interpolationModels: ["rife-4.25-flow", "rife-4.18-flow", "rife-4.25"],
-                                 repairModel: "film", qcSensitivity: 0.2, smoothDuplicates: false, deband: 0.3, edgeProtection: 0.8,
+                                 repairModel: nil, qcSensitivity: 0.2, smoothDuplicates: false, deband: 0.3, edgeProtection: 0.8,
                                  punchScale: 0.6, grain: .synthesize, encoderTune: "grain", vmafModel: "vmaf_v0.6.1",
                                  targetVMAF: 93, upscaleModel: "realesrgan-x2plus")
         case .fastMotion:
             return ContentTuning(kind: k, summary: "Big, fast movement. Strongest motion models first and a strict artifact check, since large motion is where interpolation breaks.",
                                  interpolationModels: ["rife-4.25-flow", "rife-4.26-flow", "rife-4.18-flow", "rife-4.25"],
-                                 repairModel: "film", qcSensitivity: 0.7, smoothDuplicates: false, deband: 0, edgeProtection: 0.6,
+                                 repairModel: nil, qcSensitivity: 0.7, smoothDuplicates: false, deband: 0, edgeProtection: 0.6,
                                  punchScale: 0.9, grain: .keep, encoderTune: "default", vmafModel: "vmaf_v0.6.1",
                                  targetVMAF: 95, upscaleModel: "realesrgan-x2plus")
         }

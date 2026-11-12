@@ -77,7 +77,7 @@ final class PatchedFrameSource: FrameSource {
             buffer = buffer.filter { $0.key >= prevOriginal }
         }
         guard plan.flagged.contains(j), !plan.isOriginal(j) else { return current }
-        // Neighbouring original frames inside this file.
+        // Neighboring original frames inside this file.
         guard let a = (max(0, j - 12)...j).reversed().first(where: { plan.isOriginal($0) }),
               let b = (j...(j + 12)).first(where: { plan.isOriginal($0) }), b > a else { return current }
         try fill(through: b)
