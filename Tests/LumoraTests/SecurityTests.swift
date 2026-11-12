@@ -227,11 +227,11 @@ final class SecurityTests: XCTestCase {
 
     // MARK: Entitlements
 
-    func testHardenedRuntimeKeepsLibraryValidation() throws {
-        let url = try XCTUnwrap(Bundle.main.url(forResource: "Lumora", withExtension: "entitlements")
-                                ?? URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-                                    .deletingLastPathComponent().appendingPathComponent("Lumora/Lumora.entitlements"))
-        let text = try String(contentsOf: url, encoding: .utf8)
-        XCTAssertFalse(text.contains("disable-library-validation"))
+    /// Reads the entitlements actually signed into the running app (not the source file), so the check covers what
+    /// ships and never touches the source tree at run time.
+    func testSignedEntitlementsKeepLibraryValidation() throws {
+        let out = try EndToEndTests.sh("/usr/bin/codesign", ["-d", "--entitlements", "-", "--xml", Bundle.main.bundlePath])
+        XCTAssertFalse(out.contains("disable-library-validation"), out)
+        XCTAssertFalse(out.contains("allow-unsigned-executable-memory"), out)
     }
 }

@@ -32,6 +32,8 @@ jobs:
     name: Build and test (macOS 27, Xcode 27)
     runs-on: xcode-27
     timeout-minutes: 45
+    env:
+      LUMORA_DERIVED_DATA: build/DerivedData
     steps:
       - uses: actions/checkout@v7
 

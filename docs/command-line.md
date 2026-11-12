@@ -40,10 +40,10 @@ an update.
 | `scripts/deps.sh install --all` | Also installs every optional encoder and metadata tool. |
 | `scripts/deps.sh update` | Refreshes Homebrew, shows what would change, asks, upgrades, then runs `verify`. |
 | `scripts/deps.sh update --yes --python` | Same without asking, and also upgrades `torch`, `coremltools` and `numpy` in the Model Lab environment. |
-| `scripts/deps.sh verify` | The proof: (1) every flag in `encoders.json` is still accepted by the installed encoder, (2) the app builds, (3) the full test suite passes. On success it rewrites `deps.lock`. |
+| `scripts/deps.sh verify` | The proof (builds into `~/Library/Developer/Xcode/DerivedData/Lumora-deps`, or `$LUMORA_DERIVED_DATA`): (1) every flag in `encoders.json` is still accepted by the installed encoder, (2) the app builds, (3) the full test suite passes. On success it rewrites `deps.lock`. |
 | `scripts/deps.sh verify --quick` | Flags and build only, no tests, no `deps.lock` update. |
 | `scripts/deps.sh check [--notify] [--auto-update] [--no-verify]` | Unattended check for schedulers: refresh, report, verify (or update then verify with `--auto-update`), write a report to `~/Library/Logs/Lumora/deps-check-DATE.log`, and with `--notify` post a macOS notification when updates exist or verification fails. |
-| `scripts/deps.sh schedule install` | Runs `check --notify` every Monday at 10:00 via a LaunchAgent (low priority, no windows). A missed run happens at the next wake. |
+| `scripts/deps.sh schedule install` | Runs `check --pull --notify` every Monday at 10:00 via a LaunchAgent (low priority, no windows). A missed run happens at the next wake. It runs from its own clone in `~/Library/Application Support/Lumora/DependencyCheck/`, updated before each check, because background jobs can't be given access to Downloads, Desktop or Documents. |
 | `scripts/deps.sh schedule status` / `remove` | Show or remove the schedule. |
 
 Exit codes: `0` OK, `1` verification failed, `2` usage error, `3` updates available (`check` only), so you can

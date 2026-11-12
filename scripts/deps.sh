@@ -11,7 +11,8 @@
 #                                     unattended check (used by the schedule): report what's outdated, verify,
 #                                     optionally update, write a report, and post a notification when needed
 #   scripts/deps.sh schedule install|remove|status
-#                                     run "check --notify" weekly on this Mac via a LaunchAgent
+#                                     run "check --notify" weekly on this Mac via a LaunchAgent, from a dedicated
+#                                     clone in ~/Library/Application Support/Lumora/DependencyCheck (kept up to date)
 #
 # Exit codes: 0 ok, 1 verification failed, 2 usage error, 3 updates available (check only).
 # Works with macOS's /bin/bash 3.2. Needs Homebrew for anything beyond "status" and "verify".
@@ -21,7 +22,9 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LOCK="$ROOT/deps.lock"
 BUILD="$ROOT/build"
-DERIVED="$BUILD/DerivedData"
+# Build products live outside the repository by default. A test run launches the freshly built app; if it sat inside
+# a folder macOS protects (Downloads, Desktop, Documents), every rebuild would ask for permission again.
+DERIVED="${LUMORA_DERIVED_DATA:-$HOME/Library/Developer/Xcode/DerivedData/Lumora-deps}"
 LOGDIR="$HOME/Library/Logs/Lumora"
 LABEL="io.github.info-moed.Lumora.deps-check"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
@@ -273,7 +276,9 @@ notify() {
 
 cmd_check() {
   local auto="" verify=1 notifyme=""
-  for a in "$@"; do case "$a" in --auto-update) auto=1;; --no-verify) verify="";; --notify) notifyme=1;; *) die "unknown option $a";; esac; done
+  local pull=""
+  for a in "$@"; do case "$a" in --auto-update) auto=1;; --no-verify) verify="";; --notify) notifyme=1;; --pull) pull=1;; *) die "unknown option $a";; esac; done
+  if [ -n "$pull" ]; then git -C "$ROOT" pull --ff-only -q 2>/dev/null || warn "couldn't update the check clone; checking the current copy"; fi
   mkdir -p "$LOGDIR"
   local report; report="$LOGDIR/deps-check-$(date +%Y-%m-%d).log"
   {
@@ -303,6 +308,14 @@ cmd_schedule() {
   case "${1:-status}" in
     install)
       mkdir -p "$(dirname "$PLIST")" "$LOGDIR"
+      # Background jobs can't be granted access to Downloads/Desktop/Documents, so the weekly check runs from its own
+      # clone of this repository's remote, outside those folders, updated before every check.
+      local origin; origin=$(git -C "$ROOT" remote get-url origin 2>/dev/null || true)
+      [ -n "$origin" ] || die "The weekly check needs a git clone with a remote (git clone https://github.com/info-moed/Lumora.git)."
+      local clone="$HOME/Library/Application Support/Lumora/DependencyCheck/Lumora"
+      if [ -d "$clone/.git" ]; then git -C "$clone" pull --ff-only -q || die "couldn't update $clone"
+      else mkdir -p "$(dirname "$clone")" && git clone -q "$origin" "$clone" || die "couldn't clone $origin"; fi
+      local runner="$clone/scripts/deps.sh"
       cat > "$PLIST" <<PL
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -310,7 +323,7 @@ cmd_schedule() {
 <dict>
   <key>Label</key><string>$LABEL</string>
   <key>ProgramArguments</key>
-  <array><string>/bin/bash</string><string>$ROOT/scripts/deps.sh</string><string>check</string><string>--notify</string></array>
+  <array><string>/bin/bash</string><string>$runner</string><string>check</string><string>--pull</string><string>--notify</string></array>
   <key>StartCalendarInterval</key><dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>10</integer><key>Minute</key><integer>0</integer></dict>
   <key>ProcessType</key><string>Background</string>
   <key>LowPriorityIO</key><true/>
@@ -321,7 +334,7 @@ cmd_schedule() {
 </plist>
 PL
       launchctl bootout "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || true
-      launchctl bootstrap "gui/$(id -u)" "$PLIST" && ok "Weekly check scheduled (Mondays 10:00; missed runs happen at next wake). Reports: $LOGDIR"
+      launchctl bootstrap "gui/$(id -u)" "$PLIST" && ok "Weekly check scheduled (Mondays 10:00; missed runs happen at next wake), running from $clone. Reports: $LOGDIR"
       ;;
     remove)
       launchctl bootout "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || true

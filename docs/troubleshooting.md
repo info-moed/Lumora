@@ -44,6 +44,10 @@ Full details: [Building from source](building.md#common-build-failures).
 
 - **"Lumora can't be opened because Apple cannot check it for malicious software"**: this happens with a copy
   someone else built and sent you. Right-click the app → **Open** → **Open**. Apps you build yourself aren't affected.
+- **It asks for access to Downloads (or Desktop, Documents) again after every rebuild**: macOS remembers your answer
+  per signed app, and a locally built app is ad-hoc signed, so each rebuild looks new. Install one build in
+  /Applications and use that; or sign builds with your own Apple Development certificate (Xcode → Signing &
+  Capabilities → Team), which macOS recognizes across rebuilds.
 - **It quits immediately**: check `~/Library/Logs/DiagnosticReports/Lumora-*.ips`. "Lumora requires an Apple
   silicon GPU with Metal" means the Mac (or virtual machine) has no usable GPU. "Missing Metal kernel" means a
   broken build; clean and rebuild.
@@ -140,6 +144,7 @@ To use a specific build of a tool, see [Pointing Lumora at specific tools](comma
 | `scripts/deps.sh update` says the upgrade reported a problem | Usually a Homebrew link conflict with an older formula (the message names it). Upgrade the conflicting formula, e.g. `brew upgrade qt`, then run `scripts/deps.sh verify`. |
 | `verify` fails after an update | The log path is printed. Hold the tool back with `brew pin <formula>` and reinstall the version listed in `deps.lock`, or fix `encoders.json` / the code and open an issue. |
 | Weekly check notifications are annoying | `scripts/deps.sh schedule remove` |
+| "Lumora would like to access files in your Downloads folder" on every test run | The clone and its build products are in a protected folder, and each build is a new ad-hoc-signed app. Keep build products outside it (the default for `scripts/deps.sh`), or move the clone; see [Building → Where to keep the clone](building.md#running-the-tests). |
 | CI shows tests as skipped | That runner has no usable GPU or hardware encoder; those tests run on real Macs (and on the `xcode-27` runner, which currently has both). |
 
 ---

@@ -201,6 +201,13 @@ The test suite has 83 tests in five groups:
 | UI smoke | `UISmokeTests` | Builds every window offscreen with a video loaded and draws it to a PNG | FFmpeg |
 | Security | `SecurityTests` | Hostile inputs: crafted names, metadata, frame rates, sizes, playlists, model archives | FFmpeg |
 
+**Where to keep the clone.** If the repository is inside a folder macOS protects (**Downloads**, **Desktop** or
+**Documents**) and build products go into it too, macOS asks *"Lumora would like to access files in your Downloads
+folder"* on every test run: each build is a new ad-hoc-signed app, so the answer isn't remembered. Either keep the
+clone elsewhere (e.g. `~/Developer/Lumora`), or point `-derivedDataPath` outside those folders, as
+`scripts/deps.sh` does by default (`~/Library/Developer/Xcode/DerivedData/Lumora-deps`; override with
+`LUMORA_DERIVED_DATA`).
+
 **Run everything:**
 
 ```bash

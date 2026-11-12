@@ -1,7 +1,7 @@
 # Dependency versions last verified by scripts/deps.sh verify:
 # encoder-flag check + build + full test suite all passed with exactly these versions.
 # Rewritten automatically after every successful verify. Commit it so others know a known-good set.
-verified 2026-11-11
+verified 2026-11-12
 macos 27.3
 xcode 27.0 (27A5252f)
 xcodegen 2.46.0
