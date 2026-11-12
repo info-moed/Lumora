@@ -65,7 +65,7 @@ final class QCBenchmarkTests: XCTestCase {
         let sdr = try XCTUnwrap(colors.first, "no color interpretation for the film")
         QCBench.log("film color: \(sdr.name) transfer \(sdr.transfer) gamut \(sdr.gamut) legalToFull \(sdr.legalToFull)")
         var manifest: QCManifest
-        if QCBench.env["LUMORA_QC_RESELECT"] != "1", let d = try? Data(contentsOf: QCBench.manifestURL),
+        if QCBench.env["LUMORA_QC_RESELECT"] != "1", let d = try? Data(contentsOf: QCBench.manifestReadURL),
            let m = try? decoder.decode(QCManifest.self, from: d) {
             manifest = m
             QCBench.log("manifest: \(m.windows.count) windows (committed)")

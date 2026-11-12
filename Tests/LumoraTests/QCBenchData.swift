@@ -17,8 +17,16 @@ enum QCBench {
     static let film1080 = root.appendingPathComponent("bbb/bbb_sunflower_1080p_60fps_normal.mp4")
     static let film2160 = root.appendingPathComponent("bbb/bbb_sunflower_2160p_60fps_normal.mp4")
     /// The committed manifest: exact frame indices of every window, so results are reproducible.
+    /// Written to the source tree (LUMORA_QC_RESELECT=1).
     static let manifestURL = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         .appendingPathComponent("Resources/qc-bench-manifest.json")
+    /// Read from the test bundle's copy, so the test host never opens files in the source tree (a checkout under
+    /// ~/Downloads or ~/Documents would make macOS ask for folder access and block a headless run).
+    static var manifestReadURL: URL {
+        if QCBench.env["LUMORA_QC_RESELECT"] != "1",
+           let u = Bundle(for: FrameProvider.self).url(forResource: "qc-bench-manifest", withExtension: "json") { return u }
+        return manifestURL
+    }
     static let tile = 64
     static let filmFPS = 60
     /// The film's first frame has PTS 2/60 s (start_time 0.0333): app frame index = 0-based frame number + 2.

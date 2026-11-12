@@ -196,8 +196,8 @@ interpretation. Compare them and pick the one that looks right. The recommended 
   - *Route a model per scene*: tests likely models on each scene and uses each scene's winner.
   - *Exhaustive until confident*: tests every installed model until the winner is proven. Very slow, maximum
     quality.
-- **Grain-aware**, **Check for flicker**, **Find and fix artifacts**, **Smooth repeated frames (animation)**, and the
-  **Repair model**.
+- **Grain-aware**, **Find and fix artifacts**, **Smooth repeated frames (animation)**, and the **Repair model** (the
+  flow model the artifact checker asks for a second opinion).
 - **Scan for interpolation problems:** a fast proxy-resolution pass that lists every frame that would need repair.
 
 ### Enhance tab

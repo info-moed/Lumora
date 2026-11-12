@@ -35,7 +35,7 @@ Related: [COMPARISON.md](https://github.com/info-moed/Lumora/blob/main/COMPARISO
 | All HDR formats | HDR10, HDR10+ (beta), HLG, Dolby Vision 8.1, Dolby Vision 8.4. Inputs include Dolby Vision 5/8 via AVFoundation. |
 | Plain-English advice | `FormatAdvisor`: pick where the video is going, get a recommendation, the reasons, and what to watch out for |
 | Full interpolation (RIFE and others) | `Core/Interpolation`: RIFE, FILM, IFRNet, GMFSS via Core ML; 2×/4×, exact 60/59.94/120 fps, slow motion |
-| Find and fix bad interpolation, only where needed | `InterpolationQC`: per-tile artifact scan, re-render with a stronger model, feathered patching, whole-frame replace; never warps across cuts; fades and dissolves are blended |
+| Find and fix bad interpolation, only where needed | `ArtifactScorer`: a learned, reference-free per-tile scorer (trained against a native 60 fps film) switches only tiles it predicts are broken to a better candidate, with a per-frame risk budget; holds the nearest original at shot changes the analyzer missed; never warps across cuts; fades and dissolves are blended |
 | Works with HDR / 10-bit | Models run on the encoded log/PQ/HLG signal in fp16 tensors (no 8-bit round trip). Original frames are never touched. |
 | UHD HDR reference library | `HDRLibrary` + `LibraryView`: schema, your own entries, and sync from a community JSON URL |
 | Fix your own rips | HDR Report Card (plain-English verdict on any file), then the Rip Revive preset, then HEVC/AV1 HDR10 or Dolby Vision 8.1, keeping all audio and subtitles |
@@ -164,7 +164,7 @@ Lumora opens in **Simple mode**:
 
 | Level | What it does | Speed |
 |---|---|---|
-| Check each frame | One model for the film; every generated frame is checked (structure + motion agreement + flicker) and repaired | Fastest |
+| Check each frame | One model for the film; every generated frame is scored tile by tile and repaired only where a fix is predicted to help | Fastest |
 | Route a model per scene | Likely models are rebuilt against real frames removed from each scene; each scene uses its winner | Moderate |
 | Exhaustive until confident | Every installed model is tested on every scene until the winner is proven at your confidence (97% default); uncertain or hard scenes are generated twice per frame and the cleaner frame is kept | Very slow, maximum quality |
 
@@ -346,11 +346,19 @@ Put converted `.mlpackage` files in `~/Library/Application Support/Lumora/Models
 
 If no model is installed, generated frames fall back to blending, so the app still works.
 
-**Artifact repair.** Every generated frame is checked for structure that exists in neither neighboring frame, which is the signature of warping, tearing or ghosting. Flagged frames are repaired in this order:
+**Artifact repair.** Every generated frame is scored per 64-px tile (on an analysis copy at most about 1920 px wide) by
+small gradient-boosted tree ensembles trained against ground truth: frames removed from Big Buck Bunny's native 60 fps
+render and rebuilt (see `scripts/qc_scorer`). Each tile gets a predicted quality for the primary model's output and a
+predicted gain, plus a pessimistic gain, for each alternative: a second opinion from the flow model at about 960 px
+wide, the average of the two models, a cross-fade, and the nearest original. A tile is replaced only when it is
+predicted to be poor and an alternative is predicted to gain more than a margin; per frame, the pessimistic total of all
+replacements must stay within a small budget, so wrong calls can't cost a frame much. **Artifact strictness** moves
+all of these thresholds together (0 = only obvious problems, 1 = strict). A frame pair that straddles a shot change the
+analyzer missed is detected from frame statistics and held on the nearest original. *Exhaustive* intelligence also
+replaces tiles where an alternative is better with high confidence, broken or not.
 
-1. Re-render that frame with the repair model, and keep whichever version is cleaner.
-2. Patch only the bad tiles through a feathered mask.
-3. If more than 35% of the frame is broken, replace it with the nearest original.
+The earlier rules (cross-fade patches, replacing a frame when more than 35% of it was flagged, and the flicker check)
+were measured against the same ground truth and removed: each lowered quality, and the flicker check never fired.
 
 **Scan for interpolation problems** runs this check at proxy resolution and lists every repaired frame before you commit to a full export.
 
