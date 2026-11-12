@@ -1,6 +1,6 @@
 ---
 title: Command line
-nav_order: 7
+nav_order: 8
 ---
 
 # Command-line guide
@@ -17,6 +17,7 @@ repeating them.
 ## Contents
 
 - [Keeping dependencies up to date](#keeping-dependencies-up-to-date)
+- [Encoder settings reference](#encoder-settings-reference)
 - [Pointing Lumora at specific tools](#pointing-lumora-at-specific-tools)
 - [Settings keys (`defaults`)](#settings-keys-defaults)
 - [Files and folders](#files-and-folders)
@@ -60,6 +61,24 @@ tool back with `brew pin <formula>`.
 
 **Xcode updates** can't be scripted (App Store), but `status` warns when your Xcode differs from the verified one,
 and the scheduled `check` rebuilds and retests every week, so a breaking Xcode update is caught within days.
+
+---
+
+## Encoder settings reference
+
+[Encoding settings](encoding/index.md) documents every option of every encoder Lumora drives. Its data lives in
+`docs/encoding/data/*.json` (one file per encoder) and the pages are generated from it:
+
+```bash
+python3 scripts/encoding_reference.py check
+```
+
+compares the reference with the encoders installed on your Mac and lists options that were added or removed since
+it was written (it also runs as part of `scripts/deps.sh verify`). After editing the data:
+
+```bash
+python3 scripts/encoding_reference.py render
+```
 
 ---
 

@@ -1,0 +1,1756 @@
+{
+  "key": "vvenc",
+  "name": "VVenC (Fraunhofer Versatile Video Encoder)",
+  "binary": "vvencapp",
+  "codec": "VVC",
+  "versionDocumented": "vvencapp version 1.14.0",
+  "summary": "VVenC is Fraunhofer HHI's open-source H.266/VVC encoder. vvencapp is its simple front end, and the full tool set lives in the expert app vvencFFapp. Its strengths are very high compression (the slower preset is about as efficient as the VTM reference encoder, and medium comes close, at a tiny fraction of VTM's runtime), perceptual QP adaptation tuned to the XPSNR model, well-scaling multithreading, and single- and two-pass VBR rate control. Its weaknesses: it is slow at its efficient presets, vvencapp only takes 8/10-bit 4:2:0 or 4:0:0 input, and there are no content tunes.",
+  "license": "BSD-3-Clause-Clear",
+  "homepage": "https://www.hhi.fraunhofer.de/en/departments/vca/technologies-and-solutions/h266-vvc/fraunhofer-versatile-video-encoder-vvenc.html",
+  "homebrew": "vvenc",
+  "bitDepths": [
+    8,
+    10
+  ],
+  "chroma": [
+    "4:2:0",
+    "4:0:0"
+  ],
+  "hdr": {
+    "summary": "Use --hdr pq_2020 (alias hdr10_2020) for HDR10 or --hdr hlg_2020 for HLG, with 10-bit input (a 10-bit .y4m, or -c yuv420_10 for raw input). The internal bit depth must stay at 10. Besides writing the VUI color fields, these modes change how the encoder codes the video: PQ and HLG modes each switch to their own chroma QP mapping tables, and when perceptual QPA is on, a QP offset that depends on brightness is added. PQ sets transfer smpte2084 in the VUI, plus BT.2020 primaries and matrix for the _2020 variant (BT.709 for plain 'pq'). HLG writes bt2020-10 (or bt709) as the VUI transfer and adds an alternative transfer characteristics SEI that names arib-std-b67 (HLG), which is the backward-compatible way to signal HLG. vvencapp writes no HDR10 static metadata on its own. Add the mastering display (ST 2086) and MaxCLL/MaxFALL SEI through --additional MasteringDisplayColourVolume=... and MaxContentLightLevel=..., separated by ':'.",
+    "flags": [
+      "--hdr",
+      "--sdr",
+      "--range",
+      "--internal-bitdepth",
+      "--format",
+      "--vuiparameterspresent",
+      "MasteringDisplayColourVolume",
+      "MaxContentLightLevel",
+      "PreferredTransferCharacteristics",
+      "ColourPrimaries",
+      "TransferCharacteristics",
+      "MatrixCoefficients",
+      "ColourDescriptionPresent",
+      "ChromaLocInfoPresent",
+      "ChromaSampleLocType",
+      "--additional"
+    ],
+    "example": "vvencapp -i input_3840x2160_10bit.y4m --preset slow -q 26 --hdr pq_2020 --range limited --additional MasteringDisplayColourVolume=13250,34500,7500,3000,34000,16000,15635,16450,10000000,1:MaxContentLightLevel=1000,400 -o output.266",
+    "pitfalls": [
+      "'--hdr pq' (alias hdr10) signals BT.709 primaries and matrix with a PQ transfer. Real HDR10 is BT.2020, so use pq_2020 / hdr10_2020 unless you have unusual BT.709 PQ content.",
+      "Neither --hdr mode writes mastering display or content light level SEI. Pass them explicitly through --additional, or the stream carries no HDR10 static metadata.",
+      "MasteringDisplayColourVolume lists green, blue, red, then white point, then max and min luminance. Chromaticities are in units of 1/50000 and luminance in units of 1/10000 cd/m2 (1000 nits = 10000000). Getting the order wrong silently writes the wrong primaries.",
+      "If you give MasteringDisplayColourVolume or MaxContentLightLevel while --hdr is off, the library turns on PQ mode for you. It picks BT.709 PQ unless ColourPrimaries=bt2020 is also set (vvencCfg.cpp v1.14.0; a local test wrote smpte2084 with bt709 primaries). Set --hdr pq_2020 yourself so you are not surprised.",
+      "The help text says that setting ColourPrimaries/TransferCharacteristics/MatrixCoefficients through --additional corresponds to '--hdr pq_2020'. That is true only of the VUI fields. The encoder stays in SDR mode (its log says so in a local test), so the PQ chroma QP tables and the HDR-aware QPA offsets are not applied. Prefer --hdr.",
+      "HDR modes require internal bit depth 10 and 4:2:0. --internal-bitdepth 8 together with --hdr fails the configuration check (confirmed locally).",
+      "Feeding 8-bit input to an HDR mode is accepted (confirmed locally), but PQ content quantized to 8 bits is prone to banding (general experience). Give the encoder real 10-bit source.",
+      "HLG modes leave VUI transfer_characteristics at bt2020-10 (or bt709) and carry HLG only in the alternative transfer characteristics SEI. Players that ignore that SEI will show the video as SDR BT.2020. To put arib-std-b67 directly in the VUI, add --additional TransferCharacteristics=arib-std-b67 (confirmed locally). PreferredTransferCharacteristics does not change the VUI, despite what the help says.",
+      "--hdr and --sdr cannot be combined; the app rejects that (confirmed locally).",
+      "--range defaults to 'unknown', which leaves the full-range flag at 0 (limited) once VUI is written, so HDR modes already signal limited range. --range limited makes that explicit; only --range full changes the output.",
+      "The output is a raw .266 elementary stream. Container-level color info (MP4 colr/mdcv/clli boxes) must be written by the muxer (for example FFmpeg 7+ or GPAC); check that your muxer copies the SEI values into the container.",
+      "Do not count on -vui 0 to strip signaling: in v1.14.0 the color fields force VUI back on."
+    ]
+  },
+  "presets": [
+    {
+      "value": "faster",
+      "speed": "fastest; on the order of 380x faster than HM-17.0 at 8 threads in the project's v1.14.0 measurements",
+      "notes": "About 13% bitrate saving over HM. It uses 64x64 CTUs, no multi-type tree splits and most VVC tools off (no ALF/CCALF, LFNST, MIP, DMVR, BDOF). Use for previews, quick tests or when speed matters far more than size."
+    },
+    {
+      "value": "fast",
+      "speed": "very fast; about 2x slower than faster",
+      "notes": "About 26% saving over HM. Turns on most coding tools (ALF, CCALF, affine, DMVR, BDOF, LFNST, DepQuant) with 64x64 CTUs. A good quick-turnaround choice."
+    },
+    {
+      "value": "medium",
+      "speed": "moderate; about 3.5x slower than fast",
+      "notes": "Default. About 35% saving over HM, with 128x128 CTUs and a wider motion search. The project's own recommended speed/efficiency trade-off."
+    },
+    {
+      "value": "slow",
+      "speed": "slow; about 4x slower than medium",
+      "notes": "About 39% saving over HM, about 3 points short of slower (which the wiki calls similar to VTM CTC). Best value for archival or final encodes when time allows."
+    },
+    {
+      "value": "slower",
+      "speed": "very slow; roughly 4-5x slower than slow",
+      "notes": "About 42% saving over HM, using the most tools and least search shortcuts. Small gain for a lot of extra time. The wiki table prints its HM speedup as '03x'; the VTM ratios imply about 3x, not 0.3x."
+    },
+    {
+      "value": "medium_lowDecEnergy",
+      "speed": "not measured by the project; expected to be similar to medium (unverified)",
+      "notes": "A medium variant that avoids coding tools that are costly to decode, so playback uses less energy (useful for battery-powered playback devices). Research on decoding-energy-aware VVenC tool profiles (arXiv 2206.13483) reports over 25% lower decoder energy for under 5% more bitrate. Not covered on the Presets wiki page."
+    }
+  ],
+  "rateControl": [
+    {
+      "mode": "Constant QP (pure)",
+      "flags": "-q <0..63> --qpa 0",
+      "notes": "Every frame uses the base QP plus fixed hierarchical GOP offsets. Predictable and the setup the project uses for its PSNR results; the project reports MS-SSIM gains with QPA on, so pure QP usually looks worse at the same size."
+    },
+    {
+      "mode": "Constant quality (QP + perceptual QPA, default)",
+      "flags": "-q <0..63>",
+      "notes": "The default in vvencapp: QPA moves the QP up and down per block and frame using the XPSNR model, which behaves like a CRF. The wiki calls QP 21-47 the useful range; lower means higher quality and bigger files. If neither -q nor -b is given, QP 32 is used."
+    },
+    {
+      "mode": "Capped constant quality (capped CQF)",
+      "flags": "-q <QP> -m <absolute rate>",
+      "notes": "Constant quality with a ceiling on the instantaneous bitrate (added in v1.12). Requires QPA on. The cap must be an absolute value; the 'x' multiplier is rejected without a target bitrate."
+    },
+    {
+      "mode": "Two-pass VBR (default when -b is set)",
+      "flags": "-b <rate> [-m <rate or Nx>]",
+      "notes": "With a target bitrate, vvencapp runs two passes back to back by default. The frame rate must be correct for rate control to hit the target. The wiki suggests a max rate of at least 1.5x the target. Any -q given is ignored once -b is set."
+    },
+    {
+      "mode": "Single-pass VBR with look-ahead",
+      "flags": "-b <rate> -p 1",
+      "notes": "One pass with look-ahead analysis, which vvencapp turns on automatically. Required when reading from stdin, since two passes in one call cannot read from a pipe. Unverified: usually a little less accurate than two-pass."
+    },
+    {
+      "mode": "Two-pass VBR, passes run separately",
+      "flags": "-b <rate> --pass 1 --rcstatsfile stats.json, then the same command with --pass 2",
+      "notes": "For distributed or staged workflows. Both runs must use identical options, or the results are unpredictable (Usage wiki). Needs a build with JSON support."
+    }
+  ],
+  "options": [
+    {
+      "flag": "--help",
+      "aliases": [
+        "-h"
+      ],
+      "category": "Other",
+      "type": "bool",
+      "values": "0/1",
+      "default": "0",
+      "description": "Prints the standard option list and exits.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": false,
+      "advanced": false,
+      "recommendations": [],
+      "lumora": null,
+      "notes": ""
+    },
+    {
+      "flag": "--fullhelp",
+      "aliases": [],
+      "category": "Other",
+      "type": "bool",
+      "values": "0/1",
+      "default": "0",
+      "description": "Prints the full option list. In the installed 1.14.0 build it prints the same list as --help; expert options are reached through --additional (or vvencFFapp).",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": false,
+      "advanced": true,
+      "recommendations": [],
+      "lumora": null,
+      "notes": "On this build, --fullhelp output was identical to --help (checked locally)."
+    },
+    {
+      "flag": "--verbosity",
+      "aliases": [
+        "-v"
+      ],
+      "category": "Logging and statistics",
+      "type": "enum",
+      "values": "0: silent, 1: error, 2: warning, 3: info, 4: notice, 5: verbose, 6: debug",
+      "default": "info",
+      "description": "Sets how much the encoder prints. From notice (4) upward it prints a line for every picture, which floods the terminal on long encodes.",
+      "effect": {
+        "quality": "none",
+        "speed": "none (very high levels add slight I/O cost)",
+        "size": "none"
+      },
+      "hdr": false,
+      "advanced": false,
+      "recommendations": [
+        {
+          "for": "speed",
+          "value": "2",
+          "why": "Warning level keeps logs short in batch or GUI-driven encodes while still reporting configuration problems; per-picture output only starts at notice.",
+          "source": "https://raw.githubusercontent.com/fraunhoferhhi/vvenc/v1.14.0/source/Lib/EncoderLib/EncGOP.cpp"
+        }
+      ],
+      "lumora": null,
+      "notes": "The v1.14.0 source also accepts the names silent, error, warning, info, notice, verbose and details (level 6 is called 'details' there, not 'debug'). Per-picture lines are printed at notice (4) and above (EncGOP.cpp)."
+    },
+    {
+      "flag": "--stats",
+      "aliases": [],
+      "category": "Logging and statistics",
+      "type": "bool",
+      "values": "0: off, 1: on",
+      "default": "1",
+      "description": "Turns the running summary (fps, bitrate, estimated time remaining) on or off.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": false,
+      "advanced": false,
+      "recommendations": [],
+      "lumora": null,
+      "notes": ""
+    },
+    {
+      "flag": "--version",
+      "aliases": [],
+      "category": "Other",
+      "type": "bool",
+      "values": "0/1",
+      "default": "0",
+      "description": "Prints the encoder version and exits.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": false,
+      "advanced": false,
+      "recommendations": [],
+      "lumora": "Lumora's Packager runs 'vvencapp --version' to record the tool version.",
+      "notes": ""
+    },
+    {
+      "flag": "--additional",
+      "aliases": [],
+      "category": "Other",
+      "type": "string",
+      "values": "'(long)optionname=value' pairs concatenated with ':' (e.g. \"bitrate=1000000 passes=1\")",
+      "default": "",
+      "description": "Passes extra options, including any expert option of the full library, as one string. This is the only way to reach VUI color fields, HDR metadata SEI, PicReordering and other expert settings from vvencapp. It is parsed after all other options, so its values win.",
+      "effect": {
+        "quality": "depends on contents",
+        "speed": "depends on contents",
+        "size": "depends on contents"
+      },
+      "hdr": true,
+      "advanced": true,
+      "recommendations": [
+        {
+          "for": "HDR",
+          "value": "MasteringDisplayColourVolume=G(x,y),B(x,y),R(x,y),WP(x,y),Lmax,Lmin:MaxContentLightLevel=cll,fall",
+          "why": "This is how vvencapp gets HDR10 static metadata; --hdr itself does not add it.",
+          "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
+        },
+        {
+          "for": "streaming/small size",
+          "value": "MaxPicSize=3840x2160",
+          "why": "The DASH examples set the largest picture size so every rendition can switch resolution (RPR) at segment borders.",
+          "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
+        }
+      ],
+      "lumora": null,
+      "notes": "Pairs can be separated with ':' or with spaces; the v1.14.0 parser treats both as separators (VVEncAppCfg.h, and a space-separated test worked). The Usage wiki writes examples such as 'hdr=pq:Name=value'. Any long option of vvencFFapp can be used here; this entry only documents the ones the help lists. The help claims that setting ColourPrimaries/TransferCharacteristics/MatrixCoefficients this way corresponds to '--hdr pq_2020', but a local test shows the encoder stays in SDR mode (only the VUI fields change)."
+    },
+    {
+      "flag": "--input",
+      "aliases": [
+        "-i"
+      ],
+      "category": "Input and output",
+      "type": "path",
+      "values": "file name or '-' for stdin",
+      "default": "",
+      "description": "Source video: raw YUV, or Y4M when the file name ends in .y4m. '-' reads from standard input.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": false,
+      "advanced": false,
+      "recommendations": [
+        {
+          "for": "HDR",
+          "value": "a 10-bit .y4m file",
+          "why": "Y4M carries resolution, frame rate and bit depth, so -s, --fps and -c are not needed and cannot be set wrong.",
+          "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
+        }
+      ],
+      "lumora": "Passed as '-i {in}', where {in} is a FIFO named '<fifo>.y4m', so Y4M is detected from the extension.",
+      "notes": "Y4M is detected only by the .y4m extension: a Y4M file renamed to .yuv was read as raw 1920x1080 video and encoded 0 frames (local test). Piping Y4M through '-i -' without --y4m likewise encodes zero frames (codecs.wiki, confirmed locally). Two-pass rate control in one call cannot read from stdin; vvencapp exits with an error, so use -p 1 or a file (VVEncAppCfg.h, confirmed locally)."
+    },
+    {
+      "flag": "--size",
+      "aliases": [
+        "-s"
+      ],
+      "category": "Input and output",
+      "type": "string",
+      "values": "WidthxHeight",
+      "default": "1920x1080",
+      "description": "Picture size of raw YUV input. Ignored for Y4M, which carries its own size.",
+      "effect": {
+        "quality": "none (a wrong value garbles the encode)",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": false,
+      "advanced": false,
+      "recommendations": [],
+      "lumora": null,
+      "notes": ""
+    },
+    {
+      "flag": "--format",
+      "aliases": [
+        "-c"
+      ],
+      "category": "Input and output",
+      "type": "enum",
+      "values": "yuv420, yuv420_10, yuv420_10_packed, yuv400 (gray), yuv400_10 (gray10)",
+      "default": "yuv420",
+      "description": "Pixel format and bit depth of raw input. yuv420_10 is 10-bit in 16-bit little-endian containers; the _packed form is 10-bit packed samples.",
+      "effect": {
+        "quality": "10-bit input avoids banding",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": true,
+      "advanced": false,
+      "recommendations": [
+        {
+          "for": "HDR",
+          "value": "yuv420_10",
+          "why": "HDR10/HLG need 10-bit samples; the default yuv420 is 8-bit.",
+          "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
+        }
+      ],
+      "lumora": null,
+      "notes": "Only 4:2:0 and 4:0:0 input is accepted by vvencapp (the source rejects other formats); 4:2:2 and 4:4:4 are not available in the simple app (codecs.wiki)."
+    },
+    {
+      "flag": "--framerate",
+      "aliases": [
+        "-r"
+      ],
+      "category": "Input and output",
+      "type": "int",
+      "values": "frame rate numerator, e.g. 25, 30, 30000, 50, 60, 60000",
+      "default": "60",
+      "description": "Frame rate numerator for raw input; pair it with --framescale for NTSC rates. Rate control, QPA and the seconds-based intra period all depend on it.",
+      "effect": {
+        "quality": "a wrong value misleads QPA and rate control",
+        "speed": "none",
+        "size": "a wrong value breaks bitrate targets"
+      },
+      "hdr": false,
+      "advanced": false,
+      "recommendations": [
+        {
+          "for": "streaming/small size",
+          "value": "the true source rate",
+          "why": "The wiki stresses that rate control needs the correct frame rate to reach the target bitrate, and that QPA also uses it.",
+          "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
+        }
+      ],
+      "lumora": null,
+      "notes": "Y4M input supplies this automatically."
+    },
+    {
+      "flag": "--framescale",
+      "aliases": [],
+      "category": "Input and output",
+      "type": "int",
+      "values": "frame rate denominator, e.g. 1, 1001",
+      "default": "1",
+      "description": "Frame rate denominator, so 30000/1001 gives 29.97 fps.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "affects rate control accuracy"
+      },
+      "hdr": false,
+      "advanced": false,
+      "recommendations": [],
+      "lumora": null,
+      "notes": ""
+    },
+    {
+      "flag": "--fps",
+      "aliases": [],
+      "category": "Input and output",
+      "type": "string",
+      "values": "integer or fraction num/denom",
+      "default": "60/1",
+      "description": "Sets the frame rate in one value, as an integer or a fraction such as 24000/1001. A shorthand for --framerate plus --framescale.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "affects rate control accuracy"
+      },
+      "hdr": false,
+      "advanced": false,
+      "recommendations": [],
+      "lumora": null,
+      "notes": ""
+    },
+    {
+      "flag": "--tickspersec",
+      "aliases": [],
+      "category": "Input and output",
+      "type": "int",
+      "values": "1..27000000, -1: ticks per frame = 1",
+      "default": "27000000",
+      "description": "Time base used to generate decode timestamps.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": false,
+      "advanced": true,
+      "recommendations": [],
+      "lumora": null,
+      "notes": "The default moved from 90000 to 27000000 in v1.7.0 so that every NTSC rate is exact. The Usage wiki still lists 90000, which is outdated."
+    },
+    {
+      "flag": "--frames",
+      "aliases": [
+        "-f"
+      ],
+      "category": "Input and output",
+      "type": "int",
+      "values": "number of frames, 0 = all",
+      "default": "0",
+      "description": "Stops after encoding this many frames.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": false,
+      "advanced": false,
+      "recommendations": [],
+      "lumora": null,
+      "notes": ""
+    },
+    {
+      "flag": "--frameskip",
+      "aliases": [
+        "-fs"
+      ],
+      "category": "Input and output",
+      "type": "int",
+      "values": "number of frames",
+      "default": "0",
+      "description": "Skips this many frames at the start of the input before encoding.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": false,
+      "advanced": false,
+      "recommendations": [],
+      "lumora": null,
+      "notes": ""
+    },
+    {
+      "flag": "--segment",
+      "aliases": [],
+      "category": "GOP and keyframes",
+      "type": "enum",
+      "values": "off, first, mid, last",
+      "default": "off",
+      "description": "Tells the encoder where a chunk sits when a long video is encoded in separate parts that will be joined, so the chunk boundaries can be concatenated cleanly.",
+      "effect": {
+        "quality": "none",
+        "speed": "allows parallel chunked encoding",
+        "size": "none"
+      },
+      "hdr": false,
+      "advanced": true,
+      "recommendations": [],
+      "lumora": null,
+      "notes": "Segment mode is rejected when rate control (-b) or capped CQF (-q with -m) is on (vvencCfg.cpp v1.14.0). The expert options LeadFrames/TrailFrames add overlapping context frames for chunked encoding (reach them through --additional)."
+    },
+    {
+      "flag": "--y4m",
+      "aliases": [],
+      "category": "Input and output",
+      "type": "bool",
+      "values": "0/1",
+      "default": "0",
+      "description": "Forces Y4M parsing. Needed when Y4M arrives on a pipe; files are recognized only by their .y4m extension.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": false,
+      "advanced": false,
+      "recommendations": [
+        {
+          "for": "speed",
+          "value": "1 when piping from ffmpeg with -i -",
+          "why": "Without it, piped Y4M is not recognized and nothing is encoded.",
+          "source": "https://codecs.wiki/docs/encoders/VVenC"
+        }
+      ],
+      "lumora": "Not passed; Lumora names its FIFO with a .y4m extension, so detection by extension applies.",
+      "notes": ""
+    },
+    {
+      "flag": "--logofile",
+      "aliases": [],
+      "category": "Other",
+      "type": "path",
+      "values": "JSON logo descriptor file",
+      "default": "",
+      "description": "Burns a logo overlay, described in a JSON file, into the encoded pictures.",
+      "effect": {
+        "quality": "adds an overlay",
+        "speed": "minor",
+        "size": "minor"
+      },
+      "hdr": false,
+      "advanced": true,
+      "recommendations": [],
+      "lumora": null,
+      "notes": "Added in v1.7.0. Only works in builds compiled with JSON support; otherwise vvencapp reports an error (VVEncAppCfg.h)."
+    },
+    {
+      "flag": "--output",
+      "aliases": [
+        "-o"
+      ],
+      "category": "Input and output",
+      "type": "path",
+      "values": "file name",
+      "default": "",
+      "description": "Writes the raw H.266 Annex-B bitstream (conventionally .266 or .vvc). Mux it into MP4/MKV with another tool.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": false,
+      "advanced": false,
+      "recommendations": [],
+      "lumora": "Passed as '-o {out}' with extension .266.",
+      "notes": "codecs.wiki: muxing raw .266 into MP4 with FFmpeg needs FFmpeg 7.0 or newer."
+    },
+    {
+      "flag": "--preset",
+      "aliases": [],
+      "category": "Speed and presets",
+      "type": "enum",
+      "values": "faster, fast, medium, slow, slower, medium_lowDecEnergy",
+      "default": "medium",
+      "description": "Chooses the whole tool and search configuration. Slower presets enable more VVC tools and search harder, so they compress better at a steep speed cost.",
+      "effect": {
+        "quality": "+ at same size with slower presets",
+        "speed": "large: each step is roughly 2-5x",
+        "size": "- with slower presets"
+      },
+      "hdr": false,
+      "advanced": false,
+      "recommendations": [
+        {
+          "for": "streaming/small size",
+          "value": "medium",
+          "why": "The project names medium with multithreading as the recommended trade-off, about 35% saving over HM.",
+          "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Encoder-Performance"
+        },
+        {
+          "for": "archive",
+          "value": "slow",
+          "why": "About 39% saving over HM; slower adds only about 3 more points (and is the preset the wiki calls similar to VTM) at roughly 4-5x the runtime.",
+          "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Encoder-Performance"
+        },
+        {
+          "for": "speed",
+          "value": "faster",
+          "why": "About 7x faster than medium in the v1.14.0 performance table; the Presets wiki shows most coding tools off and a shallow partition search.",
+          "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Encoder-Performance"
+        },
+        {
+          "for": "low-power playback",
+          "value": "medium_lowDecEnergy",
+          "why": "Cuts decoder energy by avoiding expensive tools, for a few percent more bitrate.",
+          "source": "https://arxiv.org/abs/2206.13483"
+        }
+      ],
+      "lumora": "Passed as '--preset {preset}'. EncodeRecipes offers rungs faster/fast/medium/slow/slower (summary: 'slow is the efficient choice'); encoders.json default is medium.",
+      "notes": "The source also accepts 0-4 for faster..slower, 'medium_lowdecenergy' in lower case, and the internal values 'none', 'firstpass' and 'tooltest', which are not meant for normal use (VVEncAppCfg.h). The Presets wiki notes LMCS (reshaper) is deprecated and off in 1.14.0."
+    },
+    {
+      "flag": "--bitrate",
+      "aliases": [
+        "-b"
+      ],
+      "category": "Rate control",
+      "type": "string",
+      "values": "0 = constant QP without rate control; otherwise bits/s, e.g. 1.5M, 1.5Mbps, 1500k, 1500kbps, 1500000bps, 1500000",
+      "default": "0",
+      "description": "Target average bitrate. Any non-zero value turns on rate control (two-pass by default in vvencapp) and overrides -q.",
+      "effect": {
+        "quality": "set by the budget",
+        "speed": "two-pass costs extra time for the first pass",
+        "size": "hits the target"
+      },
+      "hdr": false,
+      "advanced": false,
+      "recommendations": [
+        {
+          "for": "streaming/small size",
+          "value": "about 4M at 2160p, 2M at 1080p, 1M at 720p (with -m 2x)",
+          "why": "These are the values used in the project's DASH example ladder.",
+          "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
+        }
+      ],
+      "lumora": null,
+      "notes": "Rate control allows at most 4 parallel frames (configuration check in vvencCfg.cpp). With -b set, a -q value is ignored with a warning (confirmed locally)."
+    },
+    {
+      "flag": "--maxrate",
+      "aliases": [
+        "-m"
+      ],
+      "category": "Rate control",
+      "type": "string",
+      "values": "0 = no cap; bits/s such as 3.5M, 3500k; or a multiple of the target with suffix 'x' (e.g. 2x)",
+      "default": "0",
+      "description": "Approximate cap on the instantaneous bitrate. With -b it gives constrained VBR; with -q (and QPA on) it gives capped constant quality.",
+      "effect": {
+        "quality": "- in peaks when the cap binds",
+        "speed": "none",
+        "size": "limits peaks"
+      },
+      "hdr": false,
+      "advanced": false,
+      "recommendations": [
+        {
+          "for": "streaming/small size",
+          "value": "at least 1.5x the target, e.g. 2x",
+          "why": "The wiki and changelog both say the cap should be at least 1.5x the target rate.",
+          "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
+        },
+        {
+          "for": "archive",
+          "value": "-q 27 --qpa 1 -m 5M",
+          "why": "Constant quality with a safety ceiling, shown in the wiki as the capped CQF mode.",
+          "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
+        }
+      ],
+      "lumora": null,
+      "notes": "The 'x' suffix added in v1.11; capped CQF added in v1.12. Without -b, the cap must be absolute and QPA must be on, or the configuration is rejected."
+    },
+    {
+      "flag": "--passes",
+      "aliases": [
+        "-p"
+      ],
+      "category": "Rate control",
+      "type": "enum",
+      "values": "1: single-pass; -1 or 2: two-pass rate control",
+      "default": "-1",
+      "description": "Single- or two-pass rate control. Only matters when -b is set; constant QP is always one pass.",
+      "effect": {
+        "quality": "+ with two passes",
+        "speed": "- with two passes",
+        "size": "two-pass hits targets more accurately"
+      },
+      "hdr": false,
+      "advanced": false,
+      "recommendations": [
+        {
+          "for": "streaming/small size",
+          "value": "-1 (default, two-pass) or 2",
+          "why": "The wiki treats back-to-back two-pass as the standard rate control mode.",
+          "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
+        }
+      ],
+      "lumora": null,
+      "notes": "Single-pass rate control switches on look-ahead analysis automatically (vvencCfg.cpp). Two passes in one call cannot read from stdin, so piped input with -b needs -p 1 (VVEncAppCfg.h, confirmed locally)."
+    },
+    {
+      "flag": "--pass",
+      "aliases": [],
+      "category": "Rate control",
+      "type": "enum",
+      "values": "-1: both, 1: first, 2: second pass",
+      "default": "-1",
+      "description": "Runs just one half of a two-pass encode, so the passes can be run separately with --rcstatsfile.",
+      "effect": {
+        "quality": "same as two-pass",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": false,
+      "advanced": true,
+      "recommendations": [],
+      "lumora": null,
+      "notes": "The wiki warns that changing options between pass 1 and pass 2 can give unpredictable results or errors."
+    },
+    {
+      "flag": "--rcstatsfile",
+      "aliases": [],
+      "category": "Rate control",
+      "type": "path",
+      "values": "JSON file name",
+      "default": "",
+      "description": "Where the first pass writes its statistics and where the second pass reads them.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": false,
+      "advanced": true,
+      "recommendations": [],
+      "lumora": null,
+      "notes": "Added in v1.2.0 alongside --pass. Required when --pass is set, rejected for single-pass (-p 1), and only available in builds with JSON support (VVEncAppCfg.h)."
+    },
+    {
+      "flag": "--qp",
+      "aliases": [
+        "-q"
+      ],
+      "category": "Rate control",
+      "type": "int",
+      "values": "0, 1, .. 63",
+      "default": "-1",
+      "description": "Base quantizer for constant-QP or constant-quality encoding. Lower is higher quality and larger files. -1 means automatic, which resolves to 32 without rate control.",
+      "effect": {
+        "quality": "+ as QP drops",
+        "speed": "slightly slower at low QP",
+        "size": "+ as QP drops (about doubles every ~6 QP)"
+      },
+      "hdr": false,
+      "advanced": false,
+      "recommendations": [
+        {
+          "for": "streaming/small size",
+          "value": "32-37",
+          "why": "The wiki calls QP 21-47 the useful range. The library default of 32 sits toward the efficient end, so 32-37 is a reasonable zone for small files (inference from that range, not an explicit project recommendation).",
+          "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
+        },
+        {
+          "for": "archive",
+          "value": "21-27",
+          "why": "The low end of the wiki's 21-47 range gives near-transparent results; the capped CQF example uses 27.",
+          "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
+        }
+      ],
+      "lumora": "Passed as '-q {quality}', mapped from Lumora's quality slider between qualityBest 20 and qualityWorst 40.",
+      "notes": "The wiki lists the default as 32; the help shows -1 (auto), which resolves to 32 without rate control (confirmed locally). With QPA on and a base QP above 42, QPA switches from block-level to frame-level adaptation for pictures above temporal layer 0 (BitAllocation.cpp)."
+    },
+    {
+      "flag": "--qpa",
+      "aliases": [],
+      "category": "Psychovisual and tuning",
+      "type": "bool",
+      "values": "0: off, 1: on",
+      "default": "on",
+      "description": "Perceptual QP adaptation: raises the QP where the XPSNR visual model says errors are hard to see (busy texture, motion) and lowers it in flat or still areas. With an --hdr (or --sdr) mode set, it also adds a QP offset that depends on brightness.",
+      "effect": {
+        "quality": "+ subjectively; - in PSNR",
+        "speed": "small cost",
+        "size": "± depends on content"
+      },
+      "hdr": true,
+      "advanced": false,
+      "recommendations": [
+        {
+          "for": "live action",
+          "value": "1 (default)",
+          "why": "Designed to improve subjective quality; the project lists it as a headline feature.",
+          "source": "https://github.com/fraunhoferhhi/vvenc"
+        },
+        {
+          "for": "HDR",
+          "value": "1",
+          "why": "With --hdr set, QPA adds a brightness-dependent QP offset that suits PQ/HLG signals; turning it off loses that adaptation (source reading).",
+          "source": "https://raw.githubusercontent.com/fraunhoferhhi/vvenc/v1.14.0/source/Lib/EncoderLib/BitAllocation.cpp"
+        },
+        {
+          "for": "benchmarking (PSNR)",
+          "value": "0",
+          "why": "The project's own PSNR results are measured without QPA, and QPA results are reported in MS-SSIM instead, because QPA targets perceived quality rather than PSNR.",
+          "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Encoder-Performance"
+        }
+      ],
+      "lumora": "Not passed; Lumora relies on the vvencapp default (on). Its target metric is VMAF, which differs from XPSNR, so measured scores may not reflect what QPA optimizes for.",
+      "notes": "On by default in vvencapp. vvencFFapp defaults to off (Usage wiki), and in the library vvenc_config_default leaves it off while vvenc_init_default turns it on. Required for capped CQF (-q with -m). Set the true frame rate when it is on. In the v1.14.0 source the brightness offset runs for any --hdr or --sdr mode, not only HDR (BitAllocation.cpp)."
+    },
+    {
+      "flag": "--threads",
+      "aliases": [
+        "-t"
+      ],
+      "category": "Threading and performance",
+      "type": "int",
+      "values": "-1: resolution < 720p: 4, < 5K 2880p: 8, >= 5K 2880p: 12 threads",
+      "default": "-1",
+      "description": "Number of worker threads. Auto uses 4 below 720p, 8 from 720p and 12 from 2880p (based on the shorter picture side), capped at the number of CPU cores.",
+      "effect": {
+        "quality": "- very slightly when it triggers WPP/tiles/IFP",
+        "speed": "+",
+        "size": "+ very slightly with more parallel tools"
+      },
+      "hdr": false,
+      "advanced": false,
+      "recommendations": [
+        {
+          "for": "speed",
+          "value": "-1 (auto) or a bit above it",
+          "why": "Raising threads above the auto default makes mtprofile turn on extra parallel tools (WPP, tiles, IFP) automatically.",
+          "source": "https://raw.githubusercontent.com/fraunhoferhhi/vvenc/v1.14.0/source/Lib/vvenc/vvencCfg.cpp"
+        }
+      ],
+      "lumora": "Passed as '--threads {threads}'. For clips over 480 frames ChipProfile runs about cpuCores/4 VVenC instances side by side (unless a measured profile overrides it), and each gets cpuCores divided by the instance count, about 4 threads.",
+      "notes": "0 turns worker threads off; the allowed range is -1 to 256 (vvencCfg.cpp). The 12-thread step for 5K and up was added in v1.11.0."
+    },
+    {
+      "flag": "--mtprofile",
+      "aliases": [],
+      "category": "Threading and performance",
+      "type": "enum",
+      "values": "-1: auto, 0: off, 1, 2, 3: on (enables tiles, IFP and WPP automatically depending on the number of threads)",
+      "default": "auto",
+      "description": "Decides how hard to push parallelism. Auto compares --threads with the resolution default: at or below it nothing extra is enabled; above it, profiles 1-3 progressively add WPP, 2x2 (or 2x1) tiles and inter-frame parallelism.",
+      "effect": {
+        "quality": "- slightly at higher profiles",
+        "speed": "+ on many-core machines",
+        "size": "+ slightly"
+      },
+      "hdr": false,
+      "advanced": true,
+      "recommendations": [
+        {
+          "for": "speed",
+          "value": "auto",
+          "why": "Picks a profile from the thread count so you do not have to tune tiles, WPP and IFP by hand.",
+          "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
+        }
+      ],
+      "lumora": null,
+      "notes": "Added in v1.12.0. Explicit --tiles or --ifp values override what the profile would choose."
+    },
+    {
+      "flag": "--refreshtype",
+      "aliases": [
+        "-rt"
+      ],
+      "category": "GOP and keyframes",
+      "type": "enum",
+      "values": "idr, cra, cra_cre (CRA, constrained RASL picture encoding), none, rpsei (Recovery Point SEI), idr_no_radl (IDR without leading pictures, for DASH)",
+      "default": "cra",
+      "description": "Type of random-access picture inserted at each intra period. CRA is open-GOP (most efficient). IDR is closed-GOP. cra_cre and idr_no_radl constrain leading pictures so segments can be switched or spliced cleanly.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "idr/cra_cre slightly larger than cra"
+      },
+      "hdr": false,
+      "advanced": false,
+      "recommendations": [
+        {
+          "for": "streaming/small size",
+          "value": "cra_cre",
+          "why": "The project's DASH ladder examples use cra_cre with 4-second segments.",
+          "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
+        },
+        {
+          "for": "archive",
+          "value": "cra (default)",
+          "why": "codecs.wiki describes cra as the default open-GOP mode and idr as the closed-GOP choice; keep cra unless segments must be spliced or switched.",
+          "source": "https://codecs.wiki/docs/encoders/VVenC"
+        }
+      ],
+      "lumora": null,
+      "notes": "In v1.14.0 'none' is only accepted with PicReordering=0 (low delay), and low delay accepts only 'none'. 'rpsei' is rejected both with and without reordering (configuration checks, confirmed locally). cra_cre and idr_no_radl also enable reference picture resampling for resolution switching. idr_no_radl was added in v1.13.0."
+    },
+    {
+      "flag": "--refreshsec",
+      "aliases": [
+        "-rs"
+      ],
+      "category": "GOP and keyframes",
+      "type": "int",
+      "values": "seconds",
+      "default": "1",
+      "description": "Intra period in seconds; used when --intraperiod is 0.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "- with longer periods"
+      },
+      "hdr": false,
+      "advanced": false,
+      "recommendations": [
+        {
+          "for": "streaming/small size",
+          "value": "4",
+          "why": "The DASH examples use 4-second segments.",
+          "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
+        }
+      ],
+      "lumora": null,
+      "notes": "Sources disagree on scene cuts. codecs.wiki says VVenC does not detect them. The 1.14.0 source enables slice type adaptation (STA) by default for GOP 32, which turns a temporal-layer-0 B picture into an I picture after a scene cut; in that default mode the intra period is not restarted (STA=2 through --additional restarts it)."
+    },
+    {
+      "flag": "--intraperiod",
+      "aliases": [
+        "-ip"
+      ],
+      "category": "GOP and keyframes",
+      "type": "int",
+      "values": "frames; 0 = use --refreshsec",
+      "default": "0",
+      "description": "Intra period as a frame count, overriding the seconds-based setting.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "- with longer periods"
+      },
+      "hdr": false,
+      "advanced": false,
+      "recommendations": [],
+      "lumora": null,
+      "notes": "When the period comes from --refreshsec, it is rounded to a multiple of 8 frames (the smaller of GOP size and 8). An explicit value just above a multiple of the 32-frame GOP (N*32+1 to N*32+4) triggers a warning about degraded results; the source suggests multiples of the GOP size. Film grain analysis (--fga) needs an intra period of at least 2."
+    },
+    {
+      "flag": "--internal-bitdepth",
+      "aliases": [],
+      "category": "Color and HDR",
+      "type": "enum",
+      "values": "8, 10",
+      "default": "10",
+      "description": "Bit depth the encoder works at. 10 is the default and is required for HDR.",
+      "effect": {
+        "quality": "+ at 10 (unverified for 8-bit sources)",
+        "speed": "8 may be a little faster (unverified)",
+        "size": "- at 10 for the same quality (unverified)"
+      },
+      "hdr": true,
+      "advanced": true,
+      "recommendations": [
+        {
+          "for": "HDR",
+          "value": "10",
+          "why": "The configuration check rejects HDR modes below 10-bit internal.",
+          "source": "https://raw.githubusercontent.com/fraunhoferhhi/vvenc/v1.14.0/source/Lib/vvenc/vvencCfg.cpp"
+        }
+      ],
+      "lumora": null,
+      "notes": "VVC Main 10 covers both; vvencapp offers no 12-bit option. Unverified (common encoder experience, not stated by the project): 10-bit internal coding is usually more efficient even for 8-bit sources."
+    },
+    {
+      "flag": "--ifp",
+      "aliases": [],
+      "category": "Threading and performance",
+      "type": "enum",
+      "values": "-1: auto, 0: off, 1: on, with sync. offset of two CTU lines",
+      "default": "auto",
+      "description": "Inter-frame parallelism: lets a frame start encoding while its reference frame is still a couple of CTU rows ahead. Gains speed on many cores.",
+      "effect": {
+        "quality": "- slightly (disables ALF temporal prediction)",
+        "speed": "+",
+        "size": "+ slightly"
+      },
+      "hdr": false,
+      "advanced": true,
+      "recommendations": [],
+      "lumora": null,
+      "notes": "Added in v1.11; auto follows --mtprofile since v1.12. IFP supports a single tile row only, and turning it on disables ALF temporal prediction (vvencCfg.cpp)."
+    },
+    {
+      "flag": "--tiles",
+      "aliases": [],
+      "category": "Threading and performance",
+      "type": "string",
+      "values": "number of tile columns and rows, ColumnsxRows (e.g. 2x2); -1x-1 = auto",
+      "default": "-1x-1",
+      "description": "Number of tile columns and rows. Tiles split the picture into independent regions that can be encoded and decoded in parallel, at a small efficiency cost.",
+      "effect": {
+        "quality": "- slightly",
+        "speed": "+ for encoding and decoding",
+        "size": "+ slightly"
+      },
+      "hdr": false,
+      "advanced": true,
+      "recommendations": [
+        {
+          "for": "speed",
+          "value": "-1x-1 (auto)",
+          "why": "When mtprofile is on at 720p and above, auto picks 2x2 tiles (2x1 with IFP), which is enough for most machines.",
+          "source": "https://raw.githubusercontent.com/fraunhoferhhi/vvenc/v1.14.0/source/Lib/vvenc/vvencCfg.cpp"
+        }
+      ],
+      "lumora": null,
+      "notes": "The Usage wiki's option-mapping table still lists --tiles with a default of 1x1; since v1.12.0 the default is -1x-1 (auto, decided by --mtprofile), as the installed help shows. The option itself was added in v1.3.0."
+    },
+    {
+      "flag": "--accessunitdelimiter",
+      "aliases": [
+        "-aud"
+      ],
+      "category": "Input and output",
+      "type": "enum",
+      "values": "-1: auto, 0: off, 1: on",
+      "default": "auto",
+      "description": "Writes access unit delimiter NAL units before each picture. In the v1.14.0 source, auto resolves to off for single-layer streams.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "+ a few bytes per frame"
+      },
+      "hdr": false,
+      "advanced": true,
+      "recommendations": [],
+      "lumora": null,
+      "notes": "Unverified: some MPEG-TS and broadcast delivery specs expect AUDs, so turn them on for that kind of delivery."
+    },
+    {
+      "flag": "--vuiparameterspresent",
+      "aliases": [
+        "-vui"
+      ],
+      "category": "Color and HDR",
+      "type": "enum",
+      "values": "-1: auto, 0: off, 1: on",
+      "default": "auto",
+      "description": "Whether to write VUI (color description, aspect ratio, timing). Auto turns it on when --hdr, --sdr, --range or color options need it.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": true,
+      "advanced": true,
+      "recommendations": [
+        {
+          "for": "HDR",
+          "value": "auto (or 1)",
+          "why": "Setting --hdr or --sdr turns VUI on automatically, and in v1.14.0 the color fields force it back on even if 0 is given, so auto is all you need.",
+          "source": "https://raw.githubusercontent.com/fraunhoferhhi/vvenc/v1.14.0/source/Lib/vvenc/vvencCfg.cpp"
+        }
+      ],
+      "lumora": null,
+      "notes": "In v1.14.0, -vui 0 is overridden whenever ColourPrimaries or MatrixCoefficients are set, so --hdr pq_2020 -vui 0 still wrote full color signaling in a local test. There is no reason to set 0 for HDR output."
+    },
+    {
+      "flag": "--hrdparameterspresent",
+      "aliases": [
+        "-hrd"
+      ],
+      "category": "Rate control",
+      "type": "bool",
+      "values": "0: off, 1: on",
+      "default": "1",
+      "description": "Writes HRD (decoder buffer model) parameters in the VUI.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "negligible"
+      },
+      "hdr": false,
+      "advanced": true,
+      "recommendations": [],
+      "lumora": null,
+      "notes": "Buffering-period and picture-timing SEI, which use these parameters, require rate control (source check). Unsure whether HRD data is meaningful in constant-QP mode."
+    },
+    {
+      "flag": "--decodedpicturehash",
+      "aliases": [
+        "-dph"
+      ],
+      "category": "Logging and statistics",
+      "type": "enum",
+      "values": "0: off, 1: md5, 2: crc, 3: checksum",
+      "default": "off",
+      "description": "Adds a per-picture hash SEI so a decoder can verify it reconstructed each frame exactly.",
+      "effect": {
+        "quality": "none",
+        "speed": "- slightly",
+        "size": "+ tiny"
+      },
+      "hdr": false,
+      "advanced": true,
+      "recommendations": [],
+      "lumora": null,
+      "notes": "The source also accepts log_md5/log_crc/log_checksum (11-13), which print the hashes."
+    },
+    {
+      "flag": "--profile",
+      "aliases": [],
+      "category": "Other",
+      "type": "enum",
+      "values": "auto, main_10, main_10_still_picture",
+      "default": "auto",
+      "description": "VVC profile written in the stream. Auto selects Main 10 for normal video.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": false,
+      "advanced": true,
+      "recommendations": [],
+      "lumora": null,
+      "notes": "The source also knows 4:4:4 and multilayer profiles, but vvencapp's input formats only allow 4:2:0/4:0:0."
+    },
+    {
+      "flag": "--level",
+      "aliases": [],
+      "category": "Other",
+      "type": "enum",
+      "values": "auto, 1.0, 2.0, 2.1, 3.0, 3.1, 4.0, 4.1, 5.0, 5.1, 5.2, 6.0, 6.1, 6.2, 6.3, 15.5",
+      "default": "auto",
+      "description": "Level limit written in the stream, which tells decoders the maximum resolution, frame rate and bitrate to expect. Auto derives it from the settings.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": false,
+      "advanced": true,
+      "recommendations": [],
+      "lumora": null,
+      "notes": "15.5 is the 'unconstrained' level."
+    },
+    {
+      "flag": "--tier",
+      "aliases": [],
+      "category": "Other",
+      "type": "enum",
+      "values": "main, high",
+      "default": "main",
+      "description": "Tier for interpreting the level; High allows higher bitrates at the same level.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": false,
+      "advanced": true,
+      "recommendations": [],
+      "lumora": null,
+      "notes": ""
+    },
+    {
+      "flag": "--sdr",
+      "aliases": [],
+      "category": "Color and HDR",
+      "type": "enum",
+      "values": "off, sdr|sdr_709, sdr_2020, sdr_470bg",
+      "default": "off",
+      "description": "Writes SDR color signaling in one step: BT.709, BT.2020 (with bt2020-10 transfer) or BT.470BG primaries, transfer and matrix in the VUI.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": true,
+      "advanced": false,
+      "recommendations": [
+        {
+          "for": "live action",
+          "value": "sdr_709",
+          "why": "Most SDR sources are BT.709; explicit signaling keeps players from guessing.",
+          "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
+        }
+      ],
+      "lumora": "Not passed. Lumora appends its hdrArgs only for HDR10 targets, so SDR encodes get neither --sdr nor --hdr and carry no color description.",
+      "notes": "Added in v1.7.0. Cannot be combined with --hdr (the app rejects it). sdr_2020 also switches to top-left chroma siting. In the v1.14.0 source an --sdr mode also enables the brightness-dependent QPA offset used for HDR (BitAllocation.cpp, source reading)."
+    },
+    {
+      "flag": "--hdr",
+      "aliases": [],
+      "category": "Color and HDR",
+      "type": "enum",
+      "values": "off, pq|hdr10, pq_2020|hdr10_2020, hlg, hlg_2020",
+      "default": "off",
+      "description": "Switches the encoder into HDR mode. It writes VUI color signaling and tunes coding for the signal (PQ or HLG chroma QP tables, HDR-aware QPA). The pq modes set transfer smpte2084; the hlg modes add an alternative transfer characteristics SEI naming HLG. The _2020 variants use BT.2020 primaries and matrix; the others use BT.709.",
+      "effect": {
+        "quality": "+ for HDR content (correct tuning)",
+        "speed": "none",
+        "size": "±"
+      },
+      "hdr": true,
+      "advanced": false,
+      "recommendations": [
+        {
+          "for": "HDR",
+          "value": "pq_2020",
+          "why": "HDR10 means PQ with BT.2020 primaries; plain 'pq' signals BT.709.",
+          "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
+        },
+        {
+          "for": "HDR",
+          "value": "hlg_2020",
+          "why": "Broadcast HLG uses BT.2020. This mode adds the HLG transfer SEI for backward-compatible signaling.",
+          "source": "https://raw.githubusercontent.com/fraunhoferhhi/vvenc/v1.14.0/source/Lib/vvenc/vvencCfg.cpp"
+        }
+      ],
+      "lumora": "Lumora's encoders.json maps PQ to 'pq_2020' and HLG to 'hlg_2020', but ExportEngine appends hdrArgs only when the target is HDR10. HLG exports therefore get no --hdr flag and no HLG signaling, and Lumora adds no MasteringDisplayColourVolume or MaxContentLightLevel, so its HDR10 output has no static metadata SEI.",
+      "notes": "Fixed color fields only fill values left at 'unknown', so explicit ColourPrimaries/MatrixCoefficients given in --additional take priority (PQ always forces smpte2084). Requires 10-bit internal and 4:2:0. The source also has a 'user defined' HDR mode that is not reachable through this flag."
+    },
+    {
+      "flag": "--range",
+      "aliases": [],
+      "category": "Color and HDR",
+      "type": "enum",
+      "values": "unknown, limited | mpeg | tv, full | jpeg | pc",
+      "default": "unknown",
+      "description": "Signals whether samples use limited (16-235 scaled) or full range.",
+      "effect": {
+        "quality": "none (wrong value shifts black and white levels on playback)",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": true,
+      "advanced": false,
+      "recommendations": [
+        {
+          "for": "HDR",
+          "value": "limited",
+          "why": "HDR10 and HLG masters are normally limited range (general mastering practice). With an HDR mode the flag is already 0, so 'limited' only makes the choice explicit.",
+          "source": "https://raw.githubusercontent.com/fraunhoferhhi/vvenc/v1.14.0/source/Lib/apputils/VVEncAppCfg.h"
+        }
+      ],
+      "lumora": null,
+      "notes": "Added in v1.14.0. 'unknown' leaves the VUI full-range flag at 0 (limited) and does not force VUI on; 'limited' writes the same flag but also forces VUI and the color description on; only 'full' changes the flag (VVEncAppCfg.h). The source also accepts 'unspecified'. Older builds need --additional VideoFullRange instead."
+    },
+    {
+      "flag": "--tracechannellist",
+      "aliases": [],
+      "category": "Logging and statistics",
+      "type": "bool",
+      "values": "0/1",
+      "default": "0",
+      "description": "Lists the debug trace channels compiled into the encoder.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": false,
+      "advanced": true,
+      "recommendations": [],
+      "lumora": null,
+      "notes": "Developer tool; tracing generally only works in builds compiled with tracing support (not verified for the Homebrew build)."
+    },
+    {
+      "flag": "--tracerule",
+      "aliases": [],
+      "category": "Logging and statistics",
+      "type": "string",
+      "values": "rule such as \"D_CABAC:poc==8\"",
+      "default": "''",
+      "description": "Selects which trace channels and pictures to log.",
+      "effect": {
+        "quality": "none",
+        "speed": "- heavily when tracing",
+        "size": "none"
+      },
+      "hdr": false,
+      "advanced": true,
+      "recommendations": [],
+      "lumora": null,
+      "notes": "Tracing cannot be combined with frame-parallel multithreading (source check)."
+    },
+    {
+      "flag": "--tracefile",
+      "aliases": [],
+      "category": "Logging and statistics",
+      "type": "path",
+      "values": "file name",
+      "default": "''",
+      "description": "File that receives trace output.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": false,
+      "advanced": true,
+      "recommendations": [],
+      "lumora": null,
+      "notes": ""
+    },
+    {
+      "flag": "--fga",
+      "aliases": [],
+      "category": "Film grain and noise",
+      "type": "bool",
+      "values": "0/1",
+      "default": "0",
+      "description": "Experimental: analyzes the source's film grain and writes a film grain characteristics (FGC) SEI so a decoder can add matching grain back. It describes the grain; it does not itself remove it.",
+      "effect": {
+        "quality": "± depends on decoder support for FGC SEI",
+        "speed": "- slightly",
+        "size": "none directly (smaller only if grain is also filtered out)"
+      },
+      "hdr": false,
+      "advanced": true,
+      "recommendations": [
+        {
+          "for": "heavy grain",
+          "value": "1 (experimental)",
+          "why": "Writes a film grain SEI so a decoder that supports it can add grain back (experimental since v1.13.0). It needs MCTF, which every preset enables per the Presets wiki.",
+          "source": "https://raw.githubusercontent.com/fraunhoferhhi/vvenc/master/changelog.txt"
+        }
+      ],
+      "lumora": null,
+      "notes": "Added in v1.13.0 and marked experimental. Needs MCTF on and an intra period of at least 2. Few VVC decoders apply FGC SEI, so the effect on playback is uncertain."
+    },
+    {
+      "flag": "AspectRatioIdc",
+      "aliases": [],
+      "category": "Color and HDR",
+      "type": "enum",
+      "values": "0-16, 255 (0=undef, 1=1:1, 2=12:11, 3=10:11, 4=16:11, 5=40:33, 6=24:11, 7=20:11, 8=32:11, 9=80:33, 10=18:11, 11=15:11, 12=64:33, 13=160:99, 14=4:3, 15=3:2, 16=2:1)",
+      "default": "1",
+      "description": "Set through --additional. Signals the sample (pixel) aspect ratio with a table index, for anamorphic content.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": false,
+      "advanced": true,
+      "recommendations": [],
+      "lumora": null,
+      "notes": "Value 255 means use Sar. Values above 1 force VUI on."
+    },
+    {
+      "flag": "Sar",
+      "aliases": [],
+      "category": "Color and HDR",
+      "type": "string",
+      "values": "WidthxHeight",
+      "default": "0x0",
+      "description": "Set through --additional. Gives an explicit sample aspect ratio, for anamorphic sources not covered by AspectRatioIdc.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": false,
+      "advanced": true,
+      "recommendations": [],
+      "lumora": null,
+      "notes": ""
+    },
+    {
+      "flag": "ColourDescriptionPresent",
+      "aliases": [],
+      "category": "Color and HDR",
+      "type": "bool",
+      "values": "0/1",
+      "default": "0",
+      "description": "Set through --additional. Says whether primaries, transfer, matrix and range flags are written in the VUI.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": true,
+      "advanced": true,
+      "recommendations": [],
+      "lumora": null,
+      "notes": "Turned on automatically by --hdr, --sdr, --range, or by a non-unknown ColourPrimaries or MatrixCoefficients while VUI is on auto. TransferCharacteristics alone does not turn it on in the v1.14.0 source."
+    },
+    {
+      "flag": "ColourPrimaries",
+      "aliases": [],
+      "category": "Color and HDR",
+      "type": "enum",
+      "values": "0-13: reserved, bt709, unknown, empty, bt470m, bt470bg, smpte170m, smpte240m, film, bt2020, smpte428, smpte431, smpte432",
+      "default": "unknown",
+      "description": "Set through --additional. Color primaries code in the VUI.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": true,
+      "advanced": true,
+      "recommendations": [
+        {
+          "for": "HDR",
+          "value": "bt2020",
+          "why": "HDR10/HLG deliverables use BT.2020 containers; --hdr *_2020 sets this for you.",
+          "source": "https://raw.githubusercontent.com/fraunhoferhhi/vvenc/v1.14.0/source/Lib/vvenc/vvencCfg.cpp"
+        }
+      ],
+      "lumora": null,
+      "notes": "Only overrides when you set it explicitly; --hdr fills it only if it is left unknown."
+    },
+    {
+      "flag": "TransferCharacteristics",
+      "aliases": [],
+      "category": "Color and HDR",
+      "type": "enum",
+      "values": "0-18: reserved, bt709, unknown, empty, bt470m, bt470bg, smpte170m, smpte240m, linear, log100, log316, iec61966-2-4, bt1361e, iec61966-2-1, bt2020-10, bt2020-12, smpte2084, smpte428, arib-std-b67",
+      "default": "unknown",
+      "description": "Set through --additional. Transfer function code in the VUI: smpte2084 is PQ, arib-std-b67 is HLG.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": true,
+      "advanced": true,
+      "recommendations": [
+        {
+          "for": "HDR",
+          "value": "arib-std-b67 (with --hdr hlg_2020)",
+          "why": "Puts HLG directly in the VUI for players that ignore the alternative transfer SEI; hlg modes only fill this field when it is left unknown (source reading).",
+          "source": "https://raw.githubusercontent.com/fraunhoferhhi/vvenc/v1.14.0/source/Lib/vvenc/vvencCfg.cpp"
+        }
+      ],
+      "lumora": null,
+      "notes": "PQ modes always force smpte2084, whatever is given here. Setting this alone does not enable the encoder's HDR mode."
+    },
+    {
+      "flag": "MatrixCoefficients",
+      "aliases": [],
+      "category": "Color and HDR",
+      "type": "enum",
+      "values": "0-14: gbr, bt709, unknown, empty, fcc, bt470bg, smpte170m, smpte240m, ycgco, bt2020nc, bt2020c, smpte2085, chroma-derived-nc, chroma-derived-c, ictcp",
+      "default": "unknown",
+      "description": "Set through --additional. Matrix used to derive Y'CbCr from RGB.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": true,
+      "advanced": true,
+      "recommendations": [
+        {
+          "for": "HDR",
+          "value": "bt2020nc",
+          "why": "The standard matrix for HDR10/HLG; set automatically by the _2020 HDR modes.",
+          "source": "https://raw.githubusercontent.com/fraunhoferhhi/vvenc/v1.14.0/source/Lib/vvenc/vvencCfg.cpp"
+        }
+      ],
+      "lumora": null,
+      "notes": ""
+    },
+    {
+      "flag": "ChromaLocInfoPresent",
+      "aliases": [],
+      "category": "Color and HDR",
+      "type": "enum",
+      "values": "-1: auto, 0: off, 1: on",
+      "default": "auto",
+      "description": "Set through --additional. Whether the chroma sample location is signaled.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": true,
+      "advanced": true,
+      "recommendations": [],
+      "lumora": null,
+      "notes": "Since v1.12.1, chroma location signaling follows the HDR/SDR mode (BT.2020 modes use top-left/collocated siting)."
+    },
+    {
+      "flag": "ChromaSampleLocType",
+      "aliases": [],
+      "category": "Color and HDR",
+      "type": "int",
+      "values": "-1 auto, 0-5 (Chroma420LocType)",
+      "default": "-1",
+      "description": "Set through --additional. Chroma siting code for 4:2:0 (0 = left, 2 = top-left, etc.).",
+      "effect": {
+        "quality": "none (a wrong value shifts chroma slightly on display)",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": true,
+      "advanced": true,
+      "recommendations": [
+        {
+          "for": "HDR",
+          "value": "-1 (auto)",
+          "why": "HDR modes already set vertically collocated (top-left) siting, which matches typical BT.2020 masters.",
+          "source": "https://raw.githubusercontent.com/fraunhoferhhi/vvenc/v1.14.0/source/Lib/vvenc/vvencCfg.cpp"
+        }
+      ],
+      "lumora": null,
+      "notes": "Match the source's real siting if it differs."
+    },
+    {
+      "flag": "OverscanAppropriate",
+      "aliases": [],
+      "category": "Color and HDR",
+      "type": "bool",
+      "values": "0/1",
+      "default": "0",
+      "description": "Set through --additional. Flags whether the picture can be shown with overscan cropping.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "none"
+      },
+      "hdr": false,
+      "advanced": true,
+      "recommendations": [],
+      "lumora": null,
+      "notes": "Setting it forces VUI on."
+    },
+    {
+      "flag": "MasteringDisplayColourVolume",
+      "aliases": [],
+      "category": "Color and HDR",
+      "type": "list",
+      "values": "10 unsigned ints: G(x,y),B(x,y),R(x,y),WP(x,y),L(max,min); 0 <= GBR,WP <= 50000 (1/50000 units); luminance in 1/10000 cd/m2",
+      "default": "[]",
+      "description": "Set through --additional. Writes the SMPTE ST 2086 mastering display SEI (primaries, white point and luminance range of the grading monitor), which is part of HDR10 metadata.",
+      "effect": {
+        "quality": "none (affects tone mapping on playback)",
+        "speed": "none",
+        "size": "negligible"
+      },
+      "hdr": true,
+      "advanced": false,
+      "recommendations": [
+        {
+          "for": "HDR",
+          "value": "13250,34500,7500,3000,34000,16000,15635,16450,10000000,1",
+          "why": "The help/wiki example for a P3-D65 1000-nit mastering monitor. Copy the source master's real values when known.",
+          "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
+        }
+      ],
+      "lumora": null,
+      "notes": "Written in every access unit when set (EncGOP.cpp). With --hdr off it switches the library to PQ mode, BT.709 unless ColourPrimaries=bt2020."
+    },
+    {
+      "flag": "MaxContentLightLevel",
+      "aliases": [],
+      "category": "Color and HDR",
+      "type": "list",
+      "values": "\"cll,fall\", 1 <= cll,fall <= 65535",
+      "default": "[]",
+      "description": "Set through --additional. Writes the content light level SEI: brightest pixel (MaxCLL) and brightest frame average (MaxFALL) in nits.",
+      "effect": {
+        "quality": "none (affects tone mapping on playback)",
+        "speed": "none",
+        "size": "negligible"
+      },
+      "hdr": true,
+      "advanced": false,
+      "recommendations": [
+        {
+          "for": "HDR",
+          "value": "the source's measured values, e.g. 1000,400",
+          "why": "Players use these to tone-map. The wiki example is 1000,400; real values come from the master or a measurement pass.",
+          "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
+        }
+      ],
+      "lumora": null,
+      "notes": "Both values must be non-zero or the SEI is skipped (EncGOP.cpp). The help says up to 65535, but the 1.14.0 source rejects values above 10000 (confirmed locally)."
+    },
+    {
+      "flag": "PreferredTransferCharacteristics",
+      "aliases": [],
+      "category": "Color and HDR",
+      "type": "enum",
+      "values": "0-18: reserved, bt709, unknown, empty, bt470m, bt470bg, smpte170m, smpte240m, linear, log100, log316, iec61966-2-4, bt1361e, iec61966-2-1, bt2020-10, bt2020-12, smpte2084, smpte428, arib-std-b67",
+      "default": "auto",
+      "description": "Set through --additional. Writes the alternative (preferred) transfer characteristics SEI, telling capable displays to use a different transfer than the VUI value. HLG modes set it to arib-std-b67 automatically.",
+      "effect": {
+        "quality": "none",
+        "speed": "none",
+        "size": "negligible"
+      },
+      "hdr": true,
+      "advanced": true,
+      "recommendations": [
+        {
+          "for": "HDR",
+          "value": "arib-std-b67 (auto with --hdr hlg/hlg_2020)",
+          "why": "This is the backward-compatible HLG signal; the wiki example pairs it with HLG mode.",
+          "source": "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
+        }
+      ],
+      "lumora": null,
+      "notes": "The help says it also overwrites the VUI transfer entry, but in v1.14.0 the VUI is written from TransferCharacteristics and this value only as a separate SEI (EncGOP.cpp). A local test with sdr_2020 plus PreferredTransferCharacteristics=arib-std-b67 kept bt2020-10 in the VUI."
+    },
+    {
+      "flag": "PicReordering",
+      "aliases": [],
+      "category": "GOP and keyframes",
+      "type": "bool",
+      "values": "0: off, 1: on",
+      "default": "1",
+      "description": "Set through --additional. Allows pictures to be coded out of display order (B-frame style hierarchical GOP). Turning it off gives low-delay coding for real-time use.",
+      "effect": {
+        "quality": "- when off",
+        "speed": "±",
+        "size": "+ noticeably when off"
+      },
+      "hdr": false,
+      "advanced": true,
+      "recommendations": [
+        {
+          "for": "low latency",
+          "value": "0 (with -rt none and --additional PicReordering=0:POC0IDR=1:GOPSize=8)",
+          "why": "The help says to disable it for low-delay needs. v1.14.0 accepts only refresh type 'none' without reordering, and needs POC0IDR=1 and an 8-frame GOP; this combination encoded in a local test.",
+          "source": "https://raw.githubusercontent.com/fraunhoferhhi/vvenc/v1.14.0/source/Lib/vvenc/vvencCfg.cpp"
+        }
+      ],
+      "lumora": null,
+      "notes": "Not useful for file-based encodes. Turning it off alone fails the configuration check; low delay also needs POC0IDR=1 and GOPSize=8 (local test)."
+    }
+  ],
+  "recipes": [
+    {
+      "name": "HDR10 archive",
+      "goal": "High-quality HDR10 file with complete static metadata",
+      "content": "PQ BT.2020 live action or CGI, 10-bit",
+      "args": "-i in_10bit.y4m --preset slow -q 24 --hdr pq_2020 --range limited --additional MasteringDisplayColourVolume=13250,34500,7500,3000,34000,16000,15635,16450,10000000,1:MaxContentLightLevel=1000,400 -o out.266",
+      "why": "slow gets within about 3 points of slower at a quarter of its runtime. pq_2020 sets correct VUI and HDR-aware coding. QPA (default on) adds the brightness-dependent QP adjustment. Explicit SEI carries HDR10 metadata. Replace the metadata values with the source's own.",
+      "sources": [
+        "https://github.com/fraunhoferhhi/vvenc/wiki/Usage",
+        "https://github.com/fraunhoferhhi/vvenc/wiki/Encoder-Performance",
+        "https://raw.githubusercontent.com/fraunhoferhhi/vvenc/v1.14.0/source/Lib/vvenc/vvencCfg.cpp"
+      ]
+    },
+    {
+      "name": "HLG broadcast-style",
+      "goal": "HLG with backward-compatible signaling",
+      "content": "HLG BT.2020 live action, 10-bit",
+      "args": "-i in_hlg_10bit.y4m --preset medium -q 28 --hdr hlg_2020 --range limited -o out.266",
+      "why": "hlg_2020 writes BT.2020 VUI with bt2020-10 transfer plus the arib-std-b67 alternative transfer SEI, so SDR-only displays still show a watchable picture. Add --additional TransferCharacteristics=arib-std-b67 if the target player needs HLG in the VUI.",
+      "sources": [
+        "https://raw.githubusercontent.com/fraunhoferhhi/vvenc/v1.14.0/source/Lib/vvenc/vvencCfg.cpp",
+        "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
+      ]
+    },
+    {
+      "name": "SDR constant quality",
+      "goal": "Good-looking SDR file at a reasonable size",
+      "content": "SDR BT.709 live action",
+      "args": "-i in.y4m --preset medium -q 30 --sdr sdr_709 -o out.266",
+      "why": "medium is the project's recommended trade-off. QP with QPA behaves like a CRF. Explicit BT.709 signaling avoids player guesswork.",
+      "sources": [
+        "https://github.com/fraunhoferhhi/vvenc/wiki/Encoder-Performance",
+        "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
+      ]
+    },
+    {
+      "name": "Capped constant quality",
+      "goal": "Constant quality that never exceeds a delivery ceiling",
+      "content": "Any; mixed-complexity sources",
+      "args": "-i in.y4m --preset medium -q 27 --qpa 1 -m 5M -o out.266",
+      "why": "Capped CQF keeps constant quality but limits bitrate spikes on hard scenes; QPA must be on.",
+      "sources": [
+        "https://github.com/fraunhoferhhi/vvenc/wiki/Usage",
+        "https://raw.githubusercontent.com/fraunhoferhhi/vvenc/master/changelog.txt"
+      ]
+    },
+    {
+      "name": "Two-pass target bitrate",
+      "goal": "Hit a file-size or bandwidth target",
+      "content": "Streaming/small size",
+      "args": "-i in.y4m --preset medium -b 2M -m 2x -o out.266",
+      "why": "Two-pass is the default when -b is set; a max rate of at least 1.5x the target is advised.",
+      "sources": [
+        "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
+      ]
+    },
+    {
+      "name": "DASH ladder rung",
+      "goal": "Segmentable stream for adaptive streaming with resolution switching",
+      "content": "Streaming",
+      "args": "-i input_1920x1080.y4m -b 2M -m 4M -rt cra_cre -rs 4 --additional MaxPicSize=3840x2160 -o str_1920x1080.266",
+      "why": "The project's own DASH example. cra_cre keeps segments independently decodable, 4-second refresh matches the segment length, and MaxPicSize allows switching between renditions.",
+      "sources": [
+        "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
+      ]
+    },
+    {
+      "name": "Fast preview",
+      "goal": "Quick look at a VVC encode",
+      "content": "Any",
+      "args": "-i in.y4m --preset faster -q 32 -o preview.266",
+      "why": "faster is about 7x quicker than medium while still beating HEVC-era efficiency.",
+      "sources": [
+        "https://github.com/fraunhoferhhi/vvenc/wiki/Encoder-Performance"
+      ]
+    },
+    {
+      "name": "Piped input from FFmpeg",
+      "goal": "Encode any source format without an intermediate file",
+      "content": "Any",
+      "args": "ffmpeg -i src.mkv -pix_fmt yuv420p10le -f yuv4mpegpipe -strict -1 - | vvencapp -i - --y4m --preset medium -q 30 -o out.266",
+      "why": "--y4m is required for piped Y4M. 10-bit input matches the encoder's default 10-bit internal depth. FFmpeg still needs -strict -1 to write 10-bit Y4M (checked with FFmpeg 9.0.2). For -b with piped input, add -p 1, since two-pass in one call cannot read from stdin.",
+      "sources": [
+        "https://codecs.wiki/docs/encoders/VVenC",
+        "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "title": "VVenC GitHub repository (README)",
+      "url": "https://github.com/fraunhoferhhi/vvenc"
+    },
+    {
+      "title": "VVenC wiki: Usage",
+      "url": "https://github.com/fraunhoferhhi/vvenc/wiki/Usage"
+    },
+    {
+      "title": "VVenC wiki: Presets",
+      "url": "https://github.com/fraunhoferhhi/vvenc/wiki/Presets"
+    },
+    {
+      "title": "VVenC wiki: Encoder Performance (v1.14.0)",
+      "url": "https://github.com/fraunhoferhhi/vvenc/wiki/Encoder-Performance"
+    },
+    {
+      "title": "VVenC changelog",
+      "url": "https://raw.githubusercontent.com/fraunhoferhhi/vvenc/master/changelog.txt"
+    },
+    {
+      "title": "VVenC v1.14.0 source: vvencCfg.cpp (HDR modes, threading, rate control checks)",
+      "url": "https://raw.githubusercontent.com/fraunhoferhhi/vvenc/v1.14.0/source/Lib/vvenc/vvencCfg.cpp"
+    },
+    {
+      "title": "VVenC v1.14.0 source: VVEncAppCfg.h (vvencapp option maps)",
+      "url": "https://raw.githubusercontent.com/fraunhoferhhi/vvenc/v1.14.0/source/Lib/apputils/VVEncAppCfg.h"
+    },
+    {
+      "title": "VVenC v1.14.0 source: EncGOP.cpp (SEI emission)",
+      "url": "https://raw.githubusercontent.com/fraunhoferhhi/vvenc/v1.14.0/source/Lib/EncoderLib/EncGOP.cpp"
+    },
+    {
+      "title": "VVenC v1.14.0 source: BitAllocation.cpp (QPA, HDR luma offsets)",
+      "url": "https://raw.githubusercontent.com/fraunhoferhhi/vvenc/v1.14.0/source/Lib/EncoderLib/BitAllocation.cpp"
+    },
+    {
+      "title": "Fraunhofer HHI: VVenC product page",
+      "url": "https://www.hhi.fraunhofer.de/en/departments/vca/technologies-and-solutions/h266-vvc/fraunhofer-versatile-video-encoder-vvenc.html"
+    },
+    {
+      "title": "Codec Wiki: VVenC",
+      "url": "https://codecs.wiki/docs/encoders/VVenC"
+    },
+    {
+      "title": "Optimized Decoding-Energy-Aware Encoding in Practical VVC Implementations (arXiv 2206.13483)",
+      "url": "https://arxiv.org/abs/2206.13483"
+    }
+  ]
+}

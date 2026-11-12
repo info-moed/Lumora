@@ -195,6 +195,7 @@ cmd_verify() {
   health; local health_rc=$?
   say "${B}1/3 Encoder flags${N}"
   verify_flags; local flags_rc=$?
+  python3 "$ROOT/scripts/encoding_reference.py" check 2>/dev/null | sed 's/^/  /' || true
   say "${B}2/3 Build${N}"
   have xcodegen || { bad "xcodegen missing: scripts/deps.sh install"; return 1; }
   (cd "$ROOT" && xcodegen -q) >>"$log" 2>&1 || { bad "xcodegen failed (see $log)"; return 1; }
