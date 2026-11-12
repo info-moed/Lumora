@@ -447,9 +447,9 @@ silicon):
 - on demand (**Actions → CI → Run workflow**), optionally with a specific Xcode (e.g. `Xcode_27.2.app`).
 
 It runs `scripts/deps.sh status` and `scripts/deps.sh verify`, and uploads the log, the `.xcresult` bundle and the
-verified `deps.lock` as an artifact. GitHub's runners are virtual machines; tests that need a real GPU or the
-hardware video encoder **skip** there with a reason, so run the weekly local check
-(`scripts/deps.sh schedule install`) on a real Mac for full coverage.
+verified `deps.lock` as an artifact. The `xcode-27` runner currently provides a GPU and the hardware video encoder,
+so the whole suite runs there. On a machine without them, those tests **skip** with a reason instead of failing; the
+weekly local check (`scripts/deps.sh schedule install`) covers them on a real Mac.
 [Dependabot](../.github/dependabot.yml) keeps the workflow's actions current.
 
 Run the same check locally before pushing:

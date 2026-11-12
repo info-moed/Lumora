@@ -140,7 +140,7 @@ To use a specific build of a tool, see [Pointing Lumora at specific tools](comma
 | `scripts/deps.sh update` says the upgrade reported a problem | Usually a Homebrew link conflict with an older formula (the message names it). Upgrade the conflicting formula, e.g. `brew upgrade qt`, then run `scripts/deps.sh verify`. |
 | `verify` fails after an update | The log path is printed. Hold the tool back with `brew pin <formula>` and reinstall the version listed in `deps.lock`, or fix `encoders.json` / the code and open an issue. |
 | Weekly check notifications are annoying | `scripts/deps.sh schedule remove` |
-| CI shows tests as skipped | GitHub's runners have no usable GPU or hardware encoder; those tests run on real Macs. |
+| CI shows tests as skipped | That runner has no usable GPU or hardware encoder; those tests run on real Macs (and on the `xcode-27` runner, which currently has both). |
 
 ---
 

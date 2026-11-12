@@ -36,8 +36,7 @@ scripts/deps.sh verify
 ```
 
 That checks encoder flags, builds, and runs the whole test suite (headless; about a minute). CI runs the same on
-GitHub's macOS 27 runners, where GPU and hardware-encoder tests skip; run it locally on Apple silicon for full
-coverage.
+GitHub's macOS 27 / Xcode 27 runner for every push and pull request.
 
 - **Add a test** for any bug you fix or feature you add. End-to-end tests (`EndToEndTests`) are the best proof:
   generate a small clip with FFmpeg, run the real pipeline, check the file with `ffprobe`. Hostile-input fixes go in

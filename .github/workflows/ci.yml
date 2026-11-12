@@ -5,8 +5,8 @@ name: CI
 # - every Monday against the newest Homebrew encoders and the newest Xcode 27 on the runner
 #   (does it still work with today's dependencies?),
 # - on demand from the Actions tab.
-# GitHub's macOS runners are virtual machines; tests that need a real GPU or the hardware video encoder skip
-# there with a reason and run in full on real Macs (locally, and via `scripts/deps.sh schedule install`).
+# Tests that need a GPU or the hardware video encoder skip with a reason on any runner that lacks them; the
+# xcode-27 runner currently provides both, so the full suite runs here.
 
 on:
   push:
@@ -33,7 +33,7 @@ jobs:
     runs-on: xcode-27
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Select Xcode
         if: ${{ github.event.inputs.xcode != '' }}
@@ -62,7 +62,7 @@ jobs:
 
       - name: Upload results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lumora-ci-${{ github.run_number }}
           path: |
