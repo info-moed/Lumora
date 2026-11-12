@@ -11,7 +11,10 @@ enum CropDetector {
             if let frame = try src.nextFrame() { renderer.rowColMax(frame.texture, rows: &rows, cols: &cols) }
         }
         src.cancel()
-        guard rows.count > 16, cols.count > 16, let floor = rows.min() else { return UniformBuilder.fullFrame }
+        // The bars' level is the darkest row *or* column maximum: with pillarbox bars every row crosses the
+        // picture, so only the columns see the bars.
+        guard rows.count > 16, cols.count > 16, let rowFloor = rows.min(), let colFloor = cols.min() else { return UniformBuilder.fullFrame }
+        let floor = min(rowFloor, colFloor)
         let threshold = floor + UInt32(0.04 * 65535)
         func span(_ v: [UInt32]) -> (Int, Int) {
             let first = v.firstIndex { $0 > threshold } ?? 0

@@ -287,7 +287,7 @@ final class ProxyWriter {
     init(for d: SourceDescriptor, height: Int = 720) throws {
         url = ScratchManager.proxiesFolder.appendingPathComponent("\(d.url.deletingPathExtension().lastPathComponent)-\(abs(d.url.path.hashValue)).mov")
         try? FileManager.default.removeItem(at: url)
-        let h = min(height, d.height) & ~1, w = (d.width * h / max(1, d.height)) & ~1
+        let (w, h) = Self.outputSize(for: d, height: height)
         writer = try AVAssetWriter(outputURL: url, fileType: .mov)
         input = AVAssetWriterInput(mediaType: .video, outputSettings: [
             AVVideoCodecKey: AVVideoCodecType.hevc, AVVideoWidthKey: w, AVVideoHeightKey: h,
@@ -308,6 +308,12 @@ final class ProxyWriter {
         fps = (d.fpsNum, d.fpsDen)
         writer.startWriting()
         writer.startSession(atSourceTime: .zero)
+    }
+
+    /// The proxy's picture size: at most `height` lines tall (never upscaled), same aspect ratio, even sizes.
+    static func outputSize(for d: SourceDescriptor, height: Int = 720) -> (width: Int, height: Int) {
+        let h = min(height, d.height) & ~1
+        return ((d.width * h / max(1, d.height)) & ~1, h)
     }
 
     /// Stores the frame's encoded RGB unchanged (BT.2020 matrix in, BT.2020 matrix out on decode).
