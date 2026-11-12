@@ -31,9 +31,12 @@ jobs:
   build-and-test:
     name: Build and test (macOS 27, Xcode 27)
     runs-on: xcode-27
-    timeout-minutes: 45
+    timeout-minutes: 120
     env:
       LUMORA_DERIVED_DATA: build/DerivedData
+      # Model Lab tests download PyTorch and RIFE weights and convert them; they run on real Macs with models
+      # installed (scripts/deps.sh verify, weekly check), not on a fresh runner.
+      TEST_RUNNER_LUMORA_SKIP_MODEL_LAB: "1"
     steps:
       - uses: actions/checkout@v7
 
