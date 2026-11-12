@@ -577,6 +577,8 @@ final class ExportEngine {
         }
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
         input.expectsMediaDataInRealTime = false
+        // Frame times are i * den / num; the track must count in 1/num s or 23.976/59.94 fps get rounded to 1/600 s.
+        input.mediaTimeScale = CMTimeScale(ctx.rate.num)
         let pixelFormat: OSType
         switch job.codec {
         case .prores422HQ: pixelFormat = kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange
@@ -938,6 +940,8 @@ final class ExportEngine {
         if !writer.canApply(outputSettings: settings, forMediaType: .video) { settings = videoSettings(ctx, includeCompression: false) }
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
         input.expectsMediaDataInRealTime = false
+        // Frame times are i * den / num; the track must count in 1/num s or 23.976/59.94 fps get rounded to 1/600 s.
+        input.mediaTimeScale = CMTimeScale(ctx.rate.num)
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange,
             kCVPixelBufferWidthKey as String: ctx.width, kCVPixelBufferHeightKey as String: ctx.height,
@@ -1093,6 +1097,8 @@ final class ExportEngine {
             let asset = AVURLAsset(url: s)
             guard let t = try await asset.loadTracks(withMediaType: .video).first else { continue }
             let r = try await t.load(.timeRange)
+            // Keep the segments' exact frame clock (e.g. 1/48000 for 47.952 fps) instead of the default 1/600.
+            if cursor == .zero { video.naturalTimeScale = try await t.load(.naturalTimeScale) }
             try video.insertTimeRange(r, of: t, at: cursor)
             cursor = cursor + r.duration
         }

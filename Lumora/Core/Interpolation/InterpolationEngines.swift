@@ -230,6 +230,7 @@ final class CoreMLInterpolator: InterpolationEngine {
                 enc.setBuffer(bufMask, offset: 0, index: 1)
                 enc.setBytes(&f, length: MemoryLayout<FlowUniforms>.stride, index: 2)
                 enc.setBuffer(tileBuffer, offset: 0, index: 3)
+                enc.setBuffer(bufA, offset: 0, index: 4)          // frame A's proxy: only textured areas count
                 ctx.dispatch2D(enc, ctx.pipeline("flowConsistencyKernel"), width: dims.cw, height: dims.ch)
                 enc.endEncoding()
                 cb.commit()

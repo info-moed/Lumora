@@ -247,8 +247,12 @@ inline bool displayNits(float3 enc, constant GradeUniforms& u, thread float3& ou
     float3 o = u.workingToOutput * (u.inputToWorking * n);
     if (u.gamutCompress != 0) o = softGamut(o, u.outputLuma.rgb);
     // Soft knee above 75% of the target peak, so a 4000-nit master fits a 1000-nit target without hard clipping.
-    float k = 0.75f * u.peakNits, r = u.peakNits - k;
-    o = select(o, k + r * tanh((o - k) / r), o > k);
+    // Only HDR masters can exceed the target: an SDR master to SDR is already in range and must stay untouched
+    // (the knee used to dim everything above 75 nits of an SDR picture in "Keep original look").
+    if (u.inputTransfer == TF_PQ || u.inputTransfer == TF_HLG) {
+        float k = 0.75f * u.peakNits, r = u.peakNits - k;
+        o = select(o, k + r * tanh((o - k) / r), o > k);
+    }
     out = clamp(o, 0.0f, u.peakNits);
     return true;
 }
@@ -779,6 +783,12 @@ kernel void flowWarpBlendKernel(texture2d<float, access::sample> a   [[texture(0
     dst.write(ca * m + cb * (1.0f - m), gid);
 }
 
+// Luma of an SDR-like proxy tensor (planar RGB) at pixel p.
+inline float proxyLuma(device const half* t, uint plane, int width, int2 p) {
+    uint j = uint(p.y) * uint(width) + uint(p.x);
+    return 0.299f * float(t[j]) + 0.587f * float(t[plane + j]) + 0.114f * float(t[2 * plane + j]);
+}
+
 // Forward/backward motion check: for smooth motion the two flows point in opposite directions in
 // proportion t : (1 - t). Where both frames contribute (mask not ~0/1, i.e. not an occlusion) and they
 // disagree, the motion estimate is unreliable and an artifact is likely. Adds weighted counts to QC tiles.
@@ -786,6 +796,7 @@ kernel void flowConsistencyKernel(device const half* flow  [[buffer(0)]],
                                   device const half* mask  [[buffer(1)]],
                                   constant FlowUniforms& f [[buffer(2)]],
                                   device atomic_uint* tiles [[buffer(3)]],
+                                  device const half* proxyA [[buffer(4)]],
                                   uint2 gid                [[thread_position_in_grid]]) {
     if (gid.x >= uint(f.contentWidth) || gid.y >= uint(f.contentHeight)) return;
     uint plane = uint(f.tensorWidth * f.tensorHeight);
@@ -794,6 +805,13 @@ kernel void flowConsistencyKernel(device const half* flow  [[buffer(0)]],
     float2 f1 = float2(flow[2 * plane + i], flow[3 * plane + i]);
     float m = float(mask[i]);
     if (m < 0.15f || m > 0.85f) return;                               // occlusion: one-sided by design
+    // Where the picture has no texture (sky, walls, flat graphics) every motion gives the same pixels, so the two
+    // flows are free to disagree without any visible artifact. Only count disagreement on texture: the luma
+    // gradient of frame A's proxy where this pixel's content comes from.
+    int2 q = clamp(int2(round(float2(gid) + f0)), int2(1), int2(f.contentWidth - 2, f.contentHeight - 2));
+    float grad = abs(proxyLuma(proxyA, plane, f.tensorWidth, q + int2(1, 0)) - proxyLuma(proxyA, plane, f.tensorWidth, q - int2(1, 0)))
+               + abs(proxyLuma(proxyA, plane, f.tensorWidth, q + int2(0, 1)) - proxyLuma(proxyA, plane, f.tensorWidth, q - int2(0, 1)));
+    if (grad < 0.03f) return;
     float k = f.t / max(1.0f - f.t, 1e-3f);
     float err = length(f0 + k * f1) / (1.0f + length(f0) + k * length(f1));
     if (err > f.threshold) {
