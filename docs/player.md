@@ -10,7 +10,7 @@ Lumora plays everything it can write or read, including the formats macOS can't:
 WebM, TS, IVF and raw streams (.obu, .266, .vvc, .hevc). HDR is shown correctly on the screen you have: PQ, HLG and SDR,
 tone mapped to the display's real headroom.
 
-![The Player with its info overlay on an HDR10 file](images/25-player.png)
+![The Player with its info overlay on an HDR10 file](images/26-player.png)
 
 ---
 

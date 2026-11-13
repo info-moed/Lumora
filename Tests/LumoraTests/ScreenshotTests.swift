@@ -158,7 +158,7 @@ final class ScreenshotTests: XCTestCase {
         }
         let rep = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
         host.cacheDisplay(in: host.bounds, to: rep)
-        try XCTUnwrap(rep.representation(using: .png, properties: [:])).write(to: Self.outDir.appendingPathComponent("25-player.png"))
+        try XCTUnwrap(rep.representation(using: .png, properties: [:])).write(to: Self.outDir.appendingPathComponent("26-player.png"))
     }
 
     func testMainWindow() async throws {

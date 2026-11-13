@@ -133,7 +133,7 @@ struct PlayerSettings: Equatable {
     private static let prefix = "player."
 
     static var current: PlayerSettings {
-        let d = UserDefaults.standard
+        let d = Prefs.store
         var s = PlayerSettings()
         if let v = d.string(forKey: prefix + "toneMapping"), let t = ToneMapping(rawValue: v) { s.toneMapping = t }
         if let v = d.object(forKey: prefix + "referenceWhite") as? Double, v == 100 || v == 203 { s.referenceWhite = Float(v) }
@@ -147,7 +147,7 @@ struct PlayerSettings: Equatable {
     }
 
     func save() {
-        let d = UserDefaults.standard
+        let d = Prefs.store
         d.set(toneMapping.rawValue, forKey: Self.prefix + "toneMapping")
         d.set(Double(referenceWhite), forKey: Self.prefix + "referenceWhite")
         d.set(Double(assumedPeak), forKey: Self.prefix + "assumedPeak")

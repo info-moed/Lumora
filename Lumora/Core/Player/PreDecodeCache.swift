@@ -40,7 +40,7 @@ final class PreDecodeCache: @unchecked Sendable {
     /// "Player Cache" in the scratch folder (Settings → Storage), so it follows the scratch drive.
     static var root: URL {
         if let r = rootOverride { return r }
-        let base = URL(fileURLWithPath: UserDefaults.standard.string(forKey: "scratchRoot")
+        let base = URL(fileURLWithPath: Prefs.store.string(forKey: "scratchRoot")
                        ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("Lumora Scratch").path)
         return base.appendingPathComponent("Player Cache", isDirectory: true)
     }

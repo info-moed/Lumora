@@ -423,7 +423,7 @@ final class PlayerEngine {
     }
 
     private static func rememberedRate(for url: URL) -> (Int, Int)? {
-        guard let s = UserDefaults.standard.string(forKey: "player.rate." + url.path) else { return nil }
+        guard let s = Prefs.store.string(forKey: "player.rate." + url.path) else { return nil }
         let p = s.split(separator: "/").compactMap { Int($0) }
         return p.count == 2 && p[0] > 0 && p[1] > 0 ? (p[0], p[1]) : nil
     }
@@ -431,7 +431,7 @@ final class PlayerEngine {
     /// The frame rate for a raw stream that carries none; remembered per file.
     func setFrameRate(_ num: Int, _ den: Int) {
         guard let url = info?.url, num > 0, den > 0 else { return }
-        UserDefaults.standard.set("\(num)/\(den)", forKey: "player.rate." + url.path)
+        Prefs.store.set("\(num)/\(den)", forKey: "player.rate." + url.path)
         let at = currentTime
         fpsOverride = (num, den)
         open(url)
