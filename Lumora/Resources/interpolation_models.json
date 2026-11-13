@@ -59,18 +59,34 @@
     "notes": "Slower but much better on large motion; used to re-render frames the QC flags."
   },
   {
+    "id": "ifrnet-l",
+    "displayName": "IFRNet-L (comparison only)",
+    "file": "IFRNet-L.mlpackage",
+    "inputA": "img0",
+    "inputB": "img1",
+    "timestep": "timestep",
+    "timestepKind": "map",
+    "output": "output",
+    "padMultiple": 16,
+    "tier": "balanced",
+    "license": "MIT (ltkong218/IFRNet)",
+    "computeUnits": "cpuAndGPU",
+    "notes": "A second model family (single-pass encoder-decoder, not RIFE). Convert IFRNet_L_GoPro.pth with scripts/convert_ifrnet_coreml.py. Measured 2.2 dB below RIFE 4.25 on Big Buck Bunny's held-out frames and about 5x slower; for comparison only."
+  },
+  {
     "id": "ifrnet",
-    "displayName": "IFRNet (fast)",
+    "displayName": "IFRNet (comparison only)",
     "file": "IFRNet.mlpackage",
     "inputA": "img0",
     "inputB": "img1",
-    "timestep": "embt",
+    "timestep": "timestep",
     "timestepKind": "map",
     "output": "output",
-    "padMultiple": 32,
-    "tier": "fast",
-    "license": "MIT (check the release you convert)",
-    "notes": "Lightweight alternative."
+    "padMultiple": 16,
+    "tier": "balanced",
+    "license": "MIT (ltkong218/IFRNet)",
+    "computeUnits": "cpuAndGPU",
+    "notes": "Convert IFRNet_GoPro.pth with scripts/convert_ifrnet_coreml.py. Measured 2.5 dB below RIFE 4.25 on Big Buck Bunny's held-out frames; for comparison only."
   },
   {
     "id": "gmfss",

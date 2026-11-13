@@ -462,7 +462,10 @@ Put converted `.mlpackage` files in `~/Library/Application Support/Lumora/Models
 - **RIFE 4.x HDR flow** is the artifact checker's default *second opinion* (Motion → **Second opinion** → Automatic
   picks the best installed flow model).
 - **FILM** (Apache-2.0) is described in the catalog but has no converter yet, so it can't be installed.
-- **IFRNet** and **GMFSS** are optional. **Check each model's license before you distribute it.**
+- **IFRNet** (MIT) converts with `scripts/convert_ifrnet_coreml.py` (manual install, see
+  [Converting interpolation models](command-line.md#ifrnet-a-second-model-family)). It is a genuinely different
+  family from RIFE and was measured as one, below; it is in the catalog for comparison only.
+- **GMFSS** is optional and has no converter yet. **Check each model's license before you distribute it.**
 
 If no model is installed, generated frames fall back to blending, so the app still works.
 
@@ -502,10 +505,40 @@ Quality is PSNR against the real frame, compared with RIFE's raw output:
 | Added time per frame at 1080p | — | +33–56% (4K: +10–22%) |
 
 In short: it no longer harms good frames, and it reliably catches the shot changes RIFE would otherwise smear. A
-perfect per-tile choice among today's candidates would gain about +1.6 dB, so the remaining headroom needs better
-candidates (for example a second model family), not a stricter detector. Known limits: one-pixel lines moving fast at
+perfect per-tile choice among today's candidates would gain about +1.6 dB (+1.4 dB among the candidates the
+checker actually has at run time). A second model family was measured against that headroom (below) and doesn't
+close it: the checker recovers +0.01 dB of the ceiling it already has, so what limits it is the detector, not the
+candidates. Known limits: one-pixel lines moving fast at
 15→60 can still lose up to 1.4 dB, and at strictness 1 a frame can lose up to 0.45 dB. The benchmark is
 `scripts/qc-bench.sh`; the verification sets are `QCVerifyTests`.
+
+**A second model family: IFRNet.** To test whether better candidates raise the ceiling, IFRNet (official GoPro 8x
+checkpoints, converted with `scripts/convert_ifrnet_coreml.py`) was scored on the same 832 held-out frames
+(`scripts/qc-bench.sh candidates`). Gains are against raw RIFE 4.25; the oracle rows pick the best candidate per
+64-px tile with the truth known, so they are ceilings, not results:
+
+| | Held-out average |
+|---|---|
+| IFRNet-L as the primary model (image / flow mode) | −2.2 dB / −1.5 dB (image mode is below RIFE on every split and motion stratum except grain at low and medium motion and the thin-lines clip, +0.2 to +0.4 dB) |
+| IFRNet (base) as the primary model | −2.5 dB |
+| Checker ceiling today (primary, RIFE flow second opinion at ~960 px, cross-fade, nearest, average) | +1.38 dB |
+| … with IFRNet-L flow as the second opinion instead | +1.42 dB (test +0.22, HDR10 +0.15, grain +0.18; credits −0.14, 4K −0.03, synthetic −0.80) |
+| … with IFRNet-L flow added as a third opinion | +1.82 dB (+0.44; +0.16 to +0.64 on every split) |
+| The actual checker with IFRNet-L flow as its second opinion (trees trained on RIFE) | Worse than today's checker on 5 of 6 held-out sets at default strictness: test −0.04 dB with 3.4% of frames more than 0.1 dB worse (worst −4.3 dB, three false shot-change holds), grain −0.12 dB (worst −4.8 dB), synthetic 17.7% and fades 16.7% of frames worse; only the credits gain (+0.02 dB). Today's checker: +0.01 dB, 0–2% worse, worst −0.16 dB |
+| Model time per frame at 1080p / 4K (GPU) | IFRNet-L 557 / 2141 ms, its flow at ~960 px 167 / 172 ms; RIFE 4.25 107 / 355 ms, RIFE flow at ~960 px 56 / 57 ms |
+
+So IFRNet does not help Lumora: it is clearly worse as a primary model on this footage, swapping it in as the second
+opinion moves the ceiling by only +0.03 dB (and down on credits, 4K and synthetic) while making the checker's added time about four times as long (+147 ms per 1080p frame instead of +34 ms) and,
+with the current trees, breaking the never-worse guarantee. Retraining the trees for it was therefore not worth doing:
+the most it could go after is that +0.03 dB. Only as an additional candidate does it
+raise the ceiling (+0.44 dB), but the checker recovers +0.01 dB of today's +1.38 dB at default strictness, so the
+detector, not the candidate set, is what limits it; that would also need a new scorer with a second alternative.
+The app is unchanged apart from the catalog entries, and IFRNet's flow exports are not in the catalog, so it can't be
+picked as the second opinion. Two findings from the measurement: IFRNet's Vimeo90K checkpoints ignore the time
+input (midpoints only: −4.5 dB at 15→60), and at 30→60 IFRNet-L Vimeo matches RIFE 4.25 (+0.01 dB), beating it by
+about 1 dB at low and medium motion. Full tables per split, mode and motion stratum: `scripts/qc-bench.sh candidates ifrnet` writes
+`qc-results/ifrnet.md` (the flow and Vimeo variants are benchmark-only specs in `QCCandidateTests`; the
+second-opinion run needs an `ifrnet-l-flow` entry in your `models.json` and `LUMORA_QC_REPAIR_MODEL=ifrnet-l-flow`).
 
 **Scan for interpolation problems** runs this check at proxy resolution and lists every repaired frame before you commit to a full export.
 

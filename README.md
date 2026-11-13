@@ -148,6 +148,7 @@ them on every push.
 | Frame interpolation | RIFE 4.25 converted to Core ML through Model Lab (image and HDR flow models) and run in the real pipeline: +11 to +12 dB over plain blending when rebuilding real frames. Exact frame timing for every mode (2×–8×, 60/59.94, slow motion); never across a cut. |
 | Upscaling | All five official Real-ESRGAN models converted to Core ML (checksums checked, conversion matches PyTorch at 69–73 dB) and run inside real SDR and HDR10 exports: exact output size, HDR10 tags and brightness kept, 10-bit precision through the model, no visible tile edges. Measured against original *Tears of Steel* and *Big Buck Bunny* frames: on compressed sources the general model beats Lanczos by about 5 VMAF NEG points; on clean sources Lanczos and MetalFX stay ahead ([results](docs/features.md#upscaling)). |
 | Artifact checker | Measured against *Big Buck Bunny*'s native 60 fps render on held-out footage: makes 0.36% of frames worse (by at most 0.16 dB), where the previous design made 33–83% worse; catches 88–96% of missed shot changes. Details in the [feature reference](docs/features.md#interpolation-models). |
+| Second model family (IFRNet) | IFRNet (MIT) converts to Core ML (`scripts/convert_ifrnet_coreml.py`, checked against PyTorch at two in-between times) and was scored on the same 832 held-out frames: 2.2 dB below RIFE 4.25 as the primary model; as the checker's second opinion it moves the ceiling by only +0.03 dB, at about four times the added cost, and with today's trees makes up to 18% of frames worse. Not adopted; [details](docs/features.md#interpolation-models). |
 | Quality targets and metrics | Encoding to a VMAF target (HEVC, AV1) with dip repair; VMAF, VMAF NEG, XPSNR, CAMBI, MS-SSIM, PSNR-HVS, CIEDE2000; size forecasts vs actual; encoder calibration on this Mac. |
 | Perceptual metrics | ColorVideoVDP and PU21-PSNR (installed by Model Lab) and SSIMULACRA 2 rank identical > CRF 20 > heavy on real SDR and HDR10 footage (JOD 10.00 / 9.78 / 8.66 on PQ, scored on the HDR display model). In real Imperceptible exports the gates run on every chunk and raise quality when they fail: SSIMULACRA 2 took an SDR chunk from 72 to 88, a stricter ColorVideoVDP gate took an HDR10 chunk from 9.67 to 9.86 JOD. Cost: about 16–22 s per check on a 2-second 720p chunk ([details](docs/features.md#quality-metrics-why-not-just-vmaf)). |
 | Encoder presets | Every software encoder tuned per content type by BD-rate on *Tears of Steel* and *Big Buck Bunny* clips. SVT-AV1: 10.5% smaller at equal quality on average, up to 45% on low-light footage ([results](docs/encoding/tuning-svtav1.md)). x265: up to 8% smaller on screen content and 17% faster on live action ([results](docs/encoding/tuning-x265.md)). VVenC: about 20% smaller with a 5 s intra period, 25% less CPU on HDR10 ([results](docs/encoding/tuning-vvenc.md)). libaom: measured speed ladder, 12-bit 4:2:2/4:4:4 enabled ([results](docs/encoding/tuning-aomenc.md)). |
@@ -165,7 +166,7 @@ them on every push.
   no 12-bit profile, so neither is offered.
 - **Hardware or software not available here:** vendor RAW SDKs (BRAW, R3D, ARRIRAW, Canon RAW); real camera Bayer DNGs
   and Apple Log footage; hard-drive sources; AirPlay playback to an Apple TV; Mac notifications; TMDB lookups (need a key).
-- **Models and metrics not installed:** FILM, IFRNet and GMFSS (no converters yet) and AVQT (an Apple
+- **Models and metrics not installed:** FILM and GMFSS (no converters yet) and AVQT (an Apple
   developer download behind a sign-in). Their "missing" paths are tested.
 - **Real-ESRGAN on grainy film and on true 2D anime:** not measured (the benchmark used a live-action film and a CGI
   animation). Real-ESRGAN is slow: 0.75–14 s per frame for 1080p→4K here, so a two-hour film takes about 1.5 days
@@ -223,8 +224,8 @@ Lumora is released under the [MIT license](LICENSE).
 - **Helper tools keep their own licenses.** FFmpeg builds with GPL parts, and x265, are GPL. Lumora runs them as
   separate programs that you install yourself. SVT-AV1, libaom, VVenC and AVM use BSD-style licenses with
   AOMedia/Fraunhofer patent terms.
-- **Models keep their own licenses.** RIFE (MIT), FILM (Apache-2.0), Real-ESRGAN (BSD-3-Clause); check IFRNet and
-  GMFSS before redistributing.
+- **Models keep their own licenses.** RIFE (MIT), IFRNet (MIT), FILM (Apache-2.0), Real-ESRGAN (BSD-3-Clause);
+  check GMFSS before redistributing.
 - **Dolby Vision and HDR10+** metadata is generated with open tools. Using the logos, or certified delivery,
   requires licenses from Dolby and HDR10+ Technologies.
 - **Independent work.** Lumora is not affiliated with any other video tool it is compared with, and contains none of

@@ -8,6 +8,7 @@
 #   scripts/qc-bench.sh scan            # scan diagnostics + contact sheets (cut / fade / motion instruments)
 #   scripts/qc-bench.sh scorer-data     # artifact scorer training data (qc-scorer/<set>.csv); then
 #                                       # python3 scripts/qc_scorer/train.py retrains the scorer
+#   scripts/qc-bench.sh candidates [label]  # other models vs RIFE 4.25 + oracle ceilings -> qc-results/<label>.md
 #
 # Optional environment (passed to the test host):
 #   LUMORA_QC_SPLITS=test,testHDR      splits to run (default: all for dataset/baseline; held-out + cut + fade for score)
@@ -15,7 +16,8 @@
 #   LUMORA_QC_REPAIR_MODEL=<id>|none   repair model (default: the app's default)
 #   LUMORA_QC_INTELLIGENCE=eachFrame|perScene|exhaustive
 #   LUMORA_QC_FLICKER=0                turn the flicker check off
-#   LUMORA_QC_LIMIT=<n>                only the first n windows per split (quick runs; not cached)
+#   LUMORA_QC_CANDIDATES=a,b           candidates only: model ids (default: every installed non-RIFE model)
+#   LUMORA_QC_LIMIT=<n>               only the first n windows per split (quick runs; not cached)
 #   LUMORA_QC_REBUILD=1                rebuild the dataset even if cached
 #   LUMORA_QC_RESELECT=1               rescan and resample the windows (rewrites the committed manifest)
 #   LUMORA_BENCH_ROOT=<dir>            default ~/Library/Caches/Lumora-Bench (films in <root>/bbb/)
@@ -37,11 +39,12 @@ case "$what" in
   score|eval) tests=(test3_Evaluate); export TEST_RUNNER_LUMORA_QC_LABEL="${2:?usage: qc-bench.sh score <label>}" ;;
   scan)     tests=(test0_Scan) ;;
   scorer-data) tests=(QCScorerTrainingTests/test4_ScorerDataset) ;;
-  *) echo "usage: $0 [all|dataset|baseline|score <label>|scan|scorer-data]" >&2; exit 2 ;;
+  candidates) tests=(QCCandidateTests/test5_Candidates); export TEST_RUNNER_LUMORA_QC_LABEL="${2:-candidates}" ;;
+  *) echo "usage: $0 [all|dataset|baseline|score <label>|scan|scorer-data|candidates [label]]" >&2; exit 2 ;;
 esac
 
 export TEST_RUNNER_LUMORA_QC_BENCH=1
-for v in LUMORA_QC_SCORER_SETS LUMORA_QC_SPLITS LUMORA_QC_SENSITIVITY LUMORA_QC_REPAIR_MODEL LUMORA_QC_INTELLIGENCE LUMORA_QC_FLICKER \
+for v in LUMORA_QC_SCORER_SETS LUMORA_QC_CANDIDATES LUMORA_QC_SPLITS LUMORA_QC_SENSITIVITY LUMORA_QC_REPAIR_MODEL LUMORA_QC_INTELLIGENCE LUMORA_QC_FLICKER \
          LUMORA_QC_LIMIT LUMORA_QC_REBUILD LUMORA_QC_RESELECT LUMORA_BENCH_ROOT; do
   if [ -n "${!v:-}" ]; then export "TEST_RUNNER_$v=${!v}"; fi
 done
@@ -67,5 +70,6 @@ echo "log: $log"
 case "$what" in
   all|baseline) [ -f "$ROOT/qc-results/baseline.md" ] && cat "$ROOT/qc-results/baseline.md" ;;
   score|eval)   [ -f "$ROOT/qc-results/$2.md" ] && cat "$ROOT/qc-results/$2.md" ;;
+  candidates)   f="$ROOT/qc-results/${2:-candidates}.md"; [ -f "$f" ] && cat "$f" ;;
 esac
 exit $status

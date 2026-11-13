@@ -359,6 +359,34 @@ It reads *Tears of Steel* and *Big Buck Bunny* from `~/Library/Caches/Lumora-Ben
 `LUMORA_UPSCALE_RAW=1` (also score without the anti-ringing clamp), `LUMORA_UPSCALE_UNITS=gpu|ane`,
 `LUMORA_UPSCALE_SPEED=0` (skip the 1080p→4K timing).
 
+### IFRNet (a second model family)
+
+Model Lab can't download IFRNet; install it by hand. IFRNet is MIT-licensed
+([ltkong218/IFRNet](https://github.com/ltkong218/IFRNet)). Its official checkpoints are behind the Dropbox link in
+IFRNet's README (one zip, about 240 MB, with `checkpoints/IFRNet{,_large,_small}/*_GoPro.pth` and `*_Vimeo90K.pth`).
+The converter defines the network itself and loads the checkpoint as plain tensors, so it needs no clone of the
+repository and runs no downloaded code. Use Model Lab's Python environment:
+
+```bash
+PY=~/Library/Application\ Support/Lumora/ModelLab/venv/bin/python
+"$PY" scripts/convert_ifrnet_coreml.py --weights checkpoints/IFRNet_large/IFRNet_L_GoPro.pth --out IFRNet-L.mlpackage
+"$PY" scripts/convert_ifrnet_coreml.py --weights checkpoints/IFRNet_large/IFRNet_L_GoPro.pth --flow-output --out IFRNet-L-Flow.mlpackage
+cp -R IFRNet-L.mlpackage IFRNet-L-Flow.mlpackage ~/Library/Application\ Support/Lumora/Models/
+```
+
+The catalog already describes these files (`ifrnet-l`, `ifrnet-l-flow`; the base model as `ifrnet` / `ifrnet-flow`
+from `IFRNet_GoPro.pth` into `IFRNet.mlpackage` / `IFRNet-Flow.mlpackage`), so nothing else needs editing. Notes:
+
+- **Use the GoPro checkpoints.** The Vimeo90K ones were trained on triplets only: they ignore the time input and
+  always make the midpoint, which is wrong for 4x and frame-rate conversion. The converter prints a warning for them.
+  (They are in the catalog as `ifrnet-l-vimeo` / `ifrnet-l-vimeo-flow` for 2x experiments only.)
+- The catalog runs IFRNet on the GPU (`"computeUnits": "cpuAndGPU"`): it is about 4x faster there than when Core ML
+  spreads it over the Neural Engine. **Optimize for this Mac** measures and overrides this.
+- When you replace a `.mlpackage`, delete the `.mlmodelc` next to it; Lumora compiles a model only once.
+- `--flow-output` exports the motion and blend mask only; IFRNet's last residual correction is left out.
+
+How it compares with RIFE 4.25 on ground truth: [feature reference](features.md#interpolation-models).
+
 ---
 
 ## Quality metrics from the shell
