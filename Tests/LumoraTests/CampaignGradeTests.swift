@@ -632,9 +632,10 @@ final class CampaignGradeTests: XCTestCase {
         // Through the export engine: a clean error, no crash, no file.
         try TestHardware.requireHardwareHEVC()
         let m = try await Self.media("grade-sdr.mp4", hdr: false)
-        guard let missing = UpscaleModelSpec.all().first(where: { !$0.isInstalled }) else { throw XCTSkip("every Real-ESRGAN model is installed") }
+        // With every catalog model installed, an id that isn't in the catalog takes the same path.
+        let missing = UpscaleModelSpec.all().first(where: { !$0.isInstalled })?.id ?? "no-such-model"
         do {
-            _ = try await export(m, preset: m.preset(.natural), target: .sdr, name: "esrgan.mov") { $0.upscale = .model(id: missing.id, targetHeight: 720) }
+            _ = try await export(m, preset: m.preset(.natural), target: .sdr, name: "esrgan.mov") { $0.upscale = .model(id: missing, targetHeight: 720) }
             XCTFail("export with a missing upscaling model should fail")
         } catch {
             XCTAssertTrue(error.localizedDescription.contains("isn't installed"), error.localizedDescription)

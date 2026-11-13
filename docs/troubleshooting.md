@@ -137,6 +137,11 @@ To use a specific build of a tool, see [Pointing Lumora at specific tools](comma
 | Quality-target exports got much slower or bigger with the metrics installed | The perceptual gates run once per chunk (about 16–22 s for a 2-second 720p chunk) and raise quality when one fails. SSIMULACRA 2 ≥ 85 is usually the gate that raises SDR files; lower it or set it to **Report** in Deliver → Quality. |
 | Warping or ghosting on fast motion | Motion → **Intelligence** → *Route a model per scene* or *Exhaustive*; keep **Find and fix artifacts** on; use **Scan for interpolation problems** before exporting. |
 | Films look like a soap opera | That's what higher frame rates do to film. Keep the original rate, or use the comparison export (**Also export the original frame rate**). |
+| A Real-ESRGAN model shows "(not installed)" and can't be picked | Convert the official weights with `scripts/convert_realesrgan_coreml.py --model <name> --weights <file.pth>` (see [Command line](command-line.md#real-esrgan-upscaling)); the menu updates the next time the Enhance tab is shown. |
+| The converter says the weights are "not the official" file | The file's SHA-256 differs from the Real-ESRGAN release (a partial download, or a fine-tune). Download it again; for a fine-tune you trust, add `--allow-unknown-weights`. |
+| Upscaling with Real-ESRGAN is very slow | Expected: 0.75–14 s per frame for 1080p→4K depending on the model. Use **general v3** or **AnimeVideo v3** (the fast ones), or MetalFX, which is better on clean sources anyway. |
+| Real-ESRGAN makes a clean source look smoothed or "painted" | Its models are trained to remove blur, noise and compression, and on a clean picture they remove real detail too. Use MetalFX for clean sources; Real-ESRGAN is for compressed ones. |
+| "would make a … picture, larger than the GPU allows" | A 4× model on a source wider than 4,096 pixels. Use MetalFX, or the x2plus model. |
 
 ---
 

@@ -362,16 +362,51 @@ struct InterpolationSection: View {
 
 struct UpscaleSection: View {
     @Environment(AppModel.self) private var model
-    @State private var engine = "off"
     @State private var height = 2160
 
+    /// One entry of the Engine menu.
+    struct Choice: Identifiable, Hashable {
+        var id: String          // "off", "metalfx" or a model id
+        var label: String
+        var available: Bool
+    }
+
+    /// Off, MetalFX, then every Real-ESRGAN model in the catalog. Models that aren't installed are listed but can't
+    /// be picked (an export with one would only fail).
+    static func choices(_ specs: [UpscaleModelSpec] = UpscaleModelSpec.all()) -> [Choice] {
+        [Choice(id: "off", label: "Off", available: true),
+         Choice(id: "metalfx", label: "MetalFX (built in, fast)", available: true)]
+            + specs.map { Choice(id: $0.id, label: $0.displayName + ($0.isInstalled ? "" : " (not installed)"),
+                                 available: $0.isInstalled) }
+    }
+
+    static func engine(of mode: UpscaleMode) -> String {
+        switch mode {
+        case .off: return "off"
+        case .metalFX: return "metalfx"
+        case .model(let id, _): return id
+        }
+    }
+
+    static func mode(engine: String, height: Int) -> UpscaleMode {
+        switch engine {
+        case "off": return .off
+        case "metalfx": return .metalFX(targetHeight: height)
+        default: return .model(id: engine, targetHeight: height)
+        }
+    }
+
     var body: some View {
+        // The menu shows the export's real setting, also after switching tabs (the view is rebuilt each time).
+        let engine = Binding(get: { Self.engine(of: model.upscale) },
+                             set: { model.upscale = Self.mode(engine: $0, height: height) })
+        let choices = Self.choices()
+        let models = choices.dropFirst(2)
+        let installed = models.filter(\.available).count
         InspectorSection(title: "Upscaling") {
-            Picker("Engine", selection: $engine) {
-                Text("Off").tag("off")
-                Text("MetalFX (built in, fast)").tag("metalfx")
-                ForEach(UpscaleModelSpec.all()) { s in
-                    Text(s.displayName + (s.isInstalled ? "" : " (not installed)")).tag(s.id)
+            Picker("Engine", selection: engine) {
+                ForEach(choices) { c in
+                    Text(c.label).tag(c.id).disabled(!c.available)
                 }
             }
             Picker("Output height", selection: $height) {
@@ -381,23 +416,22 @@ struct UpscaleSection: View {
                 Text("8K (4320p)").tag(4320)
                 Text("12K (6480p)").tag(6480)
             }
-            .disabled(engine == "off")
+            .disabled(model.upscale == .off)
             Text("Runs on the original log / HDR signal before grading, after black bars are removed.")
                 .font(.caption).foregroundStyle(.secondary)
+            Text(installed == models.count
+                 ? "All \(installed) Real-ESRGAN models are installed."
+                 : "\(installed) of \(models.count) Real-ESRGAN models installed. Add others with scripts/convert_realesrgan_coreml.py.")
+                .font(Theme.note).foregroundStyle(.secondary)
             if let s = model.suggestedUpscaleModel, let spec = UpscaleModelSpec.all().first(where: { $0.id == s }) {
-                Text("Suggested for \(model.contentKind.displayName.lowercased()): \(spec.displayName)")
+                Text("Suggested for \(model.contentKind.displayName.lowercased()): \(spec.displayName)"
+                     + (spec.isInstalled ? "" : " (not installed)"))
                     .font(Theme.note).foregroundStyle(.secondary)
             }
         }
-        .onChange(of: engine) { update() }
-        .onChange(of: height) { update() }
-    }
-
-    private func update() {
-        switch engine {
-        case "off": model.upscale = .off
-        case "metalfx": model.upscale = .metalFX(targetHeight: height)
-        default: model.upscale = .model(id: engine, targetHeight: height)
+        .onAppear { if let h = model.upscale.targetHeight { height = h } }
+        .onChange(of: height) {
+            if model.upscale != .off { model.upscale = Self.mode(engine: Self.engine(of: model.upscale), height: height) }
         }
     }
 }

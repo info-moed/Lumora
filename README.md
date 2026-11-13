@@ -146,6 +146,7 @@ them on every push.
 | Ingest and analysis | MOV, MP4, MKV, WebM, AVI, Y4M, TS; H.264, HEVC, ProRes, AV1, VP9, MPEG-2; SDR, HDR10, HLG; interlaced, telecined, anamorphic, VFR; letterbox and pillarbox detection; cuts, fades and repeated frames; content types. |
 | Grading | Every look to SDR, HDR10 (1000/2000/4000 nits) and HLG; every control at its extremes; LUT export (matches Lumora's own render through FFmpeg `lut3d`); HDR stills (HEIC, AVIF); presets; reference matching; MetalFX upscaling. |
 | Frame interpolation | RIFE 4.25 converted to Core ML through Model Lab (image and HDR flow models) and run in the real pipeline: +11 to +12 dB over plain blending when rebuilding real frames. Exact frame timing for every mode (2×–8×, 60/59.94, slow motion); never across a cut. |
+| Upscaling | All five official Real-ESRGAN models converted to Core ML (checksums checked, conversion matches PyTorch at 69–73 dB) and run inside real SDR and HDR10 exports: exact output size, HDR10 tags and brightness kept, 10-bit precision through the model, no visible tile edges. Measured against original *Tears of Steel* and *Big Buck Bunny* frames: on compressed sources the general model beats Lanczos by about 5 VMAF NEG points; on clean sources Lanczos and MetalFX stay ahead ([results](docs/features.md#upscaling)). |
 | Artifact checker | Measured against *Big Buck Bunny*'s native 60 fps render on held-out footage: makes 0.36% of frames worse (by at most 0.16 dB), where the previous design made 33–83% worse; catches 88–96% of missed shot changes. Details in the [feature reference](docs/features.md#interpolation-models). |
 | Quality targets and metrics | Encoding to a VMAF target (HEVC, AV1) with dip repair; VMAF, VMAF NEG, XPSNR, CAMBI, MS-SSIM, PSNR-HVS, CIEDE2000; size forecasts vs actual; encoder calibration on this Mac. |
 | Perceptual metrics | ColorVideoVDP and PU21-PSNR (installed by Model Lab) and SSIMULACRA 2 rank identical > CRF 20 > heavy on real SDR and HDR10 footage (JOD 10.00 / 9.78 / 8.66 on PQ, scored on the HDR display model). In real Imperceptible exports the gates run on every chunk and raise quality when they fail: SSIMULACRA 2 took an SDR chunk from 72 to 88, a stricter ColorVideoVDP gate took an HDR10 chunk from 9.67 to 9.86 JOD. Cost: about 16–22 s per check on a 2-second 720p chunk ([details](docs/features.md#quality-metrics-why-not-just-vmaf)). |
@@ -164,8 +165,11 @@ them on every push.
   no 12-bit profile, so neither is offered.
 - **Hardware or software not available here:** vendor RAW SDKs (BRAW, R3D, ARRIRAW, Canon RAW); real camera Bayer DNGs
   and Apple Log footage; hard-drive sources; AirPlay playback to an Apple TV; Mac notifications; TMDB lookups (need a key).
-- **Models and metrics not installed:** FILM, IFRNet and GMFSS (no converters yet), Real-ESRGAN, and AVQT (an Apple
+- **Models and metrics not installed:** FILM, IFRNet and GMFSS (no converters yet) and AVQT (an Apple
   developer download behind a sign-in). Their "missing" paths are tested.
+- **Real-ESRGAN on grainy film and on true 2D anime:** not measured (the benchmark used a live-action film and a CGI
+  animation). Real-ESRGAN is slow: 0.75–14 s per frame for 1080p→4K here, so a two-hour film takes about 1.5 days
+  with the fastest model and weeks with x4plus.
 - **Optimize for this Mac:** deliberately not run on the development machine yet.
 
 Found something that works, or doesn't? Please [open an issue](https://github.com/info-moed/Lumora/issues). Reports

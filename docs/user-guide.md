@@ -205,8 +205,10 @@ interpretation. Compare them and pick the one that looks right. The recommended 
 
 ![Enhance tab](images/09-pro-enhance.png)
 
-- **Upscaling:** **Engine** (off, MetalFX, or Real-ESRGAN if installed) and **Output height** (up to 12K).
-  Upscaling runs after black-bar removal and before grading.
+- **Upscaling:** **Engine** (off, MetalFX, or one of five Real-ESRGAN models) and **Output height** (up to 12K).
+  Models that aren't installed are listed as "(not installed)" and can't be picked; a line below says how many are
+  installed. Upscaling runs after black-bar removal and before grading. MetalFX is best for clean sources;
+  Real-ESRGAN (general v3 first) for compressed ones. See [Upscaling](features.md#upscaling) for the measurements.
 
 ### Deliver tab
 

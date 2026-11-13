@@ -371,10 +371,52 @@ Download links:
 
 ## Upscaling
 
-- **MetalFX** is built in and needs no download. It is fast and good for 1080p→4K.
-- **Real-ESRGAN** (BSD-3-Clause) gives the best detail. Convert it with `scripts/convert_realesrgan_coreml.py`, then copy the `.mlpackage` to `~/Library/Application Support/Lumora/Models/`.
+- **MetalFX** is built in and needs no download. It is fast (about 4 ms per frame for 1080p→4K) and the best choice
+  for clean sources.
+- **Real-ESRGAN** (BSD-3-Clause, five official models) is best for *compressed* sources such as web or DVD-class
+  video. Convert the official weights with `scripts/convert_realesrgan_coreml.py` (see the
+  [command-line reference](command-line.md#real-esrgan-upscaling)); it installs them into
+  `~/Library/Application Support/Lumora/Models/`, and Enhance → **Engine** lists every model, installed or not.
 
 Upscaling runs after black-bar cropping and before grading, on the encoded log/PQ signal. Output can go up to 12K.
+
+**How Real-ESRGAN runs.** The picture is cut into square tiles (the size is read from the model) with a margin of
+context on every side that is computed and thrown away, so tile edges don't show: around each edge the result matches
+a run with full context to 51–85 dB depending on the model (x2plus, which works at half resolution inside, needs a
+48-pixel margin; x4plus 24; the others 16). Tensors are half float from the decoder to the end, so a 10-bit HDR10
+source keeps its precision (measured: 79% of the output values fall between 8-bit steps, as in the 10-bit input); a
+12-bit source keeps about 11 bits. The models' output is then clamped to the range of the 3×3 source pixels around each
+pixel (**anti-ringing**): GAN upscalers overshoot at edges, which on PQ means new highlights (without the clamp the
+general model turned a 0.58 PQ edge, about 180 nits, into 0.76, over 1,000 nits; with it the brightest pixel stays at
+0.59). The clamp also raised PSNR by 0.7–3.4 dB and VMAF NEG for four of the five models in every test below. The output
+is then resized (Lanczos) to the exact output size.
+
+**Measured results.** Frames from *Tears of Steel* (live action, 1920×800) and *Big Buck Bunny*'s native 4K render
+(CGI animation), four per film from different shots, shrunk with bicubic and upscaled back, compared with the
+originals. "H.264" is the 2× shrink encoded at CRF 30, like a streamed or DVD-class source. VMAF NEG (VMAF without its
+reward for sharpening), higher is better, with PSNR in dB:
+
+| Source | Lanczos | MetalFX | general v3 | x4plus | x2plus | x4plus anime | AnimeVideo v3 |
+|---|---|---|---|---|---|---|---|
+| Live action 2× | **98.1** (48.7) | 97.7 (46.3) | 94.4 (43.1) | 94.3 (42.6) | 94.5 (42.6) | 93.4 (41.8) | 93.6 (40.7) |
+| Live action 4× | **92.6** (43.7) | 91.8 (37.8) | 87.9 (36.6) | 86.9 (36.5) | 87.5 (36.5) | 85.2 (36.4) | 85.8 (34.2) |
+| Live action 2×, H.264 | 69.9 (38.6) | 72.3 (38.2) | 74.9 (38.0) | 72.5 (38.0) | 71.4 (37.7) | 74.6 (37.9) | **75.7** (37.1) |
+| Animation 2× | **98.0** (49.1) | 97.7 (45.5) | 95.4 (42.6) | 92.3 (41.7) | 91.5 (41.8) | 91.7 (40.0) | 92.8 (38.9) |
+| Animation 4× | 83.7 (41.3) | **86.2** (38.1) | 79.6 (37.7) | 74.3 (36.9) | 70.5 (36.4) | 72.7 (35.9) | 76.0 (36.3) |
+| Animation 2×, H.264 | 59.8 (37.2) | 63.4 (36.7) | **64.7** (36.4) | 61.6 (36.2) | 57.6 (36.1) | 64.0 (35.8) | 63.5 (35.0) |
+
+- **Clean sources:** nothing beats Lanczos for fidelity, and MetalFX looks sharper at almost no cost (plain VMAF,
+  which rewards sharpening, gives it 97–100). Real-ESRGAN loses 4–7 dB here: its models are trained to remove blur,
+  noise and compression, and on a clean picture they remove real detail too.
+- **Compressed sources:** Real-ESRGAN wins. **General v3** is the best all-rounder (+5.0 VMAF NEG over Lanczos on
+  live action, +4.9 on animation, +1.3 to +2.5 over MetalFX), so it is the suggested model for live action, CGI and
+  low light; AnimeVideo v3 is a little better on live action and is suggested for anime. x2plus, despite its name,
+  was the weakest model everywhere. PSNR still favors bicubic by about 0.6 dB: the models invent plausible detail.
+
+**Speed** (1080p→4K on an M3 Max shared with other work; Core ML picks the Neural Engine, and GPU-only was 1.2–3×
+slower): MetalFX 0.004 s per frame, AnimeVideo v3 0.75 s, general v3 1.25 s, x4plus anime 3.3 s, x2plus 3.4 s,
+x4plus 13.9 s. Time estimates use these measurements (`secondsPerMegapixel` in `upscale_models.json`). The benchmark
+is `RealESRGANTests/test9_Benchmark` (see the [command-line reference](command-line.md#real-esrgan-upscaling)).
 
 ## HDR interpolation up to 12-bit: how it works
 
