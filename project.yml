@@ -40,6 +40,48 @@ targets:
         LSMinimumSystemVersion: "27.0"
         LSApplicationCategoryType: public.app-category.video
         NSHumanReadableCopyright: "© 2026 info-moed. MIT license."
+        # Finder's Open With lists Lumora for these; they open in the built-in Player. Rank Alternate leaves the
+        # default player alone.
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Video
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.movie
+              - public.mpeg-4
+              - com.apple.quicktime-movie
+              - public.mpeg-2-transport-stream
+              - org.matroska.mkv
+              - org.webmproject.webm
+              - io.github.info-moed.lumora.obu
+              - io.github.info-moed.lumora.ivf
+              - io.github.info-moed.lumora.vvc
+              - io.github.info-moed.lumora.y4m
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: org.matroska.mkv
+            UTTypeDescription: Matroska video
+            UTTypeConformsTo: [public.movie]
+            UTTypeTagSpecification: { public.filename-extension: [mkv] }
+          - UTTypeIdentifier: org.webmproject.webm
+            UTTypeDescription: WebM video
+            UTTypeConformsTo: [public.movie]
+            UTTypeTagSpecification: { public.filename-extension: [webm] }
+          - UTTypeIdentifier: io.github.info-moed.lumora.obu
+            UTTypeDescription: AV1 / AV2 OBU stream
+            UTTypeConformsTo: [public.movie]
+            UTTypeTagSpecification: { public.filename-extension: [obu] }
+          - UTTypeIdentifier: io.github.info-moed.lumora.ivf
+            UTTypeDescription: IVF video
+            UTTypeConformsTo: [public.movie]
+            UTTypeTagSpecification: { public.filename-extension: [ivf] }
+          - UTTypeIdentifier: io.github.info-moed.lumora.vvc
+            UTTypeDescription: H.266 / VVC stream
+            UTTypeConformsTo: [public.movie]
+            UTTypeTagSpecification: { public.filename-extension: ["266", vvc, h266] }
+          - UTTypeIdentifier: io.github.info-moed.lumora.y4m
+            UTTypeDescription: YUV4MPEG2 video
+            UTTypeConformsTo: [public.movie]
+            UTTypeTagSpecification: { public.filename-extension: [y4m] }
     postBuildScripts:
       - name: Bundle helper tools (optional)
         script: '"$SRCROOT/scripts/bundle-tools.sh" || true'

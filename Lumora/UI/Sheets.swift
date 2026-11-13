@@ -155,7 +155,7 @@ struct ReportCardSheet: View {
                         try? model.library.add(HDRTitle(title: r.title, year: 0, edition: "My copy", hdrFormats: [r.format],
                                                         measuredP999Nits: Int(r.p999Nits),
                                                         rating: r.verdict == .vivid ? .great : (r.verdict == .balanced ? .average : .dim),
-                                                        reasons: r.findings, sources: []))
+                                                        reasons: r.findings, sources: [], localFile: model.descriptor?.url.path))
                     }
                     Button("Close") { dismiss() }.keyboardShortcut(.defaultAction)
                 }
@@ -167,7 +167,52 @@ struct ReportCardSheet: View {
 }
 
 struct LibraryView: View {
+    var body: some View {
+        TabView {
+            RatingsLibraryView().tabItem { Label("HDR ratings", systemImage: "books.vertical") }
+            ExportsLibraryView().tabItem { Label("Your exports", systemImage: "film.stack") }
+        }
+        .padding(.top, 6)
+        .frame(minWidth: 900, minHeight: 500)
+    }
+}
+
+/// Lumora's finished exports on this Mac (from their export records), with Play and Show in Finder.
+struct ExportsLibraryView: View {
+    @Environment(\.openWindow) private var openWindow
+    @State private var exports: [ExportManifest] = []
+
+    var body: some View {
+        VStack(alignment: .leading) {
+            if exports.isEmpty {
+                ContentUnavailableView("No exports yet", systemImage: "film.stack",
+                                       description: Text("Files you export with Lumora are listed here so you can play them in the built-in Player."))
+            } else {
+                Table(exports) {
+                    TableColumn("File") { m in Text(URL(fileURLWithPath: m.output).lastPathComponent).lineLimit(1) }
+                    TableColumn("Codec") { m in Text(m.codec.displayName) }.width(110)
+                    TableColumn("Delivery") { m in Text(m.delivery.displayName) }.width(140)
+                    TableColumn("Length") { m in Text(PlayerEngine.timecode(Double(m.frames) * Double(m.rateDen) / Double(max(1, m.rateNum)))) }.width(70)
+                    TableColumn("Exported") { m in Text(m.created, style: .date) }.width(100)
+                    TableColumn("") { m in
+                        HStack {
+                            Button("Play") { openWindow(id: "player", value: URL(fileURLWithPath: m.output)) }
+                            Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: m.output)]) }
+                        }
+                        .buttonStyle(.link)
+                    }
+                    .width(160)
+                }
+            }
+        }
+        .padding()
+        .onAppear { exports = ExportManifest.all().filter { FileManager.default.fileExists(atPath: $0.output) } }
+    }
+}
+
+struct RatingsLibraryView: View {
     @EnvironmentObject private var library: HDRLibrary
+    @Environment(\.openWindow) private var openWindow
     @State private var filter: HDRTitle.Rating?
     @State private var urlText = ""
     @State private var message: String?
@@ -203,11 +248,16 @@ struct LibraryView: View {
                     TableColumn("MaxCLL") { Text($0.maxCLL.map { "\($0)" } ?? "—") }
                     TableColumn("Highlights") { Text($0.measuredP999Nits.map { "\($0) nits" } ?? "—") }
                     TableColumn("Why") { Text($0.reasons.joined(separator: " · ")).lineLimit(2) }
+                    TableColumn("") { t in
+                        if let f = t.localFile, FileManager.default.fileExists(atPath: f) {
+                            Button("Play") { openWindow(id: "player", value: URL(fileURLWithPath: f)) }.buttonStyle(.link)
+                        }
+                    }
+                    .width(44)
                 }
             }
         }
         .padding()
-        .frame(minWidth: 900, minHeight: 500)
         .onAppear { urlText = library.communityURL?.absoluteString ?? "" }
     }
 }

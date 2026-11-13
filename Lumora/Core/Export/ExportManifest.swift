@@ -37,3 +37,7 @@ struct ExportManifest: Codable {
         try? JSONDecoder().decode(ExportManifest.self, from: Data(contentsOf: folder.appendingPathComponent(key(output.path) + ".json")))
     }
 }
+
+extension ExportManifest: Identifiable {
+    var id: String { output }
+}

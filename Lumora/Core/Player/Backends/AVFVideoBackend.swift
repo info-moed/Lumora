@@ -76,8 +76,10 @@ final class AVFVideoBackend: PlayerVideoBackend, @unchecked Sendable {
               let session else { return nil }
         defer { VTDecompressionSessionInvalidate(session) }
         var value: CFTypeRef?
-        let status = VTSessionCopyProperty(session, key: kVTDecompressionPropertyKey_UsingHardwareAcceleratedVideoDecoder,
-                                           allocator: nil, valueOut: &value)
+        let status = withUnsafeMutablePointer(to: &value) {
+            VTSessionCopyProperty(session, key: kVTDecompressionPropertyKey_UsingHardwareAcceleratedVideoDecoder,
+                                  allocator: nil, valueOut: UnsafeMutableRawPointer($0))
+        }
         guard status == noErr else { return false }
         return (value as? Bool) ?? false
     }
@@ -106,7 +108,6 @@ final class AVFVideoBackend: PlayerVideoBackend, @unchecked Sendable {
             ]
         }
         let o = AVAssetReaderTrackOutput(track: track, outputSettings: settings)
-        o.alwaysCopiesSampleData = false
         r.add(o)
         guard r.startReading() else {
             throw PlayerError.decoderFailed("AVFoundation", r.error?.localizedDescription ?? "the reader didn't start")

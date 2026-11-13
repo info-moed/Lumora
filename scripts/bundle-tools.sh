@@ -13,7 +13,7 @@ self_contained() {
   # Every linked library must be part of macOS (/usr/lib or /System).
   ! otool -L "$1" 2>/dev/null | tail -n +2 | awk '{print $1}' | grep -vqE '^(/usr/lib/|/System/)'
 }
-for t in ffmpeg ffprobe SvtAv1EncApp aomenc x265 vvencapp avmenc MP4Box mkvmerge dovi_tool hdr10plus_tool; do
+for t in ffmpeg ffprobe SvtAv1EncApp aomenc x265 vvencapp avmenc avmdec MP4Box mkvmerge dovi_tool hdr10plus_tool; do
   rm -f "$DEST/$t"
   for d in /opt/homebrew/bin "$HOME/.local/bin"; do
     if [ -x "$d/$t" ]; then

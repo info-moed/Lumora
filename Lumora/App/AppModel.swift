@@ -1144,6 +1144,7 @@ final class AppModel {
                     var moved = m; moved.output = final.path; moved.save()
                 }
                 status = "Saved \(lastPackage?.video.lastPathComponent ?? url.lastPathComponent)"
+                EncodeMonitor.shared.finishedOutput = lastPackage?.video ?? url
                 // Same grade at the original frame rate, so you can keep whichever you prefer.
                 if alsoExportOriginalRate, interpolation.mode != .off {
                     try Task.checkCancellation()

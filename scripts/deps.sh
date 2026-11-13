@@ -81,7 +81,7 @@ for f in json.load(sys.stdin).get("formulae", []):
 version_arg() { case "$1" in ffmpeg|ffprobe|MP4Box) echo -version;; aomenc) echo --help;; *) echo --version;; esac; }
 health() {
   local broken=0 bins
-  bins="$(printf '%s\n' "$DEPS" | cut -d'|' -f2) ffprobe avmenc"
+  bins="$(printf '%s\n' "$DEPS" | cut -d'|' -f2) ffprobe avmenc avmdec"
   for bin in $bins; do
     have "$bin" || continue
     local out rc
@@ -125,6 +125,13 @@ $DEPS
 EOF
   if have avmenc; then say "${G}avmenc${N}          optional  (source)     -            -            AV2 export (built from source; rebuild with scripts/install-encoders.sh)"
   else say "${D}avmenc          optional  -            -            -            AV2 export (built from source by scripts/install-encoders.sh)${N}"; fi
+  if have avmdec; then say "${G}avmdec${N}          optional  (source)     -            -            AV2 playback in the Player (built with avmenc; rebuild with scripts/install-encoders.sh)"
+  else say "${D}avmdec          optional  -            -            -            AV2 playback in the Player (built with avmenc by scripts/install-encoders.sh)${N}"; fi
+  if have ffmpeg; then
+    local decs; decs=$(ffmpeg -hide_banner -decoders 2>/dev/null)
+    printf '%s' "$decs" | grep -qE '^ V[.A-Z]{5} vvc ' && ok "FFmpeg decodes H.266 (vvc) for the Player" || warn "FFmpeg can't decode H.266: the Player needs FFmpeg 7.1 or newer (brew upgrade ffmpeg)"
+    printf '%s' "$decs" | grep -qE '^ V[.A-Z]{5} libdav1d ' && ok "FFmpeg has dav1d for AV1 the hardware can't decode" || warn "FFmpeg was built without dav1d: AV1 4:4:4 / 4:2:2 / 12-bit won't play (brew reinstall ffmpeg)"
+  fi
   if have ssimulacra2_rs; then say "${G}ssimulacra2_rs${N}  optional  $(printf '%-12s' "$(ssimulacra2_rs --version 2>/dev/null | awk '{print $2}')") -            -            SSIMULACRA 2 metric (built from source; rebuild with scripts/install-ssimulacra2.sh)"
   else say "${D}ssimulacra2_rs  optional  -            -            -            SSIMULACRA 2 metric (built from source by scripts/install-ssimulacra2.sh)${N}"; fi
   local venv="$HOME/Library/Application Support/Lumora/ModelLab/venv"
@@ -194,6 +201,17 @@ PY
   done <<EOF
 $ENCODER_HELP
 EOF
+  # The Player drives avmdec with these options (Lumora/Core/Player/Backends/PlayerVideoBackend.swift).
+  if have avmdec; then
+    local dhelp dmissing=""; dhelp=$(avmdec --help 2>&1 || true)
+    for f in --rawvideo --limit --skip-film-grain --random-access-point-index; do
+      printf '%s' "$dhelp" | grep -qE -- "(^|[^A-Za-z0-9-])${f}([^A-Za-z0-9-]|$)" || dmissing="$dmissing $f"
+    done
+    if [ -n "$dmissing" ]; then bad "avmdec no longer lists:$dmissing (the Player needs them)"; failures=$((failures+1))
+    else ok "avmdec accepts every option the Player uses"; fi
+  else
+    say "  ${D}avmdec not installed; skipped${N}"
+  fi
   return $failures
 }
 

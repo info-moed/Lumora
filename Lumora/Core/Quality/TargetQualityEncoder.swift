@@ -48,6 +48,8 @@ final class EncodeMonitor {
 
     var target: QualityTarget?
     var forecast: SizeForecast?
+    /// The finished export, for the Play button in the monitor's header.
+    var finishedOutput: URL?
     var chunks: [Chunk] = []
     var frameScores: [Int: Double] = [:]          // output frame -> VMAF
     var totalFrames = 0
