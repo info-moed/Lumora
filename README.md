@@ -146,6 +146,7 @@ them on every push.
 | Grading | Every look to SDR, HDR10 (1000/2000/4000 nits) and HLG; every control at its extremes; LUT export (matches Lumora's own render through FFmpeg `lut3d`); HDR stills (HEIC, AVIF); presets; reference matching; MetalFX upscaling. |
 | Frame interpolation | RIFE 4.25 converted to Core ML through Model Lab (image and HDR flow models) and run in the real pipeline: +11 to +12 dB over plain blending when rebuilding real frames. Exact frame timing for every mode (2×–8×, 60/59.94, slow motion); never across a cut. |
 | Artifact checker | Measured against *Big Buck Bunny*'s native 60 fps render on held-out footage: makes 0.36% of frames worse (by at most 0.16 dB), where the previous design made 33–83% worse; catches 88–96% of missed shot changes. Details in the [feature reference](docs/features.md#interpolation-models). |
+| Second model family (IFRNet) | IFRNet (MIT) converts to Core ML (`scripts/convert_ifrnet_coreml.py`, checked against PyTorch at two in-between times) and was scored on the same 832 held-out frames: 2.2 dB below RIFE 4.25 as the primary model; as the checker's second opinion it moves the ceiling by only +0.03 dB, at about four times the added cost, and with today's trees makes up to 18% of frames worse. Not adopted; [details](docs/features.md#interpolation-models). |
 | Quality targets and metrics | Encoding to a VMAF target (HEVC, AV1) with dip repair; VMAF, VMAF NEG, XPSNR, CAMBI, MS-SSIM, PSNR-HVS, CIEDE2000; size forecasts vs actual; encoder calibration on this Mac. |
 | Encoder presets | SVT-AV1 presets tuned per content type from measurements on *Tears of Steel* and *Big Buck Bunny*: 10.5% smaller at equal quality on average, up to 45% on low-light footage ([results](docs/encoding/tuning-svtav1.md)). |
 | Packaging and batches | Plex/Infuse naming, metadata policies, track selection, Dolby Digital Plus compatibility tracks, chapters, every appendix (NFO, checksums, settings…), verification, batch queue resume after interruption, run rules, webhooks, archive verification. |
@@ -160,7 +161,7 @@ them on every push.
 - **AV2 (AVM):** the reference encoder isn't installed; only its clean "not installed" message is tested.
 - **Hardware or software not available here:** vendor RAW SDKs (BRAW, R3D, ARRIRAW, Canon RAW); real camera Bayer DNGs
   and Apple Log footage; hard-drive sources; AirPlay playback to an Apple TV; Mac notifications; TMDB lookups (need a key).
-- **Models and metrics not installed:** FILM, IFRNet and GMFSS (no converters yet), Real-ESRGAN, ColorVideoVDP,
+- **Models and metrics not installed:** FILM and GMFSS (no converters yet), Real-ESRGAN, ColorVideoVDP,
   SSIMULACRA 2 and AVQT. Their "missing" paths are tested.
 - **Optimize for this Mac:** deliberately not run on the development machine yet.
 - **Preset tuning for x265, VVenC and libaom:** in progress (SVT-AV1 is done).
@@ -216,8 +217,8 @@ Lumora is released under the [MIT license](LICENSE).
 - **Helper tools keep their own licenses.** FFmpeg builds with GPL parts, and x265, are GPL. Lumora runs them as
   separate programs that you install yourself. SVT-AV1, libaom, VVenC and AVM use BSD-style licenses with
   AOMedia/Fraunhofer patent terms.
-- **Models keep their own licenses.** RIFE (MIT), FILM (Apache-2.0), Real-ESRGAN (BSD-3-Clause); check IFRNet and
-  GMFSS before redistributing.
+- **Models keep their own licenses.** RIFE (MIT), IFRNet (MIT), FILM (Apache-2.0), Real-ESRGAN (BSD-3-Clause);
+  check GMFSS before redistributing.
 - **Dolby Vision and HDR10+** metadata is generated with open tools. Using the logos, or certified delivery,
   requires licenses from Dolby and HDR10+ Technologies.
 - **Independent work.** Lumora is not affiliated with any other video tool it is compared with, and contains none of

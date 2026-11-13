@@ -44,6 +44,18 @@ struct InterpolationModelSpec: Codable, Hashable, Identifiable {
     var flowOutput: String? = nil   // [1,4,H,W]: t->0 (dx,dy), t->1 (dx,dy), in model pixels
     var maskOutput: String? = nil   // [1,1,H,W]: weight of frame A (0...1)
     var modelScale: Float? = nil    // resolution the network runs at (flow mode), e.g. 0.5 for 4K
+    /// Compute units to use until "Optimize for this Mac" has measured this model: "all" (default), "cpuAndGPU",
+    /// "cpuAndNeuralEngine" or "cpuOnly". IFRNet, for example, is about 4x faster on the GPU alone than with .all.
+    var computeUnits: String? = nil
+
+    var defaultComputeUnits: MLComputeUnits {
+        switch computeUnits {
+        case "cpuAndGPU": return .cpuAndGPU
+        case "cpuAndNeuralEngine": return .cpuAndNeuralEngine
+        case "cpuOnly": return .cpuOnly
+        default: return .all
+        }
+    }
 
     var isFlow: Bool { outputKind == "flow" && flowOutput != nil && maskOutput != nil }
 
@@ -106,8 +118,9 @@ final class CoreMLInterpolator: InterpolationEngine {
             url = compiled
         }
         let config = MLModelConfiguration()
-        // Measured best for this model on this Mac, else let Core ML choose per layer (ANE / GPU Neural Accelerators).
-        config.computeUnits = computeUnits ?? MacProfile.current?.coreMLUnits[spec.id].flatMap(MLComputeUnits.init(rawValue:)) ?? .all
+        // Measured best for this model on this Mac, else the catalog's default (usually: let Core ML choose per layer).
+        config.computeUnits = computeUnits ?? MacProfile.current?.coreMLUnits[spec.id].flatMap(MLComputeUnits.init(rawValue:))
+            ?? spec.defaultComputeUnits
         config.allowLowPrecisionAccumulationOnGPU = true
         model = try MLModel(contentsOf: url, configuration: config)
     }

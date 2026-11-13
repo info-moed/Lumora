@@ -129,6 +129,9 @@ To use a specific build of a tool, see [Pointing Lumora at specific tools](comma
 | Generated frames look like cross-fades | No model is installed, so Lumora blends. Install RIFE through Tools → **Model Lab**. |
 | Model Lab can't convert | Click **Set up converter** first (creates a Python environment with PyTorch and coremltools; needs internet and ~2 GB). |
 | Warping or ghosting on fast motion | Motion → **Intelligence** → *Route a model per scene* or *Exhaustive*; keep **Find and fix artifacts** on; use **Scan for interpolation problems** before exporting. |
+| IFRNet makes the same frame at every in-between time (4x, 24→60) | It was converted from a Vimeo90K checkpoint, which only makes midpoints (the converter warns). Convert the `*_GoPro.pth` checkpoint instead, and delete the old `.mlmodelc` next to the `.mlpackage`. |
+| A replaced model still behaves like the old one | Lumora compiles each `.mlpackage` once into a `.mlmodelc` beside it. Delete that `.mlmodelc` after replacing the package. |
+| IFRNet is very slow | Make sure the catalog entry keeps `"computeUnits": "cpuAndGPU"` (about 4x faster than letting Core ML use the Neural Engine). It is still about 5x slower than RIFE 4.25 and measured 2.2 dB worse; it is there for comparison. |
 | Films look like a soap opera | That's what higher frame rates do to film. Keep the original rate, or use the comparison export (**Also export the original frame rate**). |
 
 ---
