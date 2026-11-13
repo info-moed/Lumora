@@ -156,6 +156,7 @@ typedef struct {
 #define PLAYER_LAYOUT_BIPLANAR_TEXTURE 0   // CVPixelBuffer: Y texture + interleaved CbCr texture
 #define PLAYER_LAYOUT_SEMIPLANAR_BUFFER 1  // nv12 / p010 / p210 / p410 from a pipe: Y plane + interleaved CbCr plane
 #define PLAYER_LAYOUT_PLANAR_BUFFER 2      // yuv4xxp / gbrp / gray from a pipe or avmdec: up to three planes
+#define PLAYER_LAYOUT_RGBA_TEXTURE 3       // CVPixelBuffer already converted to non-linear R'G'B' by macOS (Dolby Vision 5)
 
 // Signal transfer characteristics the player decodes.
 #define PLAYER_TF_BT1886 0   // BT.709 / BT.601 / BT.2020 SDR: display gamma 2.4

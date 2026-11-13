@@ -323,6 +323,8 @@ struct MediaInfo: Equatable {
     var avfDecodable = false
     var av2: AV2Details?
     var fileSize: Int64 = 0
+    /// The peak Lumora graded this file to, from its export record (AV2 can't carry mastering metadata).
+    var manifestPeakNits: Double?
 
     var fps: Double { Double(rateNum) / Double(max(1, rateDen)) }
     var estimatedFrameCount: Int { frameCount ?? safeFrameCount(seconds: duration, fps: fps) }
@@ -333,7 +335,7 @@ struct MediaInfo: Equatable {
 
 /// How a frame's samples are laid out, enough for the player kernel to read them.
 struct FrameLayout: Equatable {
-    enum Storage: Int { case biplanarTexture = 0, semiPlanarBuffer = 1, planarBuffer = 2 }
+    enum Storage: Int { case biplanarTexture = 0, semiPlanarBuffer = 1, planarBuffer = 2, rgbaTexture = 3 }
     var storage: Storage
     var width: Int
     var height: Int

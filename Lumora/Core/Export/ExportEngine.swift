@@ -546,7 +546,8 @@ final class ExportEngine {
             try FileManager.default.moveItem(at: result, to: job.outputURL)
             ExportManifest(output: job.outputURL.path, source: job.descriptor.url.path, codec: job.codec, rateNum: ctx.rate.num,
                            rateDen: ctx.rate.den, frames: ctx.plan.count, delivery: job.delivery,
-                           chunks: lastPieces.map { .init(start: $0.start, count: $0.count, level: $0.level) }, created: Date()).save()
+                           chunks: lastPieces.map { .init(start: $0.start, count: $0.count, level: $0.level) }, created: Date(),
+                           peakNits: job.target.kind == .sdr ? nil : job.target.effectivePeak).save()
             return job.outputURL
         }
         let ranges = segmentRanges(ctx, count: chip.segments(for: job.codec, frameCount: plan.count))
@@ -589,6 +590,11 @@ final class ExportEngine {
         try Task.checkCancellation()              // never move a canceled export into place
         try Self.clearOutput(job)
         try FileManager.default.moveItem(at: result, to: job.outputURL)
+        // No chunk map (repair needs a target-quality export), but the rate and peak let the player show raw
+        // streams such as AV2 .obu, which carry neither, at the right speed and brightness.
+        ExportManifest(output: job.outputURL.path, source: job.descriptor.url.path, codec: job.codec, rateNum: ctx.rate.num,
+                       rateDen: ctx.rate.den, frames: ctx.plan.count, delivery: job.delivery, chunks: [], created: Date(),
+                       peakNits: job.target.kind == .sdr ? nil : job.target.effectivePeak).save()
         return job.outputURL
     }
 

@@ -103,6 +103,12 @@ final class ChildProcess: @unchecked Sendable {
         return process.terminationStatus
     }
 
+    /// Asks the child to quit without waiting (safe to call from the main thread); `terminate` reaps it later.
+    func interrupt() {
+        lock.lock(); let done = stopped; lock.unlock()
+        if !done, pid > 0 { kill(pid, SIGTERM) }
+    }
+
     /// SIGTERM, then SIGKILL if it hasn't gone within a second; waits until the child has been reaped.
     func terminate() {
         lock.lock()

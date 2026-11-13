@@ -122,6 +122,31 @@ kernel void playerKernel(texture2d<float, access::read>  yTex   [[texture(0)]],
     float2 p = (pix - u.viewport.xy) * u.lumaSize.zw;
     float2 cpos = p * u.chroma.zw + u.chromaOffset.xy;
 
+    if (kPlayerLayout == PLAYER_LAYOUT_RGBA_TEXTURE) {
+        // macOS already converted the signal (Dolby Vision 5 -> PQ BT.2020 R'G'B'): skip range and matrix.
+        float2 t = clamp(p - 0.5f, float2(0.0f), u.lumaSize.xy - 1.0f);
+        uint2 i0 = uint2(t);
+        float2 f = t - floor(t);
+        uint2 i1 = min(i0 + 1, uint2(u.lumaSize.xy) - 1);
+        float3 a = yTex.read(i0).rgb, b = yTex.read(uint2(i1.x, i0.y)).rgb;
+        float3 c = yTex.read(uint2(i0.x, i1.y)).rgb, d = yTex.read(i1).rgb;
+        float3 rgb = mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+        float3 e = clamp(rgb, 0.0f, 1.0f);
+        float3 lin = u.toBT2020 * float3(pqToNitsPrecise(e.r), pqToNitsPrecise(e.g), pqToNitsPrecise(e.b));
+        if (u.outputMode == PLAYER_OUT_PQ) {
+            out.write(float4(nitsToPQPrecise(lin.r), nitsToPQPrecise(lin.g), nitsToPQPrecise(lin.b), 1.0f), gid);
+            return;
+        }
+        if (u.toneMap != 0) {
+            float m = max3(lin.r, lin.g, lin.b);
+            if (m > 0.0f) lin *= eetfNits(m, u) / m;
+        } else {
+            lin = min(lin, float3(u.srcPeak));
+        }
+        out.write(float4(lin / u.refWhite, 1.0f), gid);
+        return;
+    }
+
     float shift = u.msbAligned ? float(1 << (u.containerBits - u.bits)) : 1.0f;
     float yCode = lumaAt(p, yTex, buf, u) / shift;
     float2 cCode = chromaAt(cpos, cTex, buf, u) / shift;
