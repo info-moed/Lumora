@@ -596,7 +596,7 @@ final class ExportEngine {
             let (segmentFiles, events) = try await session.runSegments(ext: ext, encode: { seg, url, attempt, tick in
                 if job.codec.isHardware {
                     return try await self.encodeVideoToolbox(frozen, range: seg.range, to: url, preroll: seg.preroll,
-                                                             segment: seg.index, tick: tick)
+                                                             segment: seg.index, attempt: attempt, tick: tick)
                 } else {
                     return try await self.encodeCLI(frozen, range: seg.range, to: url, tmp: tmp, index: seg.index, threads: threads,
                                                     preroll: seg.preroll, attempt: attempt, tick: tick)
@@ -747,7 +747,7 @@ final class ExportEngine {
 
     /// Three concurrent stages: producer (decode/interpolate/upscale) -> grader (GPU, never blocks a thread)
     /// -> writer (media engine). Each hands frames to the next through a bounded channel.
-    private func encodeVideoToolbox(_ ctx: Context, range: Range<Int>, to url: URL, preroll: Int = 0, segment: Int = 0,
+    private func encodeVideoToolbox(_ ctx: Context, range: Range<Int>, to url: URL, preroll: Int = 0, segment: Int = 0, attempt: Int = 1,
                                     tick: @escaping () -> Void) async throws -> [QCEvent] {
         let job = ctx.job
         let metal = MetalContext.shared
@@ -830,7 +830,7 @@ final class ExportEngine {
                 try Task.checkCancellation()
                 let (pb, time) = item
                 while !input.isReadyForMoreMediaData { try await Task.sleep(nanoseconds: 1_000_000) }
-                try FaultInjection.point(.writerAppend(segment: segment, frame: Int(time.value / CMTimeValue(max(1, ctx.rate.den)))))
+                try FaultInjection.point(.writerAppend(segment: segment, frame: Int(time.value / CMTimeValue(max(1, ctx.rate.den)))), attempt: attempt)
                 guard adaptor.append(pb, withPresentationTime: time) else {
                     throw writer.error ?? LumoraError.unsupported("append failed")
                 }

@@ -32,6 +32,8 @@ enum FaultInjection {
         crashBetweenSegmentAndJournal = nil; crashAfterSegments = nil; diagnosticReportsFolder = nil; gpuCalls = 0
         SystemSnapshot.provider = nil; SystemSnapshot.bootSessionOverride = nil; MemoryPressureWatch.override = nil
         CheckpointPlanner.segmentFramesOverride = nil
+        RenderSession.pressureWait = 60
+        GPUFaults.reset()
         CheckpointStore.isProcessAlive = { pid in kill(pid, 0) == 0 || errno == EPERM }
     }
 

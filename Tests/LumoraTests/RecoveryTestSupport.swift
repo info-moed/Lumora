@@ -12,7 +12,7 @@ class RecoveryTestCase: XCTestCase {
         return d
     }()
 
-    private var savedDefaults: [String: Any?] = [:]
+    private var savedArgs: [String: Any] = [:]
     var scratch: URL!
     var logs: URL!
     var out: URL!
@@ -25,16 +25,22 @@ class RecoveryTestCase: XCTestCase {
         logs = base.appendingPathComponent("logs", isDirectory: true)
         out = base.appendingPathComponent("out", isDirectory: true)
         for d in [scratch!, logs!, out!] { try FileManager.default.createDirectory(at: d, withIntermediateDirectories: true) }
-        for key in ["scratchRoot", "renderLogFolder"] { savedDefaults[key] = UserDefaults.standard.object(forKey: key) }
-        UserDefaults.standard.set(scratch.path, forKey: "scratchRoot")
-        UserDefaults.standard.set(logs.path, forKey: "renderLogFolder")
+        // Process-local overrides (the argument domain): never written to the user's preferences, and never seen by
+        // another Lumora process running at the same time.
+        let ud = UserDefaults.standard
+        savedArgs = ud.volatileDomain(forName: UserDefaults.argumentDomain)
+        var args = savedArgs
+        args["scratchRoot"] = scratch.path
+        args["renderLogFolder"] = logs.path
+        ud.removeVolatileDomain(forName: UserDefaults.argumentDomain)
+        ud.setVolatileDomain(args, forName: UserDefaults.argumentDomain)
+        XCTAssertEqual(ud.string(forKey: "scratchRoot"), scratch.path)
     }
 
     override func tearDown() async throws {
         FaultInjection.reset()
-        for (k, v) in savedDefaults {
-            if let v { UserDefaults.standard.set(v, forKey: k) } else { UserDefaults.standard.removeObject(forKey: k) }
-        }
+        UserDefaults.standard.removeVolatileDomain(forName: UserDefaults.argumentDomain)
+        UserDefaults.standard.setVolatileDomain(savedArgs, forName: UserDefaults.argumentDomain)
         if let base = scratch?.deletingLastPathComponent() {
             if let e = FileManager.default.enumerator(atPath: base.path) {
                 for case let rel as String in e {
@@ -90,7 +96,10 @@ class RecoveryTestCase: XCTestCase {
     @discardableResult
     static func makeSource(_ name: String, width: Int = 320, height: Int = 180, seconds: Double = 4, fps: String = "24",
                            gop: Int = 24, audio: Bool = true, faststart: Bool = false, bframes: Bool = false) throws -> URL {
-        let url = work.appendingPathComponent(name)
+        // Fixtures are shared between tests; the name carries every parameter so two tests never get each other's clip.
+        let base = URL(fileURLWithPath: name)
+        let tag = "\(width)x\(height)-\(seconds)s-\(fps)-g\(gop)\(audio ? "" : "-na")\(faststart ? "-fs" : "")\(bframes ? "-b" : "")"
+        let url = work.appendingPathComponent("\(base.deletingPathExtension().lastPathComponent)-\(tag).\(base.pathExtension)")
         if FileManager.default.fileExists(atPath: url.path) { return url }
         let half = seconds / 2
         var args = ["-f", "lavfi", "-i", "testsrc2=s=\(width)x\(height):r=\(fps):d=\(half)",

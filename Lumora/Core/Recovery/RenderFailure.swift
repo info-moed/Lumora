@@ -63,16 +63,20 @@ struct FrameCountMismatch: LocalizedError, Codable, Hashable {
 }
 
 /// An error the GPU reported for a command buffer.
-struct GPUFault: LocalizedError {
+struct GPUFault: LocalizedError, CustomNSError {
     var underlying: NSError
     var errorDescription: String? { "The graphics processor reported an error: \(underlying.localizedDescription)" }
+    static var errorDomain: String { "Lumora.GPUFault" }
+    var errorUserInfo: [String: Any] { [NSUnderlyingErrorKey: underlying, NSLocalizedDescriptionKey: errorDescription ?? ""] }
 }
 
 /// Saving the finished video failed; the finished file is kept in the checkpoint folder.
-struct DeliveryFailure: LocalizedError {
+struct DeliveryFailure: LocalizedError, CustomNSError {
     var underlying: Error
     var kept: URL
     var errorDescription: String? { underlying.localizedDescription }
+    static var errorDomain: String { "Lumora.DeliveryFailure" }
+    var errorUserInfo: [String: Any] { [NSUnderlyingErrorKey: underlying as NSError, NSLocalizedDescriptionKey: errorDescription ?? ""] }
 }
 
 // MARK: - Classification
@@ -176,6 +180,9 @@ enum FailureClassifier {
         for (domain, code) in all {
             if let k = kind(domain: domain, code: code, stage: c.stage, path: path, context: c) {
                 f.kind = k
+                if k == .encoderFailed && domain == NSPOSIXErrorDomain {
+                    f.lastError = "it stopped taking frames before the end of its part"
+                }
                 if [.diskFull, .outputDriveGone, .scratchDriveGone, .noPermission, .privacyBlocked].contains(k) {
                     f.volume = volumeName(for: path, stage: c.stage, context: c)
                     if f.kind == .diskFull || f.kind == .outputDriveGone {
@@ -267,8 +274,6 @@ enum FailureClassifier {
             e = n.userInfo[NSUnderlyingErrorKey] as? NSError
             depth += 1
         }
-        if let d = error as? DeliveryFailure { out += chain(d.underlying).map { "← " + $0 } }
-        if let g = error as? GPUFault { out.append("\(g.underlying.domain) \(g.underlying.code)") }
         return out
     }
 
@@ -298,6 +303,7 @@ enum FailureClassifier {
                 if atSource { return code == Int(EIO) ? .sourceDamaged : .sourceMoved }
                 return .outputDriveGone
             case ENOMEM: return .outOfMemory
+            case EPIPE: return stage == .encode ? .encoderFailed : nil    // the encoder stopped reading: it quit
             default: return nil
             }
         case NSCocoaErrorDomain:

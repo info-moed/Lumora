@@ -322,14 +322,15 @@ final class RenderSession: @unchecked Sendable {
         while true {
             try Task.checkCancellation()
             try checkSource()
-            try FaultInjection.point(.beforeSegment(s.index), attempt: attempt)
             let url = dir.appendingPathComponent(String(format: "segments/s%05d.a%d.%@", s.index, attempt, ext))
             try? FileManager.default.removeItem(at: url)
             log.stageStart("segment", tag: tag)
             let counter = FrameCounter(log: log, tag: tag, total: s.count)
             var ticked = 0
             do {
+                try FaultInjection.point(.beforeSegment(s.index), attempt: attempt)
                 let ev = try await encode(s, url, attempt) { counter.tick(); ticked += 1; tick() }
+                counter.finish()
                 CheckpointStore.fullSync(url)
                 if FaultInjection.crashBetweenSegmentAndJournal == s.index { throw FaultInjection.SimulatedCrash() }
                 setStageQuiet(.validate)
@@ -349,6 +350,8 @@ final class RenderSession: @unchecked Sendable {
                 return (s.index, url, ev)
             } catch {
                 if error is FaultInjection.SimulatedCrash || error is CancellationError || Task.isCancelled { throw error }
+                // A decoder that failed because the source vanished or changed underneath it: say that, not "can't open".
+                do { try checkSource() } catch { lock.withLock { failing = (s.index, s.range) }; throw error }
                 let f = FailureClassifier.classify(error, context: context(segment: s))
                 let allowed = retries(for: f, error: error)
                 log.error("\(error.localizedDescription)", tag: tag)
@@ -381,8 +384,14 @@ final class RenderSession: @unchecked Sendable {
         }
     }
 
+    /// "Stop and keep progress": set just before canceling an export from the app.
+    nonisolated(unsafe) static var keepOnNextCancel = false
+
+    /// How long a retry after an encoder killed under memory pressure waits for the pressure to ease (tests shorten it).
+    nonisolated(unsafe) static var pressureWait: TimeInterval = 60
+
     private func waitForNormalPressure() async {
-        let until = Date().addingTimeInterval(60)
+        let until = Date().addingTimeInterval(Self.pressureWait)
         while MemoryPressureWatch.shared.level != .normal, Date() < until {
             try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
@@ -506,7 +515,9 @@ final class RenderSession: @unchecked Sendable {
         var f = FailureClassifier.classify(error, context: c)
         if cancelled { f.kind = .cancelled }
         if let r = error as? ResumeRefused { f.kind = .unknown; f.message = r.localizedDescription }
-        let keep = cancelled ? options.keepProgressOnCancel && (savedFrames > 0 || journal.joinedFile != nil) : true
+        let keepWanted = options.keepProgressOnCancel || (cancelled && Self.keepOnNextCancel)
+        if cancelled { Self.keepOnNextCancel = false }
+        let keep = cancelled ? keepWanted && (savedFrames > 0 || journal.joinedFile != nil) : true
         var facts = FailureExplainer.Facts()
         facts.progress = journal.progress
         facts.savedBytes = dir.map(CheckpointStore.size) ?? 0
@@ -643,6 +654,10 @@ final class FrameCounter: @unchecked Sendable {
     let tag: String
     let total: Int
     init(log: RenderLog, tag: String, total: Int) { self.log = log; self.tag = tag; self.total = total }
+    func finish() {
+        let done = lock.withLock { n }
+        log.line(.frames, tag, String(format: "%d/%d frames, %.1f fps", done, total, Double(done) / max(0.01, Date().timeIntervalSince(started))))
+    }
     func tick() {
         lock.lock()
         n += 1

@@ -96,7 +96,9 @@ enum DiagnosticReport {
             if !head.isEmpty, head.first != lines.first { out += head + ["…"] }
             out += lines
         }
-        return DiagnosticScrub.share(out.joined(separator: "\n"), names: names)
+        var n = names
+        if let v = r.failure.volume { n.volumes.append(v) }
+        return DiagnosticScrub.share(out.joined(separator: "\n"), names: n)
     }
 }
 

@@ -130,6 +130,13 @@ final class AppModel {
     var status = "Open a video, a RAW sequence folder, or a camera RAW file."
     var progress: Double?
     var errorMessage: String?
+    // Render recovery (logic in AppModel+Recovery.swift)
+    var renderFailure: FailureReport?
+    var resumeOffers: [ResumeOffer] = []
+    var resumeSavedProgress = true
+    var sourceHealth: SourceHealth?
+    var showRepair = false
+    var carriedGrade: (look: Look, params: GradeParams)?
     var showExport = false
     var showAdvisor = false
     var showReport = false
@@ -186,7 +193,9 @@ final class AppModel {
             previewTime = d.durationSeconds / 2
             await loadPreview()
             try await analyzeNow()
+            applyCarriedGrade()
             refreshDisplay()
+            await checkSourceHealth(d)
         }
     }
 
@@ -1013,9 +1022,9 @@ final class AppModel {
                 job.filmTexture = filmTexture
                 EncodeMonitor.shared.forecast = nil       // no per-file forecast in batches; never show the previous one
                 let started = Date()
-                let encoded = try await ExportEngine().run(job) { label, v in
+                guard let encoded = await batchExport(job, file: file) { label, v in
                     Task { @MainActor in self.progress = (Double(n) + v) / Double(files.count) }
-                }
+                } else { continue }              // explained and marked failed; the batch goes on
                 // Package each file with its own name, tracks and metadata (your other packaging choices apply to all).
                 var opts = packaging
                 let guess = Naming.guess(from: file.deletingPathExtension().lastPathComponent)
@@ -1044,8 +1053,8 @@ final class AppModel {
                 if packaged.video != encoded, encoded.standardizedFileURL != file.standardizedFileURL { try? FileManager.default.removeItem(at: encoded) }
                 QueueStore.markDone(file, output: packaged.video)
             }
-            status = "Batch finished: \(files.count) files"
-            Notifier.send("Lumora batch finished", "\(files.count) files processed")
+            status = "Batch finished: \(files.count) files" + batchFailureNote()
+            Notifier.send("Lumora batch finished", "\(files.count) files processed" + batchFailureNote())
         }
     }
 
@@ -1123,7 +1132,7 @@ final class AppModel {
                 EncodeMonitor.shared.forecast = forecast
                 let started = Date()
                 let engine = ExportEngine()
-                let url = try await engine.run(job) { label, value in
+                let url = try await runExport(engine, job) { label, value in
                     Task { @MainActor in self.status = "\(p.look.displayName): \(label)"; self.progress = value }
                 }
                 qcEvents = engine.qcEvents
@@ -1194,6 +1203,11 @@ final class AppModel {
         task = Task {
             do { try await body() } catch is CancellationError {
                 status = "Canceled"
+                refreshResumeOffers()
+            } catch let f as ReportedFailure {       // an export failure: the plain-language sheet, not the alert
+                renderFailure = f.report
+                status = f.report.title
+                refreshResumeOffers()
             } catch {
                 errorMessage = error.localizedDescription
                 Log.error(.app, "\(label): \(error.localizedDescription)")
