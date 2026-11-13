@@ -1,5 +1,6 @@
 import Foundation
 import Metal
+import AVFoundation
 
 /// Where in an export something happened. The stage decides between source, encoder and packaging explanations.
 enum RenderStage: String, Codable, CaseIterable {

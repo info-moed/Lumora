@@ -302,14 +302,14 @@ final class RenderSession: @unchecked Sendable {
                 running += 1
             }
             while let (i, u, ev) = try await g.next() {
-                lock.lock(); segmentURLs[i] = u; lock.unlock()
+                lock.withLock { segmentURLs[i] = u }
                 events += ev
                 if let s = pending.popFirst() {
                     g.addTask { try await self.encodeSegment(s, ext: ext, dir: dir, encode: encode, tick: tick) }
                 }
             }
         }
-        lock.lock(); let urls = plan.segments.compactMap { segmentURLs[$0.index] }; lock.unlock()
+        let urls = lock.withLock { plan.segments.compactMap { segmentURLs[$0.index] } }
         guard urls.count == plan.segments.count else { throw FrameCountMismatch(got: urls.count, expected: plan.segments.count) }
         return (urls, events)
     }
@@ -336,13 +336,13 @@ final class RenderSession: @unchecked Sendable {
                 let v = try SegmentValidator.validate(url, frames: s.count, rate: rate)
                 let done = ExportJournal.DoneSegment(index: s.index, file: "segments/" + url.lastPathComponent, frames: s.count,
                                                      bytes: v.bytes, sha256: v.sha256, packets: v.packets, validatedAt: Date(), attempt: attempt)
-                lock.lock()
-                journal.segments.removeAll { $0.index == s.index }
-                journal.segments.append(done)
-                journal.segments.sort { $0.index < $1.index }
-                encodedSegments.append(s.index)
-                let saved = journal.segments.count
-                lock.unlock()
+                let saved = lock.withLock {
+                    journal.segments.removeAll { $0.index == s.index }
+                    journal.segments.append(done)
+                    journal.segments.sort { $0.index < $1.index }
+                    encodedSegments.append(s.index)
+                    return journal.segments.count
+                }
                 try saveJournal()
                 log.stageEnd("segment", tag: tag, note: "\(s.count) frames, \(ByteCountFormatter.string(fromByteCount: v.bytes, countStyle: .file)), checked")
                 if let n = FaultInjection.crashAfterSegments, saved >= n { throw FaultInjection.SimulatedCrash() }
@@ -358,12 +358,12 @@ final class RenderSession: @unchecked Sendable {
                     if f.kind == .gpuError { GPUFaults.reset() }
                     try? FileManager.default.removeItem(at: url)
                     // The frames this attempt counted are counted again by the next one.
-                    lock.lock(); retried = true; lock.unlock()
+                    lock.withLock { retried = true }
                     attempt += 1
                     _ = ticked
                     continue
                 }
-                lock.lock(); failing = (s.index, s.range); lock.unlock()
+                lock.withLock { failing = (s.index, s.range) }
                 throw error
             }
         }

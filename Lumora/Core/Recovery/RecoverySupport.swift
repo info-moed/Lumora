@@ -2,7 +2,7 @@ import Foundation
 import CryptoKit
 
 /// Helper tool versions, asked once per launch (the export log lists them).
-enum ToolVersions {
+extension ToolVersions {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var cache: [String: String] = [:]
 

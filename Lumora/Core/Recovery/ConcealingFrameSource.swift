@@ -55,7 +55,17 @@ final class ConcealingFrameSource: FrameSource {
                 return DecodedFrame(texture: f.texture, index: next, backing: f.backing)
             }
             // Ended. Fine when reading to the end; a render that asked for more frames than exist gets a clear error.
-            guard let end else { return nil }
+            // AVFoundation can also report "completed" with frames missing and no error (a damaged chunk table):
+            // reading on with FFmpeg recovers what is there.
+            guard let end else {
+                if frameCount > 0, next < frameCount - max(2, Int(fps / 2)), try fallBack(reason: "AVFoundation stopped reading at frame \(next) of \(frameCount)") {
+                    let resumeAt = next
+                    if let f = try nextFrame() { return f }
+                    damage.truncatedAtSeconds = Double(resumeAt) / max(1, fps)
+                    damage.claimedSeconds = Double(frameCount) / max(1, fps)
+                }
+                return nil
+            }
             if try fallBack(reason: "AVFoundation stopped reading") { return try nextFrame() }
             throw SourceDamage(kind: .endedEarly, file: label, frame: next, seconds: Double(next) / max(1, fps),
                                detail: "the video data ends at frame \(next) of the \(end) frames this export reads")
@@ -81,6 +91,7 @@ final class ConcealingFrameSource: FrameSource {
         var dd = d
         dd.kind = .ffmpeg
         let ff = try FFmpegFrameSource(descriptor: dd)
+        if d.fpsNum > 0, d.fpsDen > 0 { ff.fillTimeline = (d.fpsNum, d.fpsDen) }
         try ff.start(at: next, count: end.map { $0 - next })
         base.cancel()
         base = ff

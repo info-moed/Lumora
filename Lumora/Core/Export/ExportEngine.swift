@@ -529,6 +529,10 @@ final class ExportEngine {
         let workers = chip.segments(for: job.codec, frameCount: plan.count)
         try session.beginCheckpointing(planInput: RecoveryHooks.planInput(job, plan: plan, width: ctx.width, height: ctx.height, workers: workers),
                                        rate: ctx.rate, encode: RecoveryHooks.fingerprint(job, threads: chip.threadsPerSegment(segments: workers)))
+        if let finished = session.savedFinal {    // "Save again": the finished video only has to be moved into place
+            try session.deliver(finished) { try Self.clearOutput(job); try FileManager.default.moveItem(at: $0, to: job.outputURL) }
+            return job.outputURL
+        }
         if let c = job.encodeChoice { Log.notice(.encode, "Encoder settings: \(c.rungLabel) + \(c.optionIDs.joined(separator: ", ")) → \(c.extraArgs.joined(separator: " "))") }
         let grainTmp = try ScratchManager.jobDirectory("grain")
         defer { try? FileManager.default.removeItem(at: grainTmp) }

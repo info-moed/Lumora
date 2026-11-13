@@ -178,6 +178,9 @@ final class FFmpegFrameSource: FrameSource {
     private let colorFilter: String
     private let ctx = MetalContext.shared
     let decoderMessages = DecoderMessages()
+    /// Keeps the timeline exact on damaged files: a picture FFmpeg can't decode is held instead of dropped (which would
+    /// shift every later frame). Set by ConcealingFrameSource for constant-frame-rate sources.
+    var fillTimeline: (num: Int, den: Int)?
 
     init(descriptor d: SourceDescriptor) throws {
         url = d.url
@@ -214,7 +217,9 @@ final class FFmpegFrameSource: FrameSource {
         if let count { args += ["-frames:v", "\(count)"] }
         // 16-bit RGB without color management: the encoded signal, like the AVFoundation path.
         let scale = "scale=\(width):\(height):flags=lanczos+accurate_rnd+full_chroma_int:\(colorFilter)"
-        args += ["-vf", scanFilter.map { "\($0),\(scale)" } ?? scale, "-f", "rawvideo", "-pix_fmt", "rgba64le", "-"]
+        args += ["-vf", scanFilter.map { "\($0),\(scale)" } ?? scale]
+        if let r = fillTimeline { args += ["-fps_mode", "cfr", "-r", "\(r.num)/\(r.den)"] }
+        args += ["-f", "rawvideo", "-pix_fmt", "rgba64le", "-"]
         p.arguments = FFHarden.args("ffmpeg", args)
         let pipe = Pipe()
         p.standardOutput = pipe
