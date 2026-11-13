@@ -123,6 +123,7 @@ Prefer Xcode? After `xcodegen`, run `open Lumora.xcodeproj` and press **⌘R**.
 | [Command-line guide](docs/command-line.md) | Everything you can drive or inspect from Terminal: settings keys, tool overrides, logs, scratch and data folders, encoder recipes, model conversion, checking output files. |
 | [Architecture](docs/architecture.md) | How the code is organized, the frame pipeline, concurrency, Metal kernels, and how to extend it. |
 | [Troubleshooting](docs/troubleshooting.md) | Common problems and their fixes. |
+| [When a render fails](docs/render-failures.md) | What each failure message means, the per-export logs and diagnostic reports, resuming a stopped export, and checking and repairing damaged sources. |
 | [COMPARISON.md](COMPARISON.md) | Feature-by-feature comparison with other tools. |
 | [CHANGELOG.md](CHANGELOG.md) | What changed in each version. |
 

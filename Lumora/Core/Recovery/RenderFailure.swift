@@ -88,7 +88,7 @@ struct RenderFailure: Codable, Hashable {
         case toolMissing, toolCrashed, encoderRejectedSetting, encoderFailed
         case outOfMemory, gpuError, hardwareEncoderReset
         case interruptedQuit, interruptedCrash, interruptedRestart, interruptedShutdownAsleep, interruptedUnknown
-        case cancelled
+        case canceled
         case sourceIndexMissing, sourceUnsupported, sourceTruncated, sourceDamaged, sourceChanged, sourceMoved
         case metadataToolFailed, frameCountMismatch, unknown
 
@@ -139,8 +139,8 @@ enum FailureClassifier {
         f.code = codes(error).map { "\($0.domain) \($0.code)" }.joined(separator: " ← ")
         if f.code?.isEmpty == true { f.code = nil }
 
-        if error is CancellationError { f.kind = .cancelled; return f }
-        if case LumoraError.canceled = error { f.kind = .cancelled; return f }
+        if error is CancellationError { f.kind = .canceled; return f }
+        if case LumoraError.canceled = error { f.kind = .canceled; return f }
         if let d = error as? DeliveryFailure {
             var inner = classify(d.underlying, context: { var x = c; x.stage = .deliver; return x }())
             if inner.kind == .unknown || inner.kind == .scratchDriveGone { inner.kind = .outputDriveGone }

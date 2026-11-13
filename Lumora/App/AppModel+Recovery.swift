@@ -260,7 +260,7 @@ extension ResumeOffer {
         case .interruptedRestart: return "your Mac restarted or lost power"
         case .interruptedShutdownAsleep: return "your Mac shut down while asleep"
         case .interruptedUnknown: return "Lumora stopped unexpectedly"
-        case .cancelled: return "you stopped it"
+        case .canceled: return "you stopped it"
         default: return report.title.prefix(1).lowercased() + report.title.dropFirst()
         }
     }

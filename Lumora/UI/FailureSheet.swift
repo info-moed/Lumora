@@ -67,11 +67,16 @@ struct FailureCard: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, 4)
-            } label: { Text("Technical details").font(Theme.note) }
-            HStack {
-                if !report.actions.contains(.copyReport) {
-                    Button("Copy diagnostic report") { onAction(.copyReport) }.buttonStyle(.link).font(Theme.note)
+            } label: {
+                HStack {
+                    Text("Technical details").font(Theme.note)
+                    Spacer()
+                    if !primary.contains(.copyReport) {
+                        Button("Copy diagnostic report") { onAction(.copyReport) }.buttonStyle(.link).font(Theme.note)
+                    }
                 }
+            }
+            HStack {
                 Spacer()
                 Button("Close") { onClose() }.keyboardShortcut(.cancelAction)
                 ForEach(Array(primary.enumerated().reversed()), id: \.offset) { i, a in
@@ -84,12 +89,12 @@ struct FailureCard: View {
             }
         }
         .padding(20)
-        .frame(width: 520)
+        .frame(width: 580)
     }
 
     private var icon: String {
         let k = report.failure.kind
-        if k == .cancelled { return "stop.circle" }
+        if k == .canceled { return "stop.circle" }
         if k.isInterruption { return "arrow.clockwise.circle" }
         if k.isSource { return "film.stack" }
         if [.diskFull, .outputDriveGone, .scratchDriveGone].contains(k) { return "externaldrive.badge.exclamationmark" }
@@ -98,7 +103,7 @@ struct FailureCard: View {
 
     private var tint: Color {
         let k = report.failure.kind
-        return k == .cancelled || k.isInterruption ? Theme.signal : (k == .unknown ? Theme.marginal : Theme.fail)
+        return k == .canceled || k.isInterruption ? Theme.signal : (k == .unknown ? Theme.marginal : Theme.fail)
     }
 }
 

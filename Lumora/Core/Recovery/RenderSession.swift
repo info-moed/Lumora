@@ -573,16 +573,16 @@ final class RenderSession: @unchecked Sendable {
 
     private func fail(_ error: Error) {
         heartbeat?.cancel()
-        let cancelled = error is CancellationError || Task.isCancelled && !(error is DeliveryFailure)
+        let canceled = error is CancellationError || Task.isCancelled && !(error is DeliveryFailure)
         let snapshot = SystemSnapshot.capture(scratch: CheckpointStore.root, output: job.outputURL, sleeps: journal.sleeps)
         var c = context()
         if error is ResumeRefused { c.stage = .prepare }
         var f = FailureClassifier.classify(error, context: c)
-        if cancelled { f.kind = .cancelled }
+        if canceled { f.kind = .canceled }
         if let r = error as? ResumeRefused { f.kind = .unknown; f.message = r.localizedDescription }
-        let keepWanted = options.keepProgressOnCancel || (cancelled && Self.keepOnNextCancel)
-        if cancelled { Self.keepOnNextCancel = false }
-        let keep = cancelled ? keepWanted && (savedFrames > 0 || journal.joinedFile != nil) : true
+        let keepWanted = options.keepProgressOnCancel || (canceled && Self.keepOnNextCancel)
+        if canceled { Self.keepOnNextCancel = false }
+        let keep = canceled ? keepWanted && (savedFrames > 0 || journal.joinedFile != nil) : true
         var facts = FailureExplainer.Facts()
         facts.progress = journal.progress
         facts.savedBytes = dir.map(CheckpointStore.size) ?? 0
@@ -606,14 +606,14 @@ final class RenderSession: @unchecked Sendable {
             report.means = "The saved progress can't be used safely; nothing was changed."
             report.actions = [.startOver, .discard]
         }
-        if cancelled && !keep { report.progress = 0 }
+        if canceled && !keep { report.progress = 0 }
         report.exportID = exportID
         report.logPath = log.url.path
         self.report = report
 
         // Footer.
         log.raw("")
-        log.line(.result, "failed", cancelled ? "canceled at \(f.stage.rawValue)" : "failed at \(f.stage.rawValue): \(f.kind.rawValue)")
+        log.line(.result, "failed", canceled ? "canceled at \(f.stage.rawValue)" : "failed at \(f.stage.rawValue): \(f.kind.rawValue)")
         log.raw("WHAT HAPPENED\n\(report.title)\n\(report.simple)\n\(report.means)")
         if !report.actions.isEmpty { log.raw("What you can do: " + report.actions.map { $0.label(report) }.joined(separator: " · ")) }
         log.raw("TECHNICAL\n\(report.proLine)\n" + report.technical.joined(separator: "\n"))
@@ -626,9 +626,9 @@ final class RenderSession: @unchecked Sendable {
         if let dir {
             if keep {
                 update {
-                    $0.state = cancelled ? .cancelledKept : ($0.finalFile != nil ? .deliveryPending : .failed)
+                    $0.state = canceled ? .cancelledKept : ($0.finalFile != nil ? .deliveryPending : .failed)
                     $0.failure = report
-                    $0.lastEvent = cancelled ? "canceled" : "failed"
+                    $0.lastEvent = canceled ? "canceled" : "failed"
                 }
                 log.info("Progress kept in the scratch folder (\(ByteCountFormatter.string(fromByteCount: facts.savedBytes, countStyle: .file))) so the export can resume", tag: "result")
             } else {

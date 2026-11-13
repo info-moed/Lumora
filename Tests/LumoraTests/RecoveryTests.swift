@@ -334,7 +334,7 @@ final class RecoveryTests: RecoveryTestCase {
             let t = Task { try await e.run(j, options: RecoveryOptions(keepProgressOnCancel: keep)) { _, _ in } }
             task.value = t
             do { _ = try await t.value; XCTFail("canceled") } catch {}
-            XCTAssertEqual(e.lastFailure?.failure.kind, .cancelled)
+            XCTAssertEqual(e.lastFailure?.failure.kind, .canceled)
             if keep {
                 let journal = try savedJournal()
                 XCTAssertEqual(journal.state, .cancelledKept)

@@ -32,7 +32,7 @@ struct ResumeBannerContent: View {
             Image(systemName: "arrow.clockwise.circle").font(.system(size: 20)).foregroundStyle(Theme.signal)
             VStack(alignment: .leading, spacing: 2) {
                 Text("An export of “\(offer.journal.outputName)” stopped at \(offer.percent)% (\(offer.reasonText)).")
-                    .font(Theme.body.weight(.semibold)).lineLimit(2)
+                    .font(Theme.body.weight(.semibold)).lineLimit(2).fixedSize(horizontal: false, vertical: true)
                 Text(offer.onlyDeliveryLeft ? "The finished video is saved; only saving it to your folder is left."
                      : "Saved \(offer.savedDate). Resuming encodes only the missing part"
                         + (more > 0 ? " · \(more) more saved export\(more == 1 ? "" : "s") in Activity" : "") + ".")

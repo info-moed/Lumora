@@ -14,7 +14,7 @@ you lose as little as possible, and you always know what happened and what to do
 - Exports are saved in **checkpoints**, so you can **resume** from where they stopped instead of starting over.
 - **Broken or damaged sources** are found when you open them, explained, and can be **repaired into a new file**.
 
-![A failed export explained in plain words](images/25-failure-explained.png)
+![A failed export explained in plain words](images/30-failure-explained.png)
 
 ---
 
@@ -108,7 +108,7 @@ that is easy.
 
 ## Resuming an export
 
-![The offer to resume an export that stopped](images/26-resume-offer.png)
+![The offer to resume an export that stopped](images/31-resume-offer.png)
 
 Lumora encodes every export in **segments** of a few minutes of encoding each. When a segment is finished it is
 flushed to the drive, checked (the right number of frames, its keyframes decode, a checksum), and recorded in a small

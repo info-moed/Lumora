@@ -185,8 +185,8 @@ final class ScreenshotTests: XCTestCase {
         var r = FailureExplainer.explain(f, facts: x)
         r.logPath = "~/Library/Logs/Lumora/Exports/2026-11-12 16-41-07 Aurora – Natural – HDR10.log"
         let card = FailureCard(report: r, simple: true, showDetails: .constant(false), onAction: { _ in }, onClose: {})
-        try await shoot("25-failure-explained", card.preferredColorScheme(.dark).tint(Theme.signal).background(Theme.surround),
-                        size: CGSize(width: 520, height: 300))
+        try await shoot("30-failure-explained", card.preferredColorScheme(.dark).tint(Theme.signal).background(Theme.surround),
+                        size: CGSize(width: 580, height: 300))
 
         var j = ExportJournal(exportID: "docs", recipeHash: "", renderVersion: CheckpointStore.renderVersion, source: nil,
                               sourceName: "Aurora.mp4", outputPath: "/Movies/Aurora – Natural – HDR10.mkv")
@@ -195,7 +195,7 @@ final class ScreenshotTests: XCTestCase {
         let crash = FailureExplainer.explain(RenderFailure(kind: .interruptedCrash, stage: .encode, message: ""), facts: x)
         let offer = ResumeOffer(journal: j, folder: URL(fileURLWithPath: "/tmp"), report: crash, bytes: 0)
         let banner = VStack { ResumeBannerContent(offer: offer, simple: false) }.padding(16)
-        try await shoot("26-resume-offer", banner.preferredColorScheme(.dark).tint(Theme.signal).background(Theme.surround),
-                        size: CGSize(width: 980, height: 96))
+        try await shoot("31-resume-offer", banner.preferredColorScheme(.dark).tint(Theme.signal).background(Theme.surround),
+                        size: CGSize(width: 1000, height: 120))
     }
 }

@@ -369,6 +369,34 @@ Download links:
 - **Typical rips don't need staging.** A UHD Blu-ray rip needs roughly 10–16 MB/s, so streaming is fine.
 - **No frame extraction.** Interpolation and VMAF never dump frames; everything streams through memory and pipes.
 
+## When a render fails: logs, explanations, resume, repair
+
+The full guide is [When a render fails](render-failures.md). In short:
+
+- **A log per export, always.** `~/Library/Logs/Lumora/Exports/` gets one file per export with every setting, tool
+  version and command line (home folder written as `~`), each step and its duration, frame counters, each tool's own
+  messages, warnings, system events (sleep, unplugged drives, memory pressure, heat) and, on failure, the full error
+  chain with the state of the Mac at that moment. 16 MB cap per log; 30 days, 200 logs or 256 MB in total. Open them
+  from Tools → Log → *Export logs…*, which can also copy a privacy-scrubbed diagnostic report.
+- **Plain-language failures.** Every failure is classified from its structure (the error domain and code chain, the
+  exit status or signal of a tool, the tool's own error messages, and the step it happened in), never from guessing at
+  text. About twenty kinds each have a title, one plain sentence, what it means for your file and one or two buttons,
+  with the technical details one click away. The tables of encoder messages that name a refused setting (SVT-AV1,
+  libaom, AVM, x265, VVenC) and the error codes were taken from the real tools and macOS 27.
+- **Checkpointed exports.** Every export is cut into a fixed plan of segments; each finished segment is flushed
+  (`F_FULLFSYNC`), checked (frame count, keyframe decode, SHA-256) and recorded in a journal written atomically. A
+  failure, quit, crash or power loss loses at most the segments being encoded. Resuming encodes only what's missing and
+  gives the same frames as an uninterrupted export (tested for SVT-AV1, libaom, x265, AV2 and the hardware HEVC and ProRes
+  encoders; Dolby Vision RPUs and HDR10+ metadata byte-identical). Segment starts inside a shot render up to 16 frames
+  first without encoding them, so the grade's temporal smoothing never shows a seam. Target-quality exports resume per
+  chunk. Transient failures (a crashed encoder, a GPU fault, a hardware encoder reset) are retried automatically; a
+  nearly full scratch drive pauses the export. The Mac is kept awake while an export runs.
+- **Damaged sources.** A quick check on open (container structure, where the data really ends, timestamps, decoding at
+  three points) and a full check on request find truncated files, a missing index, damaged frames and broken timestamps.
+  Decoding reads on past damage with FFmpeg when AVFoundation stops at the first bad frame, holding the previous picture
+  so the timeline never shifts. *Repair a copy* rebuilds the container or timestamps losslessly, re-encodes only damaged
+  groups of pictures, and says honestly when a file can't be repaired; the source is never modified.
+
 ## Upscaling
 
 - **MetalFX** is built in and needs no download. It is fast (about 4 ms per frame for 1080p→4K) and the best choice

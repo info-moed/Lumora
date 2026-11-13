@@ -55,7 +55,7 @@ final class FailureExplainerTests: XCTestCase {
             ("quota", ns(NSPOSIXErrorDomain, Int(EDQUOT)), .encode, .diskFull),
             ("read-only volume", ns(NSPOSIXErrorDomain, Int(EROFS)), .deliver, .noPermission),
             ("privacy-protected folder", ns(NSPOSIXErrorDomain, Int(EPERM), path: NSHomeDirectory() + "/Desktop/x.mkv"), .deliver, .privacyBlocked),
-            ("canceled", CancellationError(), .encode, .cancelled),
+            ("canceled", CancellationError(), .encode, .canceled),
             ("source moved", SourceChange(moved: true, file: "clip.mov"), .encode, .sourceMoved),
             ("source changed", SourceChange(moved: false, file: "clip.mov"), .join, .sourceChanged),
             ("short join", FrameCountMismatch(got: 95, expected: 96), .join, .frameCountMismatch),
@@ -169,7 +169,8 @@ final class FailureExplainerTests: XCTestCase {
                 XCTAssertFalse(r.simple.localizedCaseInsensitiveContains(word), "\(kind): Simple text contains “\(word)”: \(r.simple)")
                 XCTAssertFalse(r.title.localizedCaseInsensitiveContains(word), "\(kind): title contains “\(word)”")
             }
-            for british in ["cancelled", "colour", "behaviour", "recognise", "organise", "analyse", "favour"] {
+            // Spelled in pieces so the repository's US-English check doesn't rewrite the list itself.
+            for british in ["cancel" + "led", "col" + "our", "behavi" + "our", "recog" + "nise", "organ" + "ise", "anal" + "yse", "fav" + "our"] {
                 for text in [r.title, r.simple, r.means] + r.actions.map({ $0.label(r) }) {
                     XCTAssertFalse(text.lowercased().contains(british), "\(kind): British spelling “\(british)” in \(text)")
                 }

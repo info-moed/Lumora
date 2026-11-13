@@ -252,7 +252,7 @@ enum FailureExplainer {
             means = "Resuming re-encodes only what is missing."
             actions = [.resume, .startOver, .discard]
             pro = "The process ended without recording why."
-        case .cancelled:
+        case .canceled:
             title = "You stopped the export"
             simple = "Nothing was saved to your output folder."
             if saved {
