@@ -17,6 +17,8 @@ struct HDRTitle: Codable, Identifiable, Hashable {
     var reasons: [String]             // short, plain English: why it's good or bad
     var sources: [URL]
     var contributedBy: String?
+    /// "My copy" entries from the HDR Report: the measured file on this Mac, so the Library can play it.
+    var localFile: String? = nil
 
     enum Rating: String, Codable, CaseIterable {
         case reference = "Reference", great = "Great", average = "Average", dim = "Dim / conservative", poor = "Poor"

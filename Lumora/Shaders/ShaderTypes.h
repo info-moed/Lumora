@@ -151,6 +151,63 @@ typedef struct {
     int   pad;
 } DenoiseUniforms;
 
+// ---- Built-in player (Player.metal) ----
+// Frame storage, picked with a function constant.
+#define PLAYER_LAYOUT_BIPLANAR_TEXTURE 0   // CVPixelBuffer: Y texture + interleaved CbCr texture
+#define PLAYER_LAYOUT_SEMIPLANAR_BUFFER 1  // nv12 / p010 / p210 / p410 from a pipe: Y plane + interleaved CbCr plane
+#define PLAYER_LAYOUT_PLANAR_BUFFER 2      // yuv4xxp / gbrp / gray from a pipe or avmdec: up to three planes
+#define PLAYER_LAYOUT_RGBA_TEXTURE 3       // CVPixelBuffer already converted to non-linear R'G'B' by macOS (Dolby Vision 5)
+
+// Signal transfer characteristics the player decodes.
+#define PLAYER_TF_BT1886 0   // BT.709 / BT.601 / BT.2020 SDR: display gamma 2.4
+#define PLAYER_TF_SRGB   1
+#define PLAYER_TF_PQ     2
+#define PLAYER_TF_HLG    3
+#define PLAYER_TF_LINEAR 4
+#define PLAYER_TF_GAMMA22 5
+#define PLAYER_TF_GAMMA28 6
+
+#define PLAYER_MATRIX_YCBCR 0
+#define PLAYER_MATRIX_GBR   1   // planes hold G, B, R (MatrixCoefficients 0)
+#define PLAYER_MATRIX_YCGCO 2
+
+#define PLAYER_OUT_EXTENDED_LINEAR 0   // linear BT.2020, 1.0 = reference white (EDR)
+#define PLAYER_OUT_PQ    1             // native PQ signal, BT.2020 (macOS tone mapping)
+#define PLAYER_OUT_HLG   2             // native HLG signal, BT.2020 (macOS tone mapping)
+#define PLAYER_OUT_CODES 3             // decoded code values (Y, Cb, Cr) for tests
+
+typedef struct {
+    matrix_float3x3 yuvToRgb;        // normalized Y'CbCr (Y' 0…1, Cb/Cr −0.5…0.5) -> R'G'B'
+    matrix_float3x3 toBT2020;        // linear source primaries -> linear BT.2020
+    vector_float4   viewport;        // x, y, w, h of the picture inside the destination, in pixels
+    vector_float4   lumaSize;        // luma plane width, height (pixels); zw unused
+    vector_float4   chroma;          // chroma plane width, height; horizontal and vertical 1 / subsampling
+    vector_float4   chromaOffset;    // chroma-plane coordinate offset (x, y) for the siting; zw unused
+    vector_uint4    strides;         // bytes per row of planes 0, 1, 2 (buffer layouts)
+    vector_uint4    offsets;         // byte offset of planes 0, 1, 2 inside the buffer
+    vector_float4   luma;            // luminance weights of the source primaries (HLG system gamma)
+    int   bits;                      // significant bits per sample (8, 10, 12, 16)
+    int   containerBits;             // 8 or 16
+    int   msbAligned;                // samples sit in the top bits of their container (p010, x420…)
+    int   fullRange;
+    int   transfer;                  // PLAYER_TF_*
+    int   matrixMode;                // PLAYER_MATRIX_*
+    int   outputMode;                // PLAYER_OUT_*
+    int   toneMap;                   // 1 = BT.2390 EETF toward dstPeak
+    float refWhite;                  // nits shown as EDR 1.0
+    float srcPeak;                   // nits: the brightest the content claims (clip point)
+    float dstPeak;                   // nits: what the display can show right now (headroom × refWhite)
+    float hlgLw;                     // HLG nominal display peak (nits)
+    float hlgGamma;                  // HLG system gamma for hlgLw
+    float eetfLb;                    // BT.2390: PQ of the source black
+    float eetfLw;                    // BT.2390: PQ of the source peak
+    float eetfMaxLum;                // BT.2390: normalized PQ of the display peak
+    float eetfKS;                    // BT.2390: knee start
+    float eetfMinLum;                // BT.2390: normalized PQ of the display black
+    int   rotation;                  // clockwise rotation the picture is shown with: 0, 90, 180, 270
+    int   pad1;
+} PlayerUniforms;
+
 #define GRAIN_BINS 32
 
 #define HIST_BINS 128

@@ -119,6 +119,48 @@ final class ScreenshotTests: XCTestCase {
 
     // MARK: Screens
 
+    /// The built-in Player with its info overlay on an HDR10 clip (1280×720, encoded at low priority).
+    func testPlayer() async throws {
+        try PlayerFixtures.require("ffmpeg", "ffprobe")
+        let clip = Self.outDir.appendingPathComponent("Aurora HDR.mkv")
+        if !FileManager.default.fileExists(atPath: clip.path) {
+            let graph = "mandelbrot=s=1280x720:r=24:start_scale=2.5:end_scale=0.6:end_pts=96:inner=convergence,trim=duration=1,setpts=PTS-STARTPTS[a];"
+                + "gradients=s=1280x720:r=24:c0=0x0b1d51:c1=0xff6b35:c2=0xffd166:c3=0x7b2cbf:n=4:speed=0.03:type=radial,trim=duration=1,setpts=PTS-STARTPTS[b];"
+                + "[a][b]concat=n=2:v=1,format=yuv420p10le,scale=out_color_matrix=bt2020:out_range=tv[v]"
+            try PlayerFixtures.ffmpeg(["-filter_complex", graph, "-map", "[v]", "-c:v", "libx265", "-x265-params",
+                                       "log-level=error:hdr10=1:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:max-cll=1000,400:" +
+                                       "master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,50)",
+                                       "-color_primaries", "bt2020", "-color_trc", "smpte2084", "-colorspace", "bt2020nc", clip.path])
+        }
+        PlayerMetalView.snapshotMode = true
+        defer { PlayerMetalView.snapshotMode = false }
+        let engine = PlayerEngine()
+        var bound: URL? = clip
+        let view = PlayerWindow(url: Binding(get: { bound }, set: { bound = $0 }), engine: engine)
+        let host = NSHostingView(rootView: view.frame(width: 1440, height: 810))
+        host.frame = CGRect(x: 0, y: 0, width: 1440, height: 810)
+        let window = NSWindow(contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        window.appearance = NSAppearance(named: .darkAqua)
+        defer { engine.stop(); window.close() }
+        let deadline = Date().addingTimeInterval(60)
+        while engine.currentFrame?.index != 20 && Date() < deadline {
+            if engine.info != nil && engine.currentFrame != nil && engine.currentIndex != 20 { engine.seek(toFrame: 20) }
+            _ = engine.frameForDisplay(targetHost: CACurrentMediaTime())
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        engine.showInfo = true
+        for _ in 0..<20 {
+            _ = engine.frameForDisplay(targetHost: CACurrentMediaTime())
+            host.layoutSubtreeIfNeeded()
+            try await Task.sleep(nanoseconds: 60_000_000)
+        }
+        let rep = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+        host.cacheDisplay(in: host.bounds, to: rep)
+        try XCTUnwrap(rep.representation(using: .png, properties: [:])).write(to: Self.outDir.appendingPathComponent("25-player.png"))
+    }
+
     func testMainWindow() async throws {
         let empty = AppModel()
         empty.simpleMode = true

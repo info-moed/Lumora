@@ -73,6 +73,7 @@ struct ContentView: View {
                 ActivityButton()
                 RenderStatusPill()
                 Menu {
+                    Button("Player…") { openWindow(id: "player") }
                     Button("Compare original and interpolated…") { model.prepareCompare(); openWindow(id: "compare") }
                     Button("Match to a reference release…") { model.matchToReference() }.disabled(model.selectedPreset == nil)
                     Button("HDR report") { model.showReport = true }.disabled(model.report == nil)
@@ -134,6 +135,7 @@ private struct EmptyStage: View {
 
 struct TransportBar: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         HStack(spacing: 10) {
@@ -146,6 +148,10 @@ struct TransportBar: View {
             }
             if let p = model.progress { ProgressView(value: p).frame(width: 140).controlSize(.small) }
             Text(model.status).font(Theme.note).foregroundStyle(.secondary).lineLimit(1)
+            if model.status.hasPrefix("Saved"), let out = model.lastPackage?.video ?? model.lastExportURL {
+                Button { openWindow(id: "player", value: out) } label: { Label("Play", systemImage: "play.circle") }
+                    .buttonStyle(.borderless).font(Theme.note).help("Play \(out.lastPathComponent) in the Player")
+            }
             Spacer()
             Text(model.chip.description).font(Theme.note).foregroundStyle(.tertiary).lineLimit(1)
         }

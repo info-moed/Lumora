@@ -677,7 +677,8 @@ final class AppModel {
 
     /// Re-renders and re-encodes only the chunks of the last export that contain the given frames, then splices them in.
     func repairLastExport(frames: Set<Int>) {
-        guard let url = lastExportURL, let manifest = ExportManifest.load(for: url), var job = draftJob() else {
+        guard let url = lastExportURL, let manifest = ExportManifest.load(for: url), !manifest.chunks.isEmpty,
+              var job = draftJob() else {
             errorMessage = "Repair needs a target-quality export from this session (its chunk map is saved with it)."
             return
         }
@@ -1147,6 +1148,7 @@ final class AppModel {
                     var moved = m; moved.output = final.path; moved.save()
                 }
                 status = "Saved \(lastPackage?.video.lastPathComponent ?? url.lastPathComponent)"
+                EncodeMonitor.shared.finishedOutput = lastPackage?.video ?? url
                 // Same grade at the original frame rate, so you can keep whichever you prefer.
                 if alsoExportOriginalRate, interpolation.mode != .off {
                     try Task.checkCancellation()

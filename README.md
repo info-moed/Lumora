@@ -120,6 +120,7 @@ Prefer Xcode? After `xcodegen`, run `open Lumora.xcodeproj` and press **⌘R**.
 | [HDR and video basics](docs/hdr-basics.md) | SDR vs HDR, nits, PQ and HLG, bit depth, chroma, codecs and containers, Dolby Vision profiles. |
 | [User guide](docs/user-guide.md) | Simple mode, Pro mode tab by tab, the toolbar and Tools menu, every window, settings, shortcuts. |
 | [Encoding settings](docs/encoding/index.md) | Every option of SVT-AV1, x265, VVenC, libaom, AVM and VideoToolbox, plus the HDR metadata tools: values, defaults, effects, HDR relevance and sourced recommendations by content type, checked against the installed encoders. Starts with a guide to choosing settings. |
+| [Player](docs/player.md) | The built-in player: AV2, H.266, AV1, HEVC, ProRes, VP9 and more with correct HDR; which decoder plays what (measured), tone mapping, shortcuts. |
 | [Feature reference](docs/features.md) | Deep dive on every feature and the reasoning behind it: grading pipeline, codecs, quality metrics, interpolation, grain, storage, packaging. |
 | [Building from source](docs/building.md) | XcodeGen, `xcodebuild`, Debug vs Release, signing and notarization, bundling helper tools, running the tests. |
 | [Command-line guide](docs/command-line.md) | Everything you can drive or inspect from Terminal: settings keys, tool overrides, logs, scratch and data folders, encoder recipes, model conversion, checking output files. |

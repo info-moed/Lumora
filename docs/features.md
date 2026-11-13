@@ -201,6 +201,24 @@ Every export is packaged automatically:
 
 Long batches survive restarts, follow your hours, pause on battery or heat, and notify your Mac or phone. **Tools → Verify an archive folder** re-checks checksums on your archive drive.
 
+## Built-in Player
+
+**File → Open in Player…** (⌥⌘O), Finder's **Open With**, drag and drop, and **Play** buttons after every export and in
+the Library open the Player. It plays every format Lumora writes, including **AV2** (through the AVM reference decoder,
+pre-decoded to a disk cache by several processes in parallel because no decoder is fast enough yet) and **H.266**
+(FFmpeg's native decoder), plus AV1, HEVC up to 12-bit 4:4:4, H.264, ProRes, VP9 and Y4M in MP4, MOV, MKV, WebM, TS, IVF
+and raw streams.
+
+- **Decoder per stream:** VideoToolbox hardware through AVFoundation (zero copy) or through FFmpeg for other containers;
+  FFmpeg software where hardware can't (12-bit HEVC, AV1 beyond Main, VP9, H.266); avmdec for AV2.
+- **Exact HDR:** decoded samples go to the GPU untouched; one kernel applies range, matrix, chroma siting, bit depth,
+  PQ / HLG / BT.1886 and a BT.2390 tone map to the screen's live EDR headroom. SDR screens get an SDR rendering.
+- **Exact frames:** frame stepping and frame-accurate seeking on every decoder, including open-GOP streams.
+- **A/V sync** on the audio clock; an info overlay with the decoder, every signal property, HDR metadata, tone mapping,
+  dropped frames and decode speed.
+
+Details, the measured decoder table and all shortcuts: [Player](player.md).
+
 ## Dolby Vision and screens
 
 - **Original Dolby Vision kept and retimed** when the look is unchanged and the output is HEVC. That includes the colorist's trims, through interpolation and cropping. Otherwise Lumora writes new metadata and says why.

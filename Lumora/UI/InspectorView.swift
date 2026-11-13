@@ -262,7 +262,14 @@ struct DeliverPanel: View {
                 Button("Export…") { model.showExport = true }.keyboardShortcut("e").buttonStyle(.borderedProminent)
                     .disabled(model.analysis == nil)
             }
-            Button("Open encode monitor") { openWindow(id: "monitor") }.buttonStyle(.link)
+            HStack {
+                Button("Open encode monitor") { openWindow(id: "monitor") }.buttonStyle(.link)
+                if let out = model.lastPackage?.video ?? model.lastExportURL {
+                    Spacer()
+                    Button("Play last export") { openWindow(id: "player", value: out) }.buttonStyle(.link)
+                        .help("Plays \(out.lastPathComponent) in the built-in Player")
+                }
+            }
         }
     }
 }

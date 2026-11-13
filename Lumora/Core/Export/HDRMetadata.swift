@@ -168,3 +168,27 @@ enum LUTExporter {
         try text.write(to: url, atomically: true, encoding: .utf8)
     }
 }
+
+extension HDRMetadata {
+    /// Reads the 24-byte big-endian mastering display color volume (the layout `vtMasteringDisplay` writes: G, B, R,
+    /// white point as x, y in units of 0.00002, then max and min luminance in 0.0001 cd/m²). Returns primaries as
+    /// (x, y) for R, G, B, then the white point.
+    static func parseMasteringDisplay(_ d: Data) -> (maxNits: Double, minNits: Double, primaries: [Double])? {
+        guard d.count >= 24 else { return nil }
+        let b = [UInt8](d.prefix(24))
+        func u16(_ o: Int) -> Double { Double(Int(b[o]) << 8 | Int(b[o + 1])) }
+        func u32(_ o: Int) -> Double { Double(UInt32(b[o]) << 24 | UInt32(b[o + 1]) << 16 | UInt32(b[o + 2]) << 8 | UInt32(b[o + 3])) }
+        let g = (u16(0), u16(2)), bl = (u16(4), u16(6)), r = (u16(8), u16(10)), wp = (u16(12), u16(14))
+        let prim = [r.0, r.1, g.0, g.1, bl.0, bl.1, wp.0, wp.1].map { $0 * 0.00002 }
+        let maxN = u32(16) / 10000, minN = u32(20) / 10000
+        guard maxN > 0, maxN <= 100_000 else { return nil }
+        return (maxN, minN, prim)
+    }
+
+    /// Reads the 4-byte big-endian content light level (MaxCLL, MaxFALL).
+    static func parseContentLightLevel(_ d: Data) -> (maxCLL: Double, maxFALL: Double)? {
+        guard d.count >= 4 else { return nil }
+        let b = [UInt8](d.prefix(4))
+        return (Double(Int(b[0]) << 8 | Int(b[1])), Double(Int(b[2]) << 8 | Int(b[3])))
+    }
+}

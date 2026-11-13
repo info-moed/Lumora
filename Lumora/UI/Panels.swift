@@ -142,6 +142,7 @@ struct LogConsoleView: View {
 /// Live view of a target-VMAF encode: per-frame score against the target, and every chunk's state.
 struct EncodeMonitorView: View {
     @Environment(EncodeMonitor.self) private var monitor
+    @Environment(\.openWindow) private var openWindow
 
     struct Point: Identifiable { let id: Int; let score: Double }
 
@@ -162,6 +163,10 @@ struct EncodeMonitorView: View {
                     Metric(value: SizeForecast.gb(p), caption: monitor.forecast.map { "projected (forecast \(SizeForecast.gb($0.mid)))" } ?? "projected final size")
                 }
                 Spacer()
+                if let out = monitor.finishedOutput, FileManager.default.fileExists(atPath: out.path) {
+                    Button { openWindow(id: "player", value: out) } label: { Label("Play", systemImage: "play.fill") }
+                        .help("Play \(out.lastPathComponent) in the built-in Player")
+                }
             }
             Chart {
                 ForEach(points) { p in
@@ -357,6 +362,7 @@ struct SettingsView: View {
             StorageSettings().tabItem { Label("Storage", systemImage: "externaldrive") }
             ToolsSettings().tabItem { Label("Tools", systemImage: "hammer") }
             RunRulesSettings().tabItem { Label("Runs & Library", systemImage: "moon.stars") }
+            PlayerSettingsView().tabItem { Label("Player", systemImage: "play.rectangle") }
         }
         .frame(width: 660, height: 520)
     }

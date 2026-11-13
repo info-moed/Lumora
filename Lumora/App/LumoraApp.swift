@@ -21,10 +21,13 @@ enum LumoraMain {
 
 struct LumoraApp: App {
     @State private var model = AppModel()
+    @NSApplicationDelegateAdaptor(LumoraAppDelegate.self) private var appDelegate
 
     init() {
         Log.notice(.app, "Lumora started on \(ChipProfile.current.description), macOS \(ProcessInfo.processInfo.operatingSystemVersionString)")
         try? FileManager.default.createDirectory(at: InterpolationModelSpec.modelsFolder, withIntermediateDirectories: true)
+        // Player pre-decode caches untouched for a week, or whose source changed, go at launch.
+        DispatchQueue.global(qos: .utility).async { PreDecodeCache.cleanup() }
     }
 
     var body: some Scene {
@@ -42,7 +45,12 @@ struct LumoraApp: App {
             CommandGroup(replacing: .newItem) {
                 Button("Open…") { model.presentOpenPanel() }.keyboardShortcut("o")
             }
+            PlayerCommands()
         }
+        WindowGroup("Player", id: "player", for: URL.self) { $url in
+            PlayerWindow(url: $url)
+        }
+        .windowToolbarStyle(.unified(showsTitle: true))
         Window("UHD HDR Library", id: "library") {
             LibraryView().environmentObject(model.library)
         }
