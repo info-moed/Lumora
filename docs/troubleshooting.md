@@ -5,6 +5,9 @@ nav_order: 10
 
 # Troubleshooting
 
+**An export failed or stopped?** Lumora explains it in plain words and can usually resume from where it stopped; see
+[When a render fails](render-failures.md). Each export also has its own log under `~/Library/Logs/Lumora/Exports/`.
+
 Find your symptom below. If nothing here helps, [open an issue](https://github.com/info-moed/Lumora/issues) with:
 
 - what you did, what you expected and what happened,

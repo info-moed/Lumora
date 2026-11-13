@@ -620,6 +620,8 @@ final class RenderSession: @unchecked Sendable {
             report.simple = r.localizedDescription
             report.means = "The saved progress can't be used safely; nothing was changed."
             report.actions = [.startOver, .discard]
+            // The hardware encoder may not match exactly on another chip or macOS build; Pro can accept that.
+            if r.reason.contains("your Mac was updated") { report.actions.append(.resumeAnyway) }
         }
         if canceled && !keep { report.progress = 0 }
         report.exportID = exportID

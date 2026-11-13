@@ -5,6 +5,7 @@ enum FailureAction: String, Codable, CaseIterable, Hashable {
     case resume, resumeLessMemory, startOver, discard, chooseScratch, saveAgain, saveElsewhere, showFolder
     case openPrivacySettings, installTool, chooseCodec, copyReport, openLog, resetSettings, editEncoderOptions
     case retryLastStep, saveWithoutDynamicMetadata, repairSource, exportAnyway, showDamage, locateSource, restartMac, quitOtherApps
+    case resumeAnyway
 
     func label(_ r: FailureReport) -> String {
         let p = r.progressText
@@ -32,6 +33,7 @@ enum FailureAction: String, Codable, CaseIterable, Hashable {
         case .locateSource: return "Locate the file…"
         case .restartMac: return "Restart your Mac, then resume"
         case .quitOtherApps: return "Quit other apps, then resume"
+        case .resumeAnyway: return "Resume anyway (the parts may differ very slightly)"
         }
     }
 }

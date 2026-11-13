@@ -89,6 +89,8 @@ extension AppModel {
             if let offer { resume(offer) { $0.lessMemory = true } }
         case .saveWithoutDynamicMetadata:
             if let offer { resume(offer) { $0.skipDynamicMetadata = true } }
+        case .resumeAnyway:
+            if let offer { resume(offer) { $0.allowDifferentMac = true } }
         case .startOver:
             if let offer { startOver(offer) } else { renderFailure = nil; showExport = true }
         case .discard:
