@@ -72,6 +72,14 @@ enum DiskBudget {
     /// Peak scratch use: the parallel segments (1x the output), their join (1x), the HDR10 container pass (1x),
     /// Dolby Vision / HDR10+ metadata passes (2x more), quality-search trial encodes, a source copy and models.
     static func estimate(_ r: Request) -> Estimate {
+        // Each drive is asked once (the call takes up to a tenth of a second); call off the main thread.
+        var asked: [URL: VolumeSpace?] = [:]
+        func space(_ url: URL) -> VolumeSpace? {
+            if let v = asked[url] { return v }
+            let v = Self.space(url)
+            asked[url] = v
+            return v
+        }
         var items: [(String, Int64)] = []
         let out = max(0, r.outputBytes)
         items.append(("Segments being encoded", out))
@@ -125,9 +133,11 @@ enum DiskBudget {
     }
 
     /// `activeSince` is when the oldest running job started: job folders made or changed since then are never listed.
+    /// `inUse` are files open in Lumora (the source, which may be a staged copy on the scratch drive, and what
+    /// running exports read): a folder holding one is never listed, however old it is.
     /// Only Lumora-made items: stale job folders on the scratch drive (not used by a running export), proxies,
     /// compiled Core ML models (rebuilt on next use) and model downloads. Never anything else. Call off the main thread.
-    static func inventory(_ roots: Roots = .app, activeSince: Date? = nil) -> [CacheItem] {
+    static func inventory(_ roots: Roots = .app, activeSince: Date? = nil, inUse: [URL] = []) -> [CacheItem] {
         let fm = FileManager.default
         var out: [CacheItem] = []
         let jobPattern = try? NSRegularExpression(pattern: "^[a-z]+-[0-9A-F]{8}$")
@@ -142,8 +152,18 @@ enum DiskBudget {
             let v = try? f.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey])
             let touched = max(v?.contentModificationDate ?? .distantPast, v?.creationDate ?? .distantPast)
             if let activeSince, touched >= activeSince.addingTimeInterval(-60) { continue }   // may belong to a running job
+            if holds(f, anyOf: inUse) { continue }                                              // an open source
             let b = size(f)
-            if b > 0 { out.append(CacheItem(label: "Leftover \(name.split(separator: "-").first ?? "job") files", bytes: b, url: f, recommended: true)) }
+            guard b > 0 else { continue }
+            let kind = name.split(separator: "-").first.map(String.init) ?? "job"
+            if kind == "staged" {
+                // A copy of a source on the scratch drive: made again when that file is opened, but a person may
+                // still mean to open it from here, so it is listed unchecked.
+                let file = (try? fm.contentsOfDirectory(atPath: f.path))?.first ?? "a source"
+                out.append(CacheItem(label: "Staged copy of \(file) (copied again when opened)", bytes: b, url: f, recommended: false))
+            } else {
+                out.append(CacheItem(label: "Leftover \(kind) files", bytes: b, url: f, recommended: true))
+            }
         }
         for f in (try? fm.contentsOfDirectory(at: roots.models, includingPropertiesForKeys: nil)) ?? [] where f.pathExtension == "mlmodelc" {
             let b = size(f)
@@ -156,14 +176,23 @@ enum DiskBudget {
         return out.sorted { $0.bytes > $1.bytes }
     }
 
-    /// Removes the chosen items, refusing anything outside Lumora's own folders.
+    /// Whether `folder` is, or contains, one of `files`.
+    static func holds(_ folder: URL, anyOf files: [URL]) -> Bool {
+        let dir = folder.standardizedFileURL.resolvingSymlinksInPath().path
+        return files.contains { f in
+            let p = f.standardizedFileURL.resolvingSymlinksInPath().path
+            return p == dir || p.hasPrefix(dir + "/")
+        }
+    }
+
+    /// Removes the chosen items, refusing anything outside Lumora's own folders and anything holding a file in use.
     @discardableResult
-    static func clear(_ items: [CacheItem], roots: Roots = .app) -> Int64 {
+    static func clear(_ items: [CacheItem], roots: Roots = .app, inUse: [URL] = []) -> Int64 {
         var freed: Int64 = 0
         let allowed = [roots.scratch, roots.models, roots.downloads].map { $0.standardizedFileURL.resolvingSymlinksInPath().path + "/" }
         for item in items {
             let p = item.url.standardizedFileURL.resolvingSymlinksInPath().path
-            guard allowed.contains(where: { p.hasPrefix($0) && p.count > $0.count }) else { continue }
+            guard allowed.contains(where: { p.hasPrefix($0) && p.count > $0.count }), !holds(item.url, anyOf: inUse) else { continue }
             let b = size(item.url)
             if (try? FileManager.default.removeItem(at: item.url)) != nil { freed += b }
         }

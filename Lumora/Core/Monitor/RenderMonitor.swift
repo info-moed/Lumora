@@ -38,6 +38,8 @@ final class RenderMonitor {
         (runs.map(\.startDate) + TaskCenter.shared.active.map(\.started)).min()
     }
     var activeRun: MonitoredRun? { runs.last }
+    /// The sources running exports read (a staged copy among them): never offered for clearing.
+    var filesInUse: [URL] { runs.map(\.job.descriptor.url) }
 
     nonisolated static func register(_ run: MonitoredRun) {
         Task { @MainActor in shared.add(run) }
@@ -59,6 +61,8 @@ final class RenderMonitor {
         lastSummary = summary
         if runs.isEmpty {
             ResponsivenessProbe.shared.setRendering(false)
+            // A short idle reading after each render: the baseline the next export's responsiveness is compared with.
+            ResponsivenessProbe.shared.hold(seconds: 20)
             if var c = current { c.ended = true; c.status = .done; current = c }
             dock.clear()
             if !Self.panelOpen { stopTimer() }
@@ -69,7 +73,7 @@ final class RenderMonitor {
     /// The monitor window keeps the sampler running (for the gauges) even when nothing renders.
     func panelAppeared() {
         Self.panelOpen = true
-        if !idleSamplerHeld { SystemSampler.shared.retain(); idleSamplerHeld = true }
+        if !idleSamplerHeld { SystemSampler.shared.retain(); ResponsivenessProbe.shared.retain(); idleSamplerHeld = true }
         SystemSampler.shared.wantAppScan(true)
         if lastSummary == nil { Task.detached { let s = RenderSummary.latest(); await MainActor.run { if self.lastSummary == nil { self.lastSummary = s } } } }
         startTimer()
@@ -78,7 +82,7 @@ final class RenderMonitor {
     func panelDisappeared() {
         Self.panelOpen = false
         SystemSampler.shared.wantAppScan(false)
-        if idleSamplerHeld { SystemSampler.shared.release(); idleSamplerHeld = false }
+        if idleSamplerHeld { SystemSampler.shared.release(); ResponsivenessProbe.shared.release(); idleSamplerHeld = false }
         if runs.isEmpty { stopTimer() }
     }
 

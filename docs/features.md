@@ -267,7 +267,7 @@ search)").
 | Reading | Source |
 |---|---|
 | CPU, per core and per cluster (performance and efficiency cores) | Host CPU ticks; the device tree names each CPU's cluster |
-| Lumora, its encoders, other apps | Per-process CPU time for Lumora and every process it started; other apps = everything busy minus those two (exact, includes system processes) |
+| Lumora, its encoders, other apps | Per-process CPU time for Lumora and every process it started, including helpers that start and exit between two readings (quality-search trials, metric calls: counted from what Lumora reaps); other apps = everything busy minus those two (exact, includes system processes) |
 | The busiest other apps (names only) | Your own apps, grouped by app bundle; system and other users' processes show as "system processes" |
 | GPU | The GPU's own device utilization, and the time Lumora's grade commands spend on it |
 | Memory | The kernel's memory pressure level, swap use and growth, Lumora's footprint |
@@ -289,10 +289,11 @@ in order of precedence:
 | The Mac is hot and slowing itself down | Thermal state serious or worse for 10 s; the speed drop against the first minute is shown. |
 | Memory is tight | Memory pressure warning, or swap growing more than 100 MB a minute. |
 | The drive is the limit / the disk is almost full | The encoder waits while writes run near the drive's measured speed, or free space is below the reserve. |
-| Other apps are competing for the CPU | The Mac is at least 92% busy and other apps use a quarter of the cores or more while Lumora is CPU-limited. |
+| Other apps are competing for the CPU | The Mac is at least 92% busy and other apps use a quarter of the cores or more while Lumora is CPU-limited. Scored as Lumora's share of the whole Mac, never shown green. |
 | **Making good use of your Mac** | The encoder keeps Lumora waiting at least 70% of the time and the cores are saturated: as fast as this preset goes. Suggests a faster preset if you want speed. |
 | Cores are sitting idle | The encoder is the limit but 80% or less of the CPU is busy. Suggests more parallel segments ("Optimize for this Mac measures the best count"; text only, it never starts the optimizer). |
-| The quality search is the limit | Quality-target encodes: rendering waits for trial encodes and quality checks. |
+| The quality search is the limit | Quality-target encodes: rendering waits for trial encodes and quality checks (after the last frame is rendered, the search is all that runs, and it is still measured). |
+| Lumora is resting between frames | The encoder waits for frames because Lumora rests a quarter of the time or more (Lower priority, a hot Mac, a busy display GPU); the reason is named. |
 | Decoding / interpolation / upscaling is the limit | The encoder waits for frames, the grader waits for the producer, and that stage takes most of the producer's time. |
 | The GPU is the limit | The encoder waits for graded frames and the GPU is 80% or more busy. |
 | Making good use of the media engine | Hardware encodes: the encoder input isn't ready at least 70% of the time. |
@@ -308,11 +309,15 @@ so it doesn't flicker. The first 15 seconds say "Measuring…". When the evidenc
 "Probably…" or "Not sure yet". The score is the share of what is available to Lumora that it uses on the limiting
 resource: CPU = (Lumora + its encoders) ÷ (cores − other apps); GPU = Lumora's GPU time ÷ (1 − other apps' GPU),
 or the device total while Core ML upscaling or interpolation runs (their GPU time isn't attributed per process);
-media engine = time the hardware encoder makes frames wait.
+media engine = time the hardware encoder makes frames wait. When other apps compete for the CPU the score is
+Lumora's share of the whole Mac instead: measured with libaom while other jobs kept 12.3 of 14 cores busy, the old
+formula showed a green 99% while aomenc had 1.4 cores.
 
 **Alive and rendering.** The status says **Rendering live**, **Paused: <reason>**, **Waiting on <stage>** (for
-example "Waiting on x265 (finishing its last frames)"), **Finishing file: joining segments**, or **Stalled**, with the
-time since the last finished frame. A render is called stalled only when no frame has finished for longer than the
+example "Waiting on x265 (finishing its last frames)"), **Finishing file: joining segments**, **Measuring HDR light
+levels (40%)** or **Measuring film grain** (steps before the first frame), or **Stalled**, with the time since the
+last finished frame. A step before the first frame is stalled only when its progress stops for 2 minutes (or the
+stall time, if longer) with no other sign of life, so measuring a two-hour HDR film is never called stalled. A render is called stalled only when no frame has finished for longer than the
 stall time (60 s by default, adjustable in the monitor's details, but at least 8× this run's 95th-percentile frame time) *and* there is no other
 sign of life for 30 s: no encoder CPU, no GPU work, no files growing. A 90-second AV2 frame or a slow Real-ESRGAN
 frame is therefore never called stalled.
@@ -325,11 +330,17 @@ frame is therefore never called stalled.
 - Memory pressure (kernel events and level): at a warning, quality-target encodes run half as many chunks at once
   and the filmstrip is dropped; at critical, work pauses at the next frame before macOS starts swapping, and resumes
   when memory recovers.
-- Thermal serious: Lumora rests 20% of the time between frames and runs one chunk fewer; critical pauses (run rule).
-- A probe times a trivial GPU command on its own queue; if it takes more than 8 ms (the display's frames would be
-  waiting), Lumora paces its GPU work.
+- Thermal serious: Lumora's helpers (encoders, metric tools) move to the background band, where they run on the
+  efficiency cores at low clock, Lumora rests 20% of the time between frames, and runs one chunk fewer; all undone
+  once the Mac cools (unless you chose Lower priority). Critical pauses (run rule).
+- A probe commits a tiny GPU command (a 64 KB fill, which really runs on the GPU) on its own queue and times it to
+  the GPU's own end timestamp, so a busy CPU can't read as a busy GPU; if the p90 of the last 30 readings is over
+  8 ms (the display's frames would be waiting), Lumora paces its GPU work. Each export starts unpaced.
 - The monitor measures the app's own responsiveness during the export (main-thread answer time, timer wake lateness,
-  GPU round trip) and puts it in the summary.
+  GPU wait) and puts it in the summary, with the idle baseline measured while the monitor is open or in the 20 s
+  after each render (left out until there are enough idle readings).
+- A memory pause re-reads the kernel's pressure level every second, so it ends once memory has recovered even
+  between batch files, when nothing else is sampling.
 
 **Load too high.** When other apps keep the CPU at least 95% busy with 40% of it theirs, memory pressure is high, swap
 grows, or the Mac is hot, for 15 s in a row, a banner says so in plain words, names the three busiest other apps by
@@ -342,14 +353,16 @@ the join, the container and HDR metadata passes (two more for Dolby Vision and H
 source copy and model downloads; plus the finished file again when the export folder is on another drive. It says
 exactly how much to free ("needs about 38 GB on Macintosh HD, 22 GB free: free 21 GB (including a 5 GB margin)") and
 offers **Clear Lumora caches…**, which lists only Lumora's own leftovers with their sizes (stale scratch job folders,
-preview proxies, compiled models, model downloads) and never touches anything else. During the job, free space is
+preview proxies, compiled models, model downloads, older staged source copies, unchecked) and never touches anything
+else: the staged copy of the open source, or of anything a running export reads, is never listed. The space check
+runs off the main thread, once the export settings stop changing. During the job, free space is
 checked every 5 s; when the rest of the job would leave less than 2 GB plus 2% of the drive (at most 5 GB in all),
 the render pauses cleanly at its next frame and continues on its own when space returns.
 
 **After the export.** One summary line goes to the log (and so into the packaged report):
 
 ```
-48 frames in 0m03s (17.9 fps, 0.75× realtime); bottleneck other apps (SvtAv1EncApp); score 93%; CPU Lumora 0.1,
+48 frames in 0m03s (17.9 fps, 0.75× realtime); bottleneck other apps (SvtAv1EncApp); score 6%; CPU Lumora 0.1,
 encoders 0.8, other apps 13.1 cores (P 100%, E 100%); GPU 8% (Lumora 1%); pressure normal, swap +0 MB, thermal
 nominal; per frame decode 12.9 ms, grade GPU 0.7 ms; encoder starved 85%, pipe blocked 15%; pauses 0, stalls 0;
 UI main-thread p95 2 ms (baseline 0 ms); monitor cost 7 ms

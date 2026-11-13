@@ -12,6 +12,14 @@ enum LaneID: Hashable, Sendable {
 enum ProbeStage: Sendable { case decode, upscale, pause }
 enum ProbeChannel: Sendable { case prepared, packed, chunks }
 
+/// A step an export runs before its first output frame. While one runs the taps are off (its few measuring renders
+/// are not lanes), the status names it, and its time is kept out of the verdict and the summary averages.
+enum PrepStep: Sendable {
+    case grain, lightLevels
+    var text: String { self == .grain ? "Measuring film grain" : "Measuring HDR light levels" }
+    var noun: String { self == .grain ? "the film-grain measurement" : "the HDR light-level measurement" }
+}
+
 /// The export engine's taps. Every call is a cheap no-op unless a monitored run is active, so code paths that
 /// never call `begin` (previews, calibration, forecasts) pay nothing.
 final class RenderProbe: @unchecked Sendable {
@@ -21,7 +29,11 @@ final class RenderProbe: @unchecked Sendable {
     /// The most recent run, also after it ended (tests and the export's own report read its summary).
     var lastRun: MonitoredRun? { lock.lock(); defer { lock.unlock() }; return active }
 
-    var run: MonitoredRun? { lock.lock(); defer { lock.unlock() }; return active.flatMap { $0.ended ? nil : $0 } }
+    var run: MonitoredRun? {
+        lock.lock(); let r = active; lock.unlock()
+        guard let r, !r.ended, !r.isPreparing else { return nil }
+        return r
+    }
 
     /// Starts monitoring an export: sampler, preview, governor and disk watch. `end()` writes the summary.
     func begin(_ job: ExportJob, frames: Int, rate: (num: Int, den: Int)) -> MonitoredRun {
@@ -230,7 +242,8 @@ final class MonitoredRun: @unchecked Sendable {
     let startDate = Date()
     let encoderName: String
     let context: ClassifierContext
-    private(set) var ended = false
+    private var endedFlag = false
+    var ended: Bool { lock.lock(); defer { lock.unlock() }; return endedFlag }
     private(set) var summary: RenderSummary?
 
     private let lock = NSLock()
@@ -259,13 +272,19 @@ final class MonitoredRun: @unchecked Sendable {
     private var lastGrowthAt: Double?
     private var writeMBps: Double?
     private var lastBytesAt: Double = 0
+    // Preparation steps and the quality search
+    private struct Prep { var step: PrepStep; var since: Double; var progressAt: Double; var fraction: Double? }
+    private var prep: Prep?
+    private var prepTotal = 0.0
+    private var prepDone: [String] = []
+    private var searchDone = false
 
     struct Accumulator {
         var ticks = 0, selfCores = 0.0, childCores = 0.0, othersCores = 0.0, pBusy = 0.0, eBusy = 0.0
         var gpuDevice = 0.0, gpuDeviceTicks = 0, gpuLumora = 0.0, gpuLumoraTicks = 0
         var worstPressure = 1, worstThermal = 0
         var verdictTicks: [Bottleneck: Int] = [:]
-        var score = 0.0, scoreTicks = 0
+        var scoreByKind: [Bottleneck: (sum: Double, ticks: Int)] = [:]
         var starved = 0.0, blocked = 0.0, writerTicks = 0
         var notReady = 0.0, notReadyTicks = 0
         var pauses = 0, stalls = 0, wasStalled = false
@@ -302,6 +321,7 @@ final class MonitoredRun: @unchecked Sendable {
 
     func start() {
         lastTick = startedAt
+        LoadGovernor.shared.setGPULatency(p90Ms: nil)      // an earlier export's GPU readings don't pace this one
         SystemSampler.shared.retain()
         ResponsivenessProbe.shared.retain()
         responsivenessMark = ResponsivenessProbe.shared.mark()
@@ -313,8 +333,9 @@ final class MonitoredRun: @unchecked Sendable {
     /// Ends monitoring and writes the summary (on success, failure and cancel alike).
     func end() {
         lock.lock()
-        guard !ended else { lock.unlock(); return }
-        ended = true
+        guard !endedFlag else { lock.unlock(); return }
+        endedFlag = true
+        closePrepLocked(at: CACurrentMediaTimeCompat())
         for l in lanes.values { l.vtObservation?.invalidate(); l.vtObservation = nil }
         lock.unlock()
         // One last reading, so a render shorter than a sampling interval still has lanes and stage numbers.
@@ -333,6 +354,36 @@ final class MonitoredRun: @unchecked Sendable {
         SystemSampler.shared.release()
         ResponsivenessProbe.shared.release()
         RenderMonitor.unregister(self, summary: summary)
+    }
+
+    // MARK: - Steps
+
+    var isPreparing: Bool { lock.lock(); defer { lock.unlock() }; return prep != nil }
+
+    /// Starts a preparation step (nil: the step is over and rendering begins).
+    func preparing(_ step: PrepStep?) {
+        let now = CACurrentMediaTimeCompat()
+        lock.lock()
+        closePrepLocked(at: now)
+        prep = step.map { Prep(step: $0, since: now, progressAt: now) }
+        lock.unlock()
+    }
+
+    /// A sign of progress from the preparation step (0...1), which is also its heartbeat.
+    func preparingProgress(_ fraction: Double) {
+        let now = CACurrentMediaTimeCompat()
+        lock.lock(); prep?.progressAt = now; prep?.fraction = fraction; lock.unlock()
+    }
+
+    /// Target quality: every chunk is encoded and checked; what remains is joining and finishing the file.
+    func searchFinished() { lock.lock(); searchDone = true; lock.unlock() }
+
+    private func closePrepLocked(at now: Double) {
+        guard let p = prep else { return }
+        let d = max(0, now - p.since)
+        prepTotal += d
+        if d >= 1 { prepDone.append("\(p.step.text.lowercased()) \(RenderSummary.duration(d))") }
+        prep = nil
     }
 
     // MARK: - Lanes
@@ -515,6 +566,9 @@ final class MonitoredRun: @unchecked Sendable {
         var allClosed = true
         var anyMain = false
         var segmentIndex = 0
+        let prepNow = prep
+        let prepSoFar = prepTotal + (prep.map { now - $0.since } ?? 0)
+        let searchFinishedNow = searchDone
         let sorted = laneOrder.compactMap { lanes[$0] }
         for l in sorted {
             if let f = l.lastFrameAt { lastFrame = max(lastFrame ?? f, f) }
@@ -547,6 +601,7 @@ final class MonitoredRun: @unchecked Sendable {
                 w.producerUpscale += upscale * span
                 w.producerInterp += interp * span
                 w.producerBlocked += blocked * span
+                w.producerPaced += pausing * span
                 w.graderStarved += f(r.prepRecv - l.last.prepRecv) * span
                 w.graderGPU += f(r.gpu - l.last.gpu) * span
                 w.graderBlocked += f(r.packSend - l.last.packSend) * span
@@ -631,24 +686,43 @@ final class MonitoredRun: @unchecked Sendable {
         load.driveMBps = MacProfile.current?.scratchWriteMBps
 
         LoadGovernor.shared.observe(s, rendering: true)
+        let gov = LoadGovernor.shared.current
+        load.thermalBackoff = gov.thermalBackoff
+        load.pacingReason = gov.pacingReason
         SystemSampler.shared.wantAppScan(LoadGovernor.shared.overloadSuspected || RenderMonitor.panelOpen)
         let paused = LoadGovernor.shared.pauseReason ?? PauseGateMirror.reason
+        // Target quality: once every frame is rendered, the quality search (trial encodes, VMAF and the other
+        // checks) still runs, often for most of the export. Rendering then waits on nothing but the search.
+        let searchOnly = context.targetQuality && allClosed && anyMain && !searchFinishedNow
+        if searchOnly { w.chunksRenderBlocked = 1; w.chunksEncodersStarved = 0 }
         // Once every lane has handed over its last frame the pipeline is only flushing: keep the verdict it earned.
-        let flushing = allClosed && anyMain
-        let verdict = flushing ? classifier.verdict
-            : classifier.update(ClassifierTick(time: now - startedAt, frames: framesDone, paused: paused, pipeline: w, load: load))
+        // A preparation step has no pipeline yet. The verdict's clock leaves out the preparation time.
+        let flushing = allClosed && anyMain && !searchOnly
+        let renderTime = max(0, now - startedAt - prepSoFar)
+        let verdict = flushing || prepNow != nil ? classifier.verdict
+            : classifier.update(ClassifierTick(time: renderTime, frames: framesDone, paused: paused, pipeline: w, load: load))
 
         // Disk watch, every 5 s.
         if now - lastDiskCheck >= 5 { diskWatch(now: now, framesDone: framesDone) }
 
         // Status
-        let finishing = allClosed && anyMain ? Self.finishingStep(children: s.children) : nil
-        let waitingOn = waitingOn(w, children: s.children, allClosed: allClosed)
+        let finishing = flushing
+            ? Self.finishingStep(children: s.children) ?? (context.targetQuality ? "Finishing file" : nil) : nil
+        let waitingOn = searchOnly ? "the quality search" : waitingOn(w, children: s.children, allClosed: allClosed)
         var stall = StallInput(now: now, startedAt: startedAt, lastFrameAt: lastFrame, paused: paused,
                                finishing: finishing, p95FrameInterval: p95, setting: RenderMonitor.stallSeconds,
                                childCores: s.childCores, lastGPUAt: lastGPU, lastGrowthAt: lastGrowthAt,
-                               inputsClosed: allClosed && anyMain && finishing == nil, waitingOn: waitingOn)
+                               inputsClosed: flushing && finishing == nil, waitingOn: waitingOn)
         stall.expectedFirstFrame = 60
+        if let p = prepNow {
+            stall.preparing = p.step.text + (p.fraction.map { " (\(Int(($0 * 100).rounded()))%)" } ?? "")
+            stall.preparingProgressAt = p.progressAt
+            stall.preparingWaitingOn = p.step.noun
+            // The first frame is expected only once the step is over.
+            stall.startedAt = p.since
+        } else if lastFrame == nil {
+            stall.startedAt = startedAt + prepSoFar
+        }
         let status = StallDetector.evaluate(stall)
 
         // Speed
@@ -657,7 +731,7 @@ final class MonitoredRun: @unchecked Sendable {
         lastFramesTotal = framesDone
         fpsSmoothed = fpsSmoothed == 0 ? inst : fpsSmoothed + (inst - fpsSmoothed) * (1 - exp(-dt / 4))
         let elapsed = now - startedAt
-        let avgFPS = elapsed > 0 ? Double(framesDone) / elapsed : 0
+        let avgFPS = renderTime > 0 ? Double(framesDone) / renderTime : 0
         let fps = max(0, framesDone >= 5 ? fpsSmoothed : avgFPS)
         let outFPS = Double(rate.num) / Double(max(1, rate.den))
         let remaining = Double(max(0, totalFrames - framesDone))
@@ -668,19 +742,22 @@ final class MonitoredRun: @unchecked Sendable {
                                     idle: idle, gpuLumora: gpuLumora, gpuDevice: s.gpuDevice, fps: fps))
         if history.count > 120 { history.removeFirst(history.count - 120) }
 
-        // Summary accumulators
-        if paused == nil && (!flushing || acc.ticks == 0) {     // a render shorter than one tick still counts once
+        // Summary accumulators. A sampler's first tick reads 0 for every rate: never counted.
+        if paused == nil && prepNow == nil && s.primed && (!flushing || acc.ticks == 0) {     // a render shorter than one tick still counts once
             acc.ticks += 1
             acc.selfCores += s.selfCores; acc.childCores += s.childCores; acc.othersCores += s.othersCores
             acc.pBusy += s.performanceBusy; acc.eBusy += s.efficiencyBusy
             if let g = s.gpuDevice { acc.gpuDevice += g; acc.gpuDeviceTicks += 1 }
             if let g = gpuLumora { acc.gpuLumora += g; acc.gpuLumoraTicks += 1 }
             if verdict.kind != .measuring { acc.verdictTicks[verdict.kind, default: 0] += 1 }
-            if let sc = verdict.score, verdict.kind != .measuring { acc.score += sc; acc.scoreTicks += 1 }
+            if let sc = verdict.score, verdict.kind != .measuring {
+                let k = acc.scoreByKind[verdict.kind] ?? (0, 0)
+                acc.scoreByKind[verdict.kind] = (k.sum + sc, k.ticks + 1)
+            }
             for c in s.children where c.cores > 0.3 { acc.childNames[c.name, default: 0] += 1 }
             acc.maxChildren = max(acc.maxChildren, s.children.filter { $0.cores > 0.3 }.count)
         }
-        if paused == nil {     // the writer's waits count up to the last frame, flush included
+        if paused == nil && prepNow == nil && s.primed {     // the writer's waits count up to the last frame, flush included
             if let st = w.writerStarved, let bp = w.writerBackpressure { acc.starved += st; acc.blocked += bp; acc.writerTicks += 1 }
             if let nr = w.engineNotReady { acc.notReady += nr; acc.notReadyTicks += 1 }
         }
@@ -699,7 +776,7 @@ final class MonitoredRun: @unchecked Sendable {
         snap.fraction = Double(framesDone) / Double(max(1, totalFrames))
         snap.fps = fps
         snap.realtime = fps / max(0.001, outFPS)
-        snap.eta = rateForETA > 0.01 ? remaining / rateForETA : nil
+        snap.eta = searchOnly || prepNow != nil ? nil : (rateForETA > 0.01 ? remaining / rateForETA : nil)
         snap.elapsed = elapsed
         snap.position = position
         snap.timecode = PreviewFrame.timecode(frame: position ?? 0, rate: rate)
@@ -810,7 +887,9 @@ final class MonitoredRun: @unchecked Sendable {
         let decode = all.reduce(0) { $0 + $1.decode }, upscale = all.reduce(0) { $0 + $1.upscale }, gpu = all.reduce(0) { $0 + $1.gpuBusy }
         let cost = probeCost
         let frames = all.reduce(0) { $0 + $1.graded }
+        let prepSeconds = prepTotal, prepSteps = prepDone
         lock.unlock()
+        if !prepSteps.isEmpty { Log.info(.encode, "Render monitor: before the first frame, " + prepSteps.joined(separator: ", ")) }
         let t = max(1, a.ticks)
         let wall = CACurrentMediaTimeCompat() - startedAt
         let top = a.verdictTicks.max { $0.value < $1.value }?.key ?? (snap.verdict.kind == .paused ? .paused : snap.verdict.kind)
@@ -819,12 +898,13 @@ final class MonitoredRun: @unchecked Sendable {
         let n = Double(max(1, frames))
         let resp = ResponsivenessProbe.shared
         let busy = resp.busyMain(since: responsivenessMark)
-        let base = resp.report.mainIdle
+        let base = resp.idleBaseline
         return RenderSummary(
             name: name, outcome: outcome, date: startDate, frames: frames, totalFrames: totalFrames, seconds: wall,
             fps: wall > 0 ? Double(frames) / wall : 0, outputFPS: Double(rate.num) / Double(max(1, rate.den)),
             bottleneck: top.label, bottleneckKind: top.rawValue, verdictHeadline: snap.verdict.headline,
-            score: a.scoreTicks > 0 ? a.score / Double(a.scoreTicks) : nil,
+            // The score of the bottleneck reported: scores of different verdicts measure different things.
+            score: a.scoreByKind[top].map { $0.sum / Double(max(1, $0.ticks)) },
             encoders: encoders.isEmpty ? [encoderName] : Array(encoders),
             lumoraCores: a.selfCores / Double(t), encoderCores: a.childCores / Double(t), otherCores: a.othersCores / Double(t),
             cores: snap.sample.cores, performanceBusy: a.pBusy / Double(t), efficiencyBusy: a.eBusy / Double(t),
@@ -837,13 +917,20 @@ final class MonitoredRun: @unchecked Sendable {
             pipeBlocked: a.writerTicks > 0 ? a.blocked / Double(a.writerTicks) : nil,
             engineBusy: a.notReadyTicks > 0 ? a.notReady / Double(a.notReadyTicks) : nil,
             pauses: a.pauses, stalls: a.stalls,
-            uiP95Ms: busy.count > 0 ? busy.p95 : nil, uiBaselineP95Ms: base.count > 0 ? base.p95 : nil,
+            uiP95Ms: busy.count > 0 ? busy.p95 : nil, uiBaselineP95Ms: base?.p95,
             uiMaxMs: busy.count > 0 ? busy.max : nil,
-            monitorCostMs: cost * 1000 + SystemSampler.shared.averageCostMs * Double(a.ticks))
+            monitorCostMs: cost * 1000 + SystemSampler.shared.averageCostMs * Double(a.ticks),
+            prepSeconds: prepSeconds >= 1 ? prepSeconds : nil)
     }
 }
 
 /// The user-pause reason as last seen (PauseGate is an actor; the monitor reads a mirror updated from the UI).
+/// Written on the main actor and read on the sampler queue, so it is behind a lock.
 enum PauseGateMirror {
-    nonisolated(unsafe) static var reason: String?
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var stored: String?
+    static var reason: String? {
+        get { lock.lock(); defer { lock.unlock() }; return stored }
+        set { lock.lock(); stored = newValue; lock.unlock() }
+    }
 }

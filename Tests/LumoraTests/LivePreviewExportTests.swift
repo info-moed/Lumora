@@ -124,7 +124,32 @@ final class LivePreviewExportTests: XCTestCase {
         XCTAssertFalse(trials.isEmpty, "trial encodes appear as lanes")
         XCTAssertTrue(trials.allSatisfy { $0.label.contains("Chunk ") && ($0.label.contains("quality search") || $0.label.contains("perceptual")) },
                       "\(trials.map(\.label))")
-        XCTAssertNotNil(run.summary)
+        // The quality search after the last rendered frame is measured too: helpers' CPU (trial encodes, metrics,
+        // many of them shorter than a sampling tick) is counted, and the run gets a verdict.
+        let summary = try XCTUnwrap(run.summary)
+        print("Target quality summary: " + summary.line)
+        XCTAssertGreaterThan(summary.encoderCores, 0.05, summary.line)
+        XCTAssertNotEqual(summary.bottleneckKind, Bottleneck.measuring.rawValue, summary.line)
+    }
+
+    /// Measuring film grain renders three frames before the export; they are not lanes, so the real segments are
+    /// numbered from 1 and none shows as a phantom finished segment.
+    func testGrainMeasurementAddsNoLanes() async throws {
+        guard Codec.av1.available else { throw XCTSkip("SVT-AV1 not installed") }
+        let src = try EndToEndTests.makeClip("sdr.mp4", hdr: false)
+        var job = try await makeJob(src, delivery: .sdr, codec: .av1, out: "monitor-grain.mkv")
+        job.quality = 0.5
+        job.filmTexture = .fine
+        XCTAssertTrue(ExportEngine.grainRoles(job).texture)
+        let engine = ExportEngine()
+        _ = try await engine.run(job) { _, _ in }
+        let run = try XCTUnwrap(engine.probe.lastRun)
+        let lanes = run.snapshot.lanes
+        print("Grain export lanes: " + lanes.map { "\($0.label) \($0.detail)" }.joined(separator: " | "))
+        let segments = ChipProfile.current.segments(for: .av1, frameCount: run.totalFrames)
+        XCTAssertEqual(lanes.count, segments, "\(lanes.map(\.label))")
+        XCTAssertTrue(lanes.first?.label.hasPrefix("Segment 1 · frames 0–") ?? false, "\(lanes.map(\.label))")
+        XCTAssertTrue(run.laneTotals().allSatisfy { $0.graded > 0 }, "a lane with no frames: \(run.laneTotals().map(\.lane))")
     }
 
     /// Responsiveness before and during an export (reported; loose limits because the Mac is shared).

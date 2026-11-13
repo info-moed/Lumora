@@ -12,9 +12,12 @@ final class LoadGovernorTests: XCTestCase {
         g.reset()
     }
 
+    private var savedReader: (() -> Int?)!
+
     override func tearDown() {
         g.reset()
         LoadGovernor.recoverySeconds = savedRecovery
+        if let savedReader { LoadGovernor.pressureReader = savedReader }
     }
 
     func sample(t: Double, pressure: Int = 1, thermal: ProcessInfo.ThermalState = .nominal, busy: Double = 4, others: Double = 1) -> SystemSample {
@@ -80,6 +83,59 @@ final class LoadGovernorTests: XCTestCase {
         g.choose(.none)
         await t.value
         XCTAssertGreaterThan(Date().timeIntervalSince(started), 0.25)
+    }
+
+    /// A critical-pressure pause with nothing monitoring (a batch between files): the normal event came within the
+    /// recovery time and was ignored, and no further event comes. The pause must still end once memory is fine.
+    func testMemoryPauseEndsWithoutFurtherEvents() async throws {
+        savedReader = LoadGovernor.pressureReader
+        LoadGovernor.recoverySeconds = 1.5
+        g.setPressure(4, source: "event")
+        g.setPressure(1, source: "event")               // too soon: ignored
+        XCTAssertNotNil(g.current.memoryPause)
+        LoadGovernor.pressureReader = { 1 }               // the kernel reports normal from now on
+        let started = Date()
+        let hold = Task { await LoadGovernor.shared.holdIfNeeded() }
+        let watchdog = Task { try await Task.sleep(nanoseconds: 8_000_000_000); hold.cancel() }
+        await hold.value
+        watchdog.cancel()
+        let waited = Date().timeIntervalSince(started)
+        XCTAssertNil(g.current.memoryPause, "the pause latched after \(waited) s")
+        XCTAssertLessThan(waited, 6)
+    }
+
+    /// A hot Mac moves the helpers (where a CLI encode's heat is) to the background band, and back once it cools.
+    func testThermalBackoffMovesHelpersToTheBackgroundBand() throws {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        p.arguments = ["20"]
+        try p.runWatched()
+        defer { if p.isRunning { p.terminate() } }
+        XCTAssertEqual(ChildPolicy.inBackground(p.processIdentifier), false)
+        g.observe(sample(t: 1, thermal: .serious), rendering: true)
+        XCTAssertTrue(g.current.thermalBackoff)
+        XCTAssertTrue(ChildPolicy.shared.thermalBackoff)
+        XCTAssertEqual(g.current.pacingReason, "while the Mac is hot")
+        XCTAssertEqual(ChildPolicy.inBackground(p.processIdentifier), true)
+        g.observe(sample(t: 2, thermal: .nominal), rendering: true)
+        XCTAssertFalse(ChildPolicy.shared.thermalBackoff)
+        XCTAssertEqual(ChildPolicy.inBackground(p.processIdentifier), false)
+        // The person's Lower priority outlasts a cooled Mac.
+        g.choose(.lowerPriority)
+        g.observe(sample(t: 3, thermal: .serious), rendering: true)
+        g.observe(sample(t: 4, thermal: .nominal), rendering: true)
+        XCTAssertEqual(ChildPolicy.inBackground(p.processIdentifier), true)
+        g.choose(.none)
+        XCTAssertEqual(ChildPolicy.inBackground(p.processIdentifier), false)
+    }
+
+    func testGPUPacingSaysWhyAndClears() {
+        g.setGPULatency(p90Ms: 20)
+        XCTAssertEqual(g.current.pacing, 0.15, accuracy: 1e-9)
+        XCTAssertTrue(g.current.pacingReason?.contains("display") ?? false)
+        g.setGPULatency(p90Ms: nil)                        // what a new export does at its start
+        XCTAssertEqual(g.current.pacing, 0)
+        XCTAssertNil(g.current.pacingReason)
     }
 
     func testDiskPauseCallsHook() {

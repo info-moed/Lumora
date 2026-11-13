@@ -522,16 +522,19 @@ final class ExportEngine {
         if let c = job.encodeChoice { Log.notice(.encode, "Encoder settings: \(c.rungLabel) + \(c.optionIDs.joined(separator: ", ")) → \(c.extraArgs.joined(separator: " "))") }
         let grainTmp = try ScratchManager.jobDirectory("grain")
         defer { try? FileManager.default.removeItem(at: grainTmp) }
+        monitored.preparing(.grain)
         ctx.grain = try await planGrain(ctx, workDir: grainTmp)
 
         if job.target.isHDR {
             status("Measuring HDR light levels", 0)
+            monitored.preparing(.lightLevels)
             let levels = try await SceneAnalyzer.measureLightLevels(d, color: job.preset.color, preset: job.preset,
                                                                     analysis: job.analysis, target: job.target,
-                                                                    sourcePeakNits: job.sourcePeakNits) { status("Measuring HDR light levels", $0) }
+                                                                    sourcePeakNits: job.sourcePeakNits) { status("Measuring HDR light levels", $0); monitored.preparingProgress($0) }
             ctx.levels = levels
             ctx.meta = HDRMetadata.Static(peakNits: job.target.effectivePeak, maxCLL: levels.maxCLL, maxFALL: levels.maxFALL)
         }
+        monitored.preparing(nil)
 
         let tmp = try ScratchManager.jobDirectory("export")   // all temp writes on the fast scratch SSD
         Log.info(.encode, "Export \(job.outputURL.lastPathComponent): \(job.codec.displayName), \(job.bitDepth)-bit \(job.chroma.label), \(job.delivery.displayName), scratch \(tmp.path)")
@@ -540,6 +543,7 @@ final class ExportEngine {
         if let t = job.qualityTarget, ![.prores422HQ, .prores4444XQ, .av2].contains(job.codec) {
             Log.notice(.encode, "Encoding to VMAF \(t.vmaf) (\(t.pool.rawValue)) for \(job.contentKind.displayName)")
             let pieces = try await runTargetQuality(ctx, tmp: tmp, status: status)
+            monitored.searchFinished()
             status("Finishing file", 1)
             var result = try addContainerHDR10Metadata(ctx, file: try await join(ctx, segments: pieces, tmp: tmp), tmp: tmp)
             if Self.needsMetadataPass(job.delivery) { result = try injectDynamicMetadata(ctx, file: result, tmp: tmp) }

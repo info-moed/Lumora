@@ -87,6 +87,41 @@ final class DiskBudgetTests: XCTestCase {
         XCTAssertTrue(DiskBudget.shouldPause(free: 6 * gb, total: 1000 * gb, remainingFrames: 1000, bytesPerFrame: 1_000_000, finishBytes: 2 * gb))
     }
 
+    /// The staged copy of the open source lives in a job-like folder on the scratch drive and is always older than
+    /// the export reading it: it must never be offered, let alone checked by default.
+    func testStagedSourceInUseIsNeverOffered() throws {
+        let fm = FileManager.default
+        let scratch = root.appendingPathComponent("scratch"), models = root.appendingPathComponent("models")
+        let roots = DiskBudget.Roots(scratch: scratch, models: models, downloads: models.appendingPathComponent("Downloads"))
+        let open = scratch.appendingPathComponent("staged-1A2B3C4D/Film.mov")
+        let other = scratch.appendingPathComponent("staged-5E6F7A8B/Old.mov")
+        for f in [open, other] {
+            try fm.createDirectory(at: f.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data(repeating: 1, count: 300_000).write(to: f)
+            let old = Date().addingTimeInterval(-7200)
+            try fm.setAttributes([.modificationDate: old, .creationDate: old], ofItemAtPath: f.deletingLastPathComponent().path)
+        }
+        let items = DiskBudget.inventory(roots, activeSince: Date().addingTimeInterval(-60), inUse: [open])
+        XCTAssertFalse(items.contains { $0.url.lastPathComponent == "staged-1A2B3C4D" }, "the open source's staged copy was listed")
+        let old = try XCTUnwrap(items.first { $0.url.lastPathComponent == "staged-5E6F7A8B" })
+        XCTAssertFalse(old.recommended, "a staged copy is never checked by default")
+        XCTAssertTrue(old.label.contains("Old.mov"), old.label)
+        // Even if asked, clearing skips a folder holding a file in use.
+        DiskBudget.clear([DiskBudget.CacheItem(label: "x", bytes: 1, url: open.deletingLastPathComponent(), recommended: true)],
+                         roots: roots, inUse: [open])
+        XCTAssertTrue(fm.fileExists(atPath: open.path))
+    }
+
+    func testEstimateAsksEachDriveOnce() {
+        var calls = 0
+        let g = gb
+        DiskBudget.space = { _ in calls += 1; return DiskBudget.VolumeSpace(name: "Macintosh HD", free: 500 * g, total: 1000 * g, id: "internal") }
+        var r = request(10 * gb)
+        r.source = URL(fileURLWithPath: "/Users/Shared/source.mov")
+        _ = DiskBudget.estimate(r)
+        XCTAssertLessThanOrEqual(calls, 3, "one query per path involved, not one per check")
+    }
+
     func testInventoryListsOnlyLumoraItemsAndClearNeverLeavesItsFolders() throws {
         let fm = FileManager.default
         let scratch = root.appendingPathComponent("scratch"), models = root.appendingPathComponent("models")

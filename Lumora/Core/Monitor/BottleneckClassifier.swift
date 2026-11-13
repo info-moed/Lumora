@@ -6,6 +6,7 @@ struct PipelineWindow: Sendable, Equatable {
     var producerUpscale = 0.0         // MetalFX / Core ML upscaling
     var producerInterp = 0.0          // RIFE / IFRNet frame interpolation (and other producer work)
     var producerBlocked = 0.0         // producer waiting for the grader to take a frame
+    var producerPaced = 0.0           // producer resting in the pause gate (Lumora's own pacing)
     var graderStarved = 0.0           // grader waiting for the producer
     var graderGPU = 0.0               // grade command buffers running on the GPU
     var graderBlocked = 0.0           // grader waiting for the writer
@@ -17,7 +18,7 @@ struct PipelineWindow: Sendable, Equatable {
     var activeLanes = 0
 
     static let keys: [WritableKeyPath<PipelineWindow, Double>] = [
-        \.producerDecode, \.producerUpscale, \.producerInterp, \.producerBlocked, \.graderStarved, \.graderGPU, \.graderBlocked,
+        \.producerDecode, \.producerUpscale, \.producerInterp, \.producerBlocked, \.producerPaced, \.graderStarved, \.graderGPU, \.graderBlocked,
     ]
     static let optionalKeys: [WritableKeyPath<PipelineWindow, Double?>] = [
         \.writerStarved, \.writerBackpressure, \.engineNotReady, \.chunksRenderBlocked, \.chunksEncodersStarved,
@@ -42,6 +43,8 @@ struct LoadWindow: Sendable, Equatable {
     var writeMBps: Double?
     var driveMBps: Double?
     var diskLow = false
+    var thermalBackoff = false         // the governor has moved Lumora's helpers to the background band
+    var pacingReason: String?          // why Lumora rests between frames ("because you chose Lower priority")
 
     static let keys: [WritableKeyPath<LoadWindow, Double>] = [
         \.busyCores, \.selfCores, \.childCores, \.othersCores, \.performanceBusy, \.efficiencyBusy, \.swapGrowthMBPerMin,
@@ -71,7 +74,7 @@ struct ClassifierTick: Sendable {
 
 enum Bottleneck: String, Codable, Sendable, CaseIterable {
     case measuring, paused, thermal, memory, disk, otherApps, encoderSaturated, encoderCoresIdle
-    case decode, interpolation, upscale, gpu, gpuSerial, hardwareEngine, qualitySearch, mixed
+    case decode, interpolation, upscale, gpu, gpuSerial, hardwareEngine, qualitySearch, resting, mixed
 
     var isAlarm: Bool { [.thermal, .memory, .disk, .otherApps].contains(self) }
     var label: String {
@@ -91,6 +94,7 @@ enum Bottleneck: String, Codable, Sendable, CaseIterable {
         case .gpuSerial: return "GPU, one frame at a time"
         case .hardwareEngine: return "media engine"
         case .qualitySearch: return "quality search"
+        case .resting: return "Lumora resting between frames"
         case .mixed: return "mixed"
         }
     }
@@ -108,7 +112,7 @@ struct Verdict: Sendable, Equatable {
     var engineUse = 0.0
     var confidence: Confidence = .low
     var isGood = false
-    var scoreFormula = "CPU use = (Lumora + its encoders) ÷ (cores − other apps). GPU use = Lumora's GPU time ÷ (1 − other apps' GPU). Media engine use is inferred from how long the hardware encoder makes frames wait."
+    var scoreFormula = "CPU use = (Lumora + its encoders) ÷ (cores − other apps). GPU use = Lumora's GPU time ÷ (1 − other apps' GPU). Media engine use is inferred from how long the hardware encoder makes frames wait. When other apps are competing, the score is Lumora's share of the whole Mac instead."
 
     /// One plain sentence for Simple mode.
     var sentence: String {
@@ -206,6 +210,8 @@ final class BottleneckClassifier {
         load.gpuOthersKnown = l.gpuOthersKnown
         load.driveMBps = l.driveMBps
         load.diskLow = l.diskLow
+        load.thermalBackoff = l.thermalBackoff
+        load.pacingReason = l.pacingReason
     }
 
     // MARK: - Rules
@@ -252,9 +258,13 @@ final class BottleneckClassifier {
                 let early = Double(e.frames) / e.time
                 if early > 0, now < early { drop = " Speed is \(pct(1 - now / early)) below the first minute." }
             }
+            // Only claims what the governor did: helpers moved to the background band (efficiency cores, low clock).
+            let helped = l.thermalBackoff
+                ? " Lumora now runs its helpers in the background band (efficiency cores) and rests between frames until the Mac cools."
+                : ""
             return make(.thermal, "The Mac is hot and slowing itself down",
-                        "macOS reports a \(l.thermal >= 3 ? "critical" : "serious") thermal state.\(drop)",
-                        "Give the Mac some airflow, or pause until it cools. Lumora has slowed down to help.", score: nil, margin: 0.3)
+                        "macOS reports a \(l.thermal >= 3 ? "critical" : "serious") thermal state.\(drop)\(helped)",
+                        "Give the Mac some airflow, or pause until it cools.", score: nil, margin: 0.3)
         }
         // 3. Memory
         let swapEnter = verdict.kind == .memory ? 60.0 : 100.0
@@ -280,10 +290,13 @@ final class BottleneckClassifier {
         // encodes) the media engine waiting on Lumora rather than the other way round.
         let cpuLimited = context.hardware ? engine < 0.6 : (bp >= 0.7 || lumora < 0.7 * n)
         if l.busyCores >= 0.92 * n, l.othersCores >= th(.otherApps, 0.25, 0.15) * n, cpuLimited {
+            // Scored as Lumora's share of the whole Mac: of what other apps leave free it may well use all, and a
+            // green "99%" while Lumora gets a tenth of the CPU would say the opposite of the truth.
+            let share = min(1, lumora / n)
             return make(.otherApps, "Other apps are competing for the CPU",
-                        "Other apps use \(cores(l.othersCores)) of \(l.cores) cores, so Lumora gets \(cores(lumora)).",
+                        "Other apps use \(cores(l.othersCores)) of \(l.cores) cores, so Lumora gets \(cores(lumora)) (\(pct(share)) of the Mac).",
                         "Close the busy apps listed below, or choose Lower priority to let them go first.",
-                        score: cpu, margin: l.othersCores / n - 0.25 + 0.1)
+                        score: share, margin: l.othersCores / n - 0.25 + 0.1)
         }
         // 10. Target quality: the quality search or the render
         if context.targetQuality, let blocked = p.chunksRenderBlocked, blocked >= th(.qualitySearch, 0.5, 0.4) {
@@ -328,6 +341,16 @@ final class BottleneckClassifier {
             ?? (context.targetQuality ? p.chunksEncodersStarved : nil)
         if let starved, starved >= th(.decode, 0.5, 0.4) || [.decode, .interpolation, .upscale, .gpu, .gpuSerial].contains(verdict.kind) && starved >= 0.4 {
             if p.graderStarved >= 0.5 {
+                // Lumora's own rests (Lower priority, a hot Mac, a busy display GPU) are not decode time.
+                if p.producerPaced >= th(.resting, 0.25, 0.15) {
+                    let why = l.pacingReason ?? "to keep the Mac responsive"
+                    let suggestion = why.contains("Lower priority")
+                        ? "Choose Normal priority in the banner for full speed."
+                        : "Lumora goes back to full speed on its own once that passes."
+                    return make(.resting, "Lumora is resting between frames",
+                                "It rests \(pct(p.producerPaced)) of the time \(why), so the encoder waits for frames \(pct(starved)) of the time.",
+                                suggestion, score: nil, margin: p.producerPaced - 0.25 + 0.1)
+                }
                 let work = p.producerDecode + p.producerInterp + p.producerUpscale
                 let shares: [(Bottleneck, Double)] = work > 0.01
                     ? [(.decode, p.producerDecode / work), (.interpolation, p.producerInterp / work), (.upscale, p.producerUpscale / work)]
@@ -381,6 +404,7 @@ enum RunStatus: Equatable, Sendable {
     case waiting(String)
     case stalled(seconds: Int, on: String)
     case finishing(String)
+    case preparing(String)             // a step before the first frame: measuring grain or HDR light levels
     case done
 
     var text: String {
@@ -391,6 +415,7 @@ enum RunStatus: Equatable, Sendable {
         case .waiting(let s): return "Waiting on \(s)"
         case .stalled(let sec, let on): return "Stalled \(sec >= 120 ? "\(sec / 60)m" : "\(sec)s"): waiting on \(on)"
         case .finishing(let s): return s
+        case .preparing(let s): return s
         case .done: return "Done"
         }
     }
@@ -412,6 +437,9 @@ struct StallInput: Sendable {
     var lastGrowthAt: Double?
     var inputsClosed = false           // every lane has handed over its last frame
     var waitingOn = "the next frame"
+    var preparing: String?             // a step before rendering ("Measuring HDR light levels (40%)")
+    var preparingProgressAt: Double?   // its last sign of progress
+    var preparingWaitingOn = "the preparation step"
 }
 
 enum StallDetector {
@@ -421,14 +449,25 @@ enum StallDetector {
         return t
     }
 
+    /// A preparation step reports progress now and then (every 24 measured frames); it is stalled only when that
+    /// stops for longer than the setting (at least 2 minutes: one 8K frame with an upscaler can be slow).
+    static func preparingLimit(_ i: StallInput) -> Double { max(i.setting, 120) }
+
     static func evaluate(_ i: StallInput) -> RunStatus {
         if let p = i.paused { return .paused(p) }
-        if let f = i.finishing { return .finishing(f) }
-        let quiet = i.now - (i.lastFrameAt ?? i.startedAt)
-        let t = limit(i)
         let active = i.childCores > 0.02
             || (i.lastGPUAt.map { i.now - $0 < 30 } ?? false)
             || (i.lastGrowthAt.map { i.now - $0 < 30 } ?? false)
+        if let p = i.preparing {
+            let quiet = i.now - (i.preparingProgressAt ?? i.startedAt)
+            if quiet >= preparingLimit(i) && !active {
+                return .stalled(seconds: Int(quiet), on: i.preparingWaitingOn)
+            }
+            return .preparing(p)
+        }
+        if let f = i.finishing { return .finishing(f) }
+        let quiet = i.now - (i.lastFrameAt ?? i.startedAt)
+        let t = limit(i)
         if i.inputsClosed {
             return active || quiet < t ? .waiting("\(i.waitingOn) (finishing its last frames)") : .stalled(seconds: Int(quiet), on: i.waitingOn)
         }

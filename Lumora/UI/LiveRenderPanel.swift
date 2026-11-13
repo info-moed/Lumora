@@ -97,7 +97,7 @@ struct VerdictCard: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
-            ScoreRing(score: verdict.score, good: verdict.isGood)
+            ScoreRing(score: verdict.score, good: verdict.isGood, alarm: verdict.kind.isAlarm)
                 .frame(width: 64, height: 64)
                 .help(verdict.scoreFormula)
             VStack(alignment: .leading, spacing: 6) {
@@ -120,6 +120,7 @@ struct VerdictCard: View {
 struct ScoreRing: View {
     let score: Double?
     var good = false
+    var alarm = false                   // other apps, heat, memory, disk: never green, whatever the number
     var body: some View {
         ZStack {
             Circle().stroke(Color.white.opacity(0.08), lineWidth: 7)
@@ -132,7 +133,10 @@ struct ScoreRing: View {
             }
         }
     }
-    private func color(_ s: Double) -> Color { good || s >= 0.85 ? Theme.pass : (s >= 0.6 ? Theme.marginal : Theme.signal) }
+    private func color(_ s: Double) -> Color {
+        if alarm { return Theme.marginal }
+        return good || s >= 0.85 ? Theme.pass : (s >= 0.6 ? Theme.marginal : Theme.signal)
+    }
 }
 
 /// CPU (performance and efficiency clusters, split into Lumora, its encoders, other apps and idle), GPU, memory,
@@ -369,7 +373,7 @@ struct LastExportCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Last export: \(summary.name)").font(Theme.heading(12)).lineLimit(1)
-            Text("\(summary.frames) frames in \(RenderSummary.duration(summary.seconds)) (\(String(format: "%.1f", summary.fps)) fps) · \(summary.verdictHeadline)\(summary.score.map { " · \(Int(($0 * 100).rounded()))% of the Mac" } ?? "")")
+            Text("\(summary.frames) frames in \(RenderSummary.duration(summary.seconds)) (\(String(format: "%.1f", summary.fps)) fps) · \(summary.verdictHeadline)\(summary.score.map { " · \(Int(($0 * 100).rounded()))% capacity score" } ?? "")")
                 .font(Theme.note).foregroundStyle(.secondary)
             Text("Bottleneck: \(summary.bottleneck). " + String(format: "CPU: Lumora %.1f, encoders %.1f, other apps %.1f cores.", summary.lumoraCores, summary.encoderCores, summary.otherCores))
                 .font(Theme.note).foregroundStyle(.secondary)

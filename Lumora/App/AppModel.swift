@@ -1164,18 +1164,21 @@ final class AppModel {
     }
 
     /// Before an export: the space it needs on the scratch and export drives, from the size forecast. It warns with
-    /// exact amounts and starts anyway; the render pauses safely if a drive is about to fill.
+    /// exact amounts and starts anyway; the render pauses safely if a drive is about to fill. The drives are asked
+    /// off the main thread (each call can take a tenth of a second).
     private func warnIfShortOfSpace(folder: URL, copies: Int) {
         guard let d = descriptor else { return }
         let out = (currentForecast()?.high ?? Int64(Double(d.width * d.height) * 0.15 * Double(max(1, d.frameCount)))) * Int64(max(1, copies))
-        let e = DiskBudget.estimate(DiskBudget.Request(outputBytes: out, codec: codec, delivery: delivery,
-                                                      scratch: DiskBudget.Roots.app.scratch,
-                                                      output: folder.appendingPathComponent("export"), source: d.url))
-        Log.info(.storage, "Disk check before export: " + e.message)
-        if !e.fits {
-            Log.warning(.storage, "Not enough free space for this export: " + e.message)
-            errorMessage = "Not enough free disk space. " + e.message
-                + " The export starts anyway and pauses safely before the drive fills; Export → Clear Lumora caches… can free space."
+        let r = DiskBudget.Request(outputBytes: out, codec: codec, delivery: delivery, scratch: DiskBudget.Roots.app.scratch,
+                                   output: folder.appendingPathComponent("export"), source: d.url)
+        Task { [weak self] in
+            let e = await Task.detached(priority: .utility) { DiskBudget.estimate(r) }.value
+            Log.info(.storage, "Disk check before export: " + e.message)
+            if !e.fits {
+                Log.warning(.storage, "Not enough free space for this export: " + e.message)
+                self?.errorMessage = "Not enough free disk space. " + e.message
+                    + " The export starts anyway and pauses safely before the drive fills; Export → Clear Lumora caches… can free space."
+            }
         }
     }
 

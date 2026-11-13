@@ -39,6 +39,7 @@ struct RenderSummary: Codable, Sendable, Equatable {
     var uiBaselineP95Ms: Double?
     var uiMaxMs: Double?
     var monitorCostMs: Double
+    var prepSeconds: Double? = nil          // grain / HDR light-level measurement before the first frame
 
     var realtime: Double { outputFPS > 0 ? fps / outputFPS : 0 }
 
@@ -54,6 +55,7 @@ struct RenderSummary: Codable, Sendable, Equatable {
         let nf = NumberFormatter(); nf.numberStyle = .decimal
         var parts: [String] = []
         parts.append("\(nf.string(from: NSNumber(value: frames)) ?? "\(frames)") frames in \(Self.duration(seconds)) (\(String(format: "%.1f", fps)) fps, \(String(format: "%.2f", realtime))× realtime)\(outcome == "finished" ? "" : ", \(outcome)")")
+        if let p = prepSeconds { parts.append("measuring before the first frame \(Self.duration(p))") }
         parts.append("bottleneck \(bottleneck) (\(encoders.joined(separator: ", ")))")
         parts.append("score \(Self.pct(score))")
         parts.append(String(format: "CPU Lumora %.1f, encoders %.1f, other apps %.1f cores (P %@, E %@)", lumoraCores, encoderCores, otherCores,

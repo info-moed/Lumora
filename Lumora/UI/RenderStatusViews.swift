@@ -45,7 +45,7 @@ struct RenderStatusPill: View {
             switch status {
             case .rendering, .starting: return Theme.pass
             case .paused: return Theme.marginal
-            case .waiting, .finishing: return Theme.signal
+            case .waiting, .finishing, .preparing: return Theme.signal
             case .stalled: return Theme.fail
             case .done: return .secondary
             }
@@ -76,6 +76,7 @@ struct RenderStatusPill: View {
             case .waiting: return "Waiting"
             case .stalled: return "Stalled"
             case .finishing: return "Finishing"
+            case .preparing: return "Preparing"
             case .done: return "Done"
             }
         }
@@ -113,6 +114,11 @@ struct LoadBanner: View {
                    detail: "Other apps go first; the export takes longer.") {
                 Button("Normal priority") { monitor.resumeNormal() }
             }
+        } else if monitor.isRendering, g.pacing > 0, let why = g.pacingReason {
+            banner(icon: g.thermalBackoff ? "thermometer.high" : "tortoise", color: Theme.signal,
+                   title: "Lumora rests between frames \(why)",
+                   detail: g.thermalBackoff ? "Its helpers run in the background band until the Mac cools; full speed returns on its own."
+                                            : "Full speed returns on its own.") { EmptyView() }
         }
     }
 
@@ -180,11 +186,20 @@ struct DiskPreflightRow: View {
             Spacer()
             Button("Clear Lumora caches…") { showClear = true }.controlSize(.small)
         }
-        .task(id: "\(model.codec.rawValue)\(model.delivery.rawValue)\(model.quality)\(model.useTargetQuality)") { estimate = compute() }
-        .sheet(isPresented: $showClear) { CacheClearSheet { estimate = compute() } }
+        .task(id: "\(model.codec.rawValue)\(model.delivery.rawValue)\(model.quality)\(model.useTargetQuality)") { await refresh(debounce: true) }
+        .sheet(isPresented: $showClear) { CacheClearSheet(inUse: [model.descriptor?.url].compactMap { $0 }) { Task { await refresh(debounce: false) } } }
     }
 
-    private func compute() -> DiskBudget.Estimate? {
+    /// Asking macOS for free space takes up to a tenth of a second per drive, so it never runs on the main thread,
+    /// and a dragged slider only measures once it settles.
+    private func refresh(debounce: Bool) async {
+        if debounce { try? await Task.sleep(nanoseconds: 300_000_000) }
+        guard !Task.isCancelled, let r = request() else { return }
+        let e = await Task.detached(priority: .utility) { DiskBudget.estimate(r) }.value
+        if !Task.isCancelled { estimate = e }
+    }
+
+    private func request() -> DiskBudget.Request? {
         guard let d = model.descriptor else { return nil }
         let forecast = model.currentForecast()
         let out = forecast?.high ?? Int64(Double(d.width * d.height) * 0.15 * Double(max(1, d.frameCount)))
@@ -194,12 +209,14 @@ struct DiskPreflightRow: View {
             let chunkBytes = out / Int64(max(1, d.frameCount / 240))
             r.targetQuality = (concurrent: MacProfile.current?.concurrentChunks ?? 2, chunkBytes: chunkBytes, trials: model.qualityTarget.maxTrials)
         }
-        return DiskBudget.estimate(r)
+        return r
     }
 }
 
 /// Lumora's own caches with their sizes; only checked items are removed, and nothing outside Lumora's folders.
 struct CacheClearSheet: View {
+    /// Files open in Lumora (the source, a staged copy of it): their folders are never offered.
+    var inUse: [URL] = []
     var onDone: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var items: [DiskBudget.CacheItem]?
@@ -228,9 +245,10 @@ struct CacheClearSheet: View {
                     Button("Clear \(DiskBudget.gb(total))") {
                         let pick = items.filter { chosen.contains($0.id) }
                         let since = RenderMonitor.shared.activeSince
+                        let busy = inUse + RenderMonitor.shared.filesInUse
                         Task.detached {
-                            let f = DiskBudget.clear(pick)
-                            let fresh = DiskBudget.inventory(activeSince: since)
+                            let f = DiskBudget.clear(pick, inUse: busy)
+                            let fresh = DiskBudget.inventory(activeSince: since, inUse: busy)
                             await MainActor.run { freed = f; self.items = fresh; chosen = Set(fresh.filter(\.recommended).map(\.id)) }
                         }
                     }
@@ -245,7 +263,8 @@ struct CacheClearSheet: View {
         .frame(width: 520, height: 420)
         .task {
             let since = RenderMonitor.shared.activeSince
-            let list = await Task.detached { DiskBudget.inventory(activeSince: since) }.value
+            let busy = inUse + RenderMonitor.shared.filesInUse
+            let list = await Task.detached { DiskBudget.inventory(activeSince: since, inUse: busy) }.value
             items = list
             chosen = Set(list.filter(\.recommended).map(\.id))
         }

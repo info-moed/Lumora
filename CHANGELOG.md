@@ -26,7 +26,8 @@ Status tags used below:
   before an export on every drive involved, with exact amounts and a Lumora-only cache cleaner; renders pause
   cleanly before a drive fills.
 - **Never seizing up**: helper processes niced (+5, +10 in batches), batches at utility priority, memory-pressure and
-  thermal back-off, GPU pacing when the display's GPU work is delayed.
+  thermal back-off (helpers in the background band while the Mac is hot), GPU pacing when the display's GPU work is
+  delayed, timed by a GPU command that really runs on the GPU.
 - **Per-export summary** (average load, bottleneck, time per stage, UI responsiveness) in the log and report.
 
 ---

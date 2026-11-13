@@ -11,6 +11,7 @@ struct SystemSample: Sendable {
     struct App: Sendable, Hashable, Identifiable { var id: String { name }; var name: String; var cores: Double; var memoryMB: Double }
 
     var time: Double = 0                     // seconds, host clock (CACurrentMediaTime base)
+    var primed = false                       // false on a sampler's first tick: every rate reads 0 then
     var interval: Double = 1
     var cores = 1
     var performanceCores = 0
@@ -66,6 +67,10 @@ final class SystemSampler: @unchecked Sendable {
     private var lastTime: Double = 0
     private var lastSelfCPU: UInt64 = 0
     private var lastChildCPU: [Int32: UInt64] = [:]
+    private var lastChildTotal: UInt64 = 0   // every descendant's CPU so far, live and already exited
+    private var childCPUTotal: Double = 0    // seconds, cumulative
+    /// Helper CPU counted so far, in seconds (tests compare it with getrusage).
+    var childCPUSeconds: Double { queue.sync { childCPUTotal } }
     private var lastAppCPU: [Int32: UInt64] = [:]
     private var lastAppScan: Double = 0
     private var cachedApps: ([SystemSample.App], [SystemSample.App], Double) = ([], [], 0)
@@ -86,12 +91,16 @@ final class SystemSampler: @unchecked Sendable {
 
     /// Starts sampling (once a second) for one more user; `release()` stops it when nobody needs it.
     func retain() {
-        lock.lock(); users += 1; let start = timer == nil; lock.unlock()
-        guard start else { return }
+        // Checked and created under one lock, so two first users at once can't start two timers.
+        lock.lock(); defer { lock.unlock() }
+        users += 1
+        guard timer == nil else { return }
+        // After an idle gap the first tick only sets the baseline (instead of averaging over the gap).
+        queue.async { [weak self] in self?.lastTime = 0 }
         let t = DispatchSource.makeTimerSource(queue: queue)
         t.schedule(deadline: .now(), repeating: 1.0, leeway: .milliseconds(100))
         t.setEventHandler { [weak self] in self?.tick() }
-        lock.lock(); timer = t; lock.unlock()
+        timer = t
         t.resume()
     }
 
@@ -105,7 +114,8 @@ final class SystemSampler: @unchecked Sendable {
     }
 
     /// While on, the (heavier, every 5 s) scan of other apps runs, so the monitor can name what else is busy.
-    func wantAppScan(_ on: Bool) { lock.lock(); appScanWanted = on; if on { forceAppScan = true }; lock.unlock() }
+    /// Turning it on scans at the next tick; asking again while it is on keeps the 5 s pace.
+    func wantAppScan(_ on: Bool) { lock.lock(); if on && !appScanWanted { forceAppScan = true }; appScanWanted = on; lock.unlock() }
 
     @discardableResult
     func observe(_ f: @escaping (SystemSample) -> Void) -> UUID {
@@ -128,17 +138,19 @@ final class SystemSampler: @unchecked Sendable {
         s.time = now
         s.interval = lastTime > 0 ? max(0.05, now - lastTime) : 1
         let first = lastTime == 0
+        s.primed = !first
         lastTime = now
 
         readCPU(&s)
         let me = getpid()
-        if let r = Self.rusage(me) {
+        let mine = Self.rusage(me)
+        if let r = mine {
             let cpu = r.ri_user_time + r.ri_system_time
             if !first, cpu >= lastSelfCPU { s.selfCores = ns(cpu - lastSelfCPU) / 1e9 / s.interval }
             lastSelfCPU = cpu
             s.selfFootprintMB = Double(r.ri_phys_footprint) / 1_048_576
         }
-        readChildren(&s, first: first)
+        readChildren(&s, first: first, reaped: mine.map { $0.ri_child_user_time + $0.ri_child_system_time } ?? 0)
         s.othersCores = max(0, s.busyCores - s.selfCores - s.childCores)
         readGPU(&s)
         readMemory(&s)
@@ -206,28 +218,44 @@ final class SystemSampler: @unchecked Sendable {
     }
 
     /// Lumora's child processes (and theirs), with CPU since the last tick and memory footprint.
-    private func readChildren(_ s: inout SystemSample, first: Bool) {
+    ///
+    /// The total counts every helper's CPU, including helpers that started and exited between two ticks (a
+    /// quality-search trial, a metric call): it is the change in (CPU of the live descendants, each with the helpers
+    /// it has reaped) + (CPU of the helpers Lumora has reaped, `reaped`). A helper that exits moves its CPU from the
+    /// first term to the second, so nothing is lost or counted twice, and none of it is booked as other apps.
+    private func readChildren(_ s: inout SystemSample, first: Bool, reaped: UInt64) {
         var seen: [Int32: UInt64] = [:]
         var kids: [SystemSample.Child] = []
         var stack = Self.childPIDs(getpid())
         var depth = 0
+        var total = reaped
         while !stack.isEmpty, depth < 64 {
             let pid = stack.removeFirst()
             depth += 1
             guard seen[pid] == nil, let r = Self.rusage(pid) else { continue }
-            let cpu = r.ri_user_time + r.ri_system_time
+            let cpu = r.ri_user_time + r.ri_system_time + r.ri_child_user_time + r.ri_child_system_time
             seen[pid] = cpu
+            total += cpu
             var cores = 0.0
-            if let last = lastChildCPU[pid], cpu >= last { cores = ns(cpu - last) / 1e9 / s.interval }
-            else if !first { cores = 0 }   // new this tick: counted from the next tick on
+            if !first {
+                // A helper not seen at the last tick started since then: all of its CPU belongs to this interval.
+                let since = lastChildCPU[pid].map { cpu >= $0 ? cpu - $0 : cpu } ?? cpu
+                cores = ns(since) / 1e9 / s.interval
+            }
             let name = ChildPolicy.shared.name(for: pid) ?? Self.processName(pid)
             kids.append(.init(pid: pid, name: name, cores: cores, footprintMB: Double(r.ri_phys_footprint) / 1_048_576))
             ChildPolicy.shared.sweep(pid: pid, name: name)
             stack += Self.childPIDs(pid)
         }
+        // A helper whose parent exited first leaves Lumora's tree: the total can drop; that is not negative work.
+        if !first, total >= lastChildTotal {
+            let d = ns(total - lastChildTotal) / 1e9
+            s.childCores = d / s.interval
+            childCPUTotal += d
+        }
+        lastChildTotal = total
         lastChildCPU = seen
         s.children = kids.sorted { $0.cores > $1.cores }
-        s.childCores = kids.reduce(0) { $0 + $1.cores }
         s.childFootprintMB = kids.reduce(0) { $0 + $1.footprintMB }
     }
 

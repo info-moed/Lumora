@@ -5,7 +5,9 @@ import Darwin
 /// Mac seize up. Every child is niced a little at launch (+5 for a single export, +10 in a batch): that costs
 /// nothing on an otherwise idle Mac, and gives the apps someone is using the first claim on the CPU. An
 /// unprivileged process can only raise niceness, never lower it again, so the default is deliberately mild.
-/// "Lower priority" additionally moves the children into the background band (revocable).
+/// "Lower priority" additionally moves the children into the background band (revocable), and so does a serious or
+/// critical thermal state until the Mac has cooled: background-band processes run on the efficiency cores at low
+/// clock, which really lowers the encoders' power and heat.
 final class ChildPolicy: @unchecked Sendable {
     static let shared = ChildPolicy()
 
@@ -18,7 +20,9 @@ final class ChildPolicy: @unchecked Sendable {
     private let lock = NSLock()
     private var names: [Int32: String] = [:]
     private var niced: Set<Int32> = []
-    private var background = false
+    private var userBackground = false
+    private var thermalBackground = false
+    private var background: Bool { userBackground || thermalBackground }
     private(set) var started = 0
 
     /// Called right after a helper process starts.
@@ -58,10 +62,32 @@ final class ChildPolicy: @unchecked Sendable {
     /// "Lower priority": every current and future child runs in the background band (on a busy Mac this can make
     /// the export much slower: background threads were measured waking 0.5 to 3.4 s late). Turning it off undoes it.
     func setLowerPriority(_ on: Bool) {
-        lock.lock(); background = on; lock.unlock()
+        lock.lock(); let before = background; userBackground = on; let after = background; lock.unlock()
+        if before != after { applyBackground(after) }
+    }
+
+    /// The thermal backoff: the same background band while the Mac is hot (serious or critical), undone once it
+    /// cools unless the person chose Lower priority.
+    func setThermalBackoff(_ on: Bool) {
+        lock.lock(); let before = background; thermalBackground = on; let after = background; lock.unlock()
+        if before != after { applyBackground(after) }
+    }
+
+    var thermalBackoff: Bool { lock.lock(); defer { lock.unlock() }; return thermalBackground }
+
+    private func applyBackground(_ on: Bool) {
         for pid in Self.allChildren() {
             _ = setpriority(PRIO_DARWIN_PROCESS, id_t(pid), on ? PRIO_DARWIN_BG : 0)
         }
+    }
+
+    /// Whether a process is in the background band: its task's base priority drops to the throttled level (4;
+    /// 31 is the default). getpriority(PRIO_DARWIN_PROCESS) can't tell: it reads 0 either way.
+    static func inBackground(_ pid: Int32) -> Bool? {
+        var t = proc_taskinfo()
+        let size = Int32(MemoryLayout<proc_taskinfo>.size)
+        guard proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &t, size) == size else { return nil }
+        return t.pti_priority <= 4
     }
 
     static func allChildren() -> [Int32] {

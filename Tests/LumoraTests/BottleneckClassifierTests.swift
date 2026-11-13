@@ -83,6 +83,51 @@ final class BottleneckClassifierTests: XCTestCase {
         XCTAssertTrue(v.reason.contains("6.7 of 14 cores"), v.reason)
     }
 
+    /// Measured on this Mac: aomenc held 1.4 cores while other apps kept 12.3 of 14 busy. Of what others left free
+    /// Lumora used nearly all, but the score must say how little of the Mac it got, and never look good.
+    func testOtherAppsScoreIsLumorasShareOfTheMac() {
+        var ctx = context(segments: 1, frames: 192); ctx.encoderName = "aomenc"; ctx.encoderScalesPoorly = true
+        let v = feed(BottleneckClassifier(context: ctx), cli(starved: 0.0), load(busy: 13.8, me: 0.05, kids: 1.4, others: 12.35))
+        XCTAssertEqual(v.kind, .otherApps)
+        XCTAssertEqual(v.score ?? 1, 1.45 / 14, accuracy: 0.01)
+        XCTAssertFalse(v.isGood)
+        XCTAssertTrue(v.kind.isAlarm, "the ring is never green for an alarm")
+        XCTAssertTrue(v.reason.contains("(10% of the Mac)"), v.reason)
+    }
+
+    /// Lumora's own rests (here Lower priority: rest as long as it worked) starve the encoder; that is not decoding.
+    func testOwnPacingIsNotCalledDecode() {
+        var p = producerBound(decode: 0.4, interp: 0, upscale: 0); p.producerPaced = 0.5
+        var l = load(busy: 3, kids: 2, others: 0.5); l.pacingReason = "because you chose Lower priority"
+        let v = feed(BottleneckClassifier(context: context()), p, l)
+        XCTAssertEqual(v.kind, .resting)
+        XCTAssertTrue(v.reason.contains("because you chose Lower priority"), v.reason)
+        XCTAssertTrue(v.suggestion?.contains("Normal priority") ?? false, v.suggestion ?? "")
+        XCTAssertFalse(v.isGood)
+        // Without pacing the same window is decode-bound.
+        XCTAssertEqual(feed(BottleneckClassifier(context: context()), producerBound(decode: 0.4, interp: 0, upscale: 0), load(busy: 3, kids: 2, others: 0.5)).kind, .decode)
+    }
+
+    /// The thermal verdict only says Lumora backed off when the governor did.
+    func testThermalVerdictClaimsOnlyWhatWasDone() {
+        var hot = load(busy: 13.6, kids: 12.5, others: 0.5); hot.thermal = 2
+        let plain = feed(BottleneckClassifier(context: context()), to: 30, cli(starved: 0.05), hot)
+        XCTAssertEqual(plain.kind, .thermal)
+        XCTAssertFalse(plain.reason.contains("background band"), plain.reason)
+        hot.thermalBackoff = true
+        let backed = feed(BottleneckClassifier(context: context()), to: 30, cli(starved: 0.05), hot)
+        XCTAssertTrue(backed.reason.contains("background band"), backed.reason)
+    }
+
+    /// Target quality after the last frame is rendered: the search is the whole job, and it is classified.
+    func testQualitySearchAfterRenderingIsClassified() {
+        var ctx = context(); ctx.targetQuality = true
+        var p = PipelineWindow(); p.chunksRenderBlocked = 1; p.chunksEncodersStarved = 0
+        let v = feed(BottleneckClassifier(context: ctx), p, load(busy: 3.6, me: 0.2, kids: 1.4, others: 2))
+        XCTAssertEqual(v.kind, .qualitySearch)
+        XCTAssertFalse(v.isGood, "1.6 of 14 cores is not making good use")
+    }
+
     func testGPUBound() {
         let c = BottleneckClassifier(context: context())
         var p = cli(starved: 0.8); p.graderStarved = 0.05; p.graderGPU = 0.9
@@ -239,6 +284,19 @@ final class BottleneckClassifierTests: XCTestCase {
         XCTAssertEqual(StallDetector.evaluate(StallInput(now: 500, startedAt: 0, lastFrameAt: 100, paused: "Paused: on battery")), .paused("Paused: on battery"))
         XCTAssertEqual(MonitoredRun.finishingStep(children: [.init(pid: 1, name: "ffmpeg", cores: 1, footprintMB: 10)]), "Finishing file: joining segments")
         XCTAssertEqual(StallDetector.evaluate(StallInput(now: 10, startedAt: 0, lastFrameAt: 9.9, p95FrameInterval: 0.05)), .rendering)
+    }
+
+    /// Measuring HDR light levels of a long film takes minutes before the first frame: never a stall while it
+    /// reports progress, and a stall named after the step when it stops.
+    func testPreparationStepIsNotAStall() {
+        var i = StallInput(now: 600, startedAt: 0, lastFrameAt: nil, setting: 60)
+        i.preparing = "Measuring HDR light levels (40%)"; i.preparingProgressAt = 590; i.preparingWaitingOn = "the HDR light-level measurement"
+        XCTAssertEqual(StallDetector.evaluate(i), .preparing("Measuring HDR light levels (40%)"))
+        i.preparingProgressAt = 400
+        XCTAssertEqual(StallDetector.evaluate(i), .stalled(seconds: 200, on: "the HDR light-level measurement"))
+        XCTAssertEqual(StallDetector.evaluate(i).text, "Stalled 3m: waiting on the HDR light-level measurement")
+        i.paused = "Paused: on battery"
+        XCTAssertEqual(StallDetector.evaluate(i), .paused("Paused: on battery"))
     }
 
     func testTrialLabels() {

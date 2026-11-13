@@ -28,6 +28,8 @@ final class LoadGovernor: @unchecked Sendable {
         var snoozedUntil: Double = 0
         var gpuLatencyP90Ms: Double?
         var pacing: Double = 0          // 0...1 fraction of time to rest between frames
+        var pacingReason: String?       // why Lumora rests between frames, in plain words
+        var thermalBackoff = false      // hot Mac: helpers moved to the background band, rests between frames
     }
 
     private let lock = NSLock()
@@ -44,6 +46,13 @@ final class LoadGovernor: @unchecked Sendable {
     nonisolated(unsafe) static var enabled = true
     /// Seconds at normal memory pressure before work goes back to full speed.
     nonisolated(unsafe) static var recoverySeconds: Double = 10
+    /// The kernel's memory pressure level (1, 2, 4), read directly while a memory pause holds work: the pressure
+    /// events fire only on changes, and nothing else may be sampling then (a batch between files). Tests replace it.
+    nonisolated(unsafe) static var pressureReader: () -> Int? = {
+        var level: Int32 = 1
+        var size = MemoryLayout<Int32>.size
+        return sysctlbyname("kern.memorystatus_vm_pressure_level", &level, &size, nil, 0) == 0 ? Int(level) : nil
+    }
 
     var current: State { lock.lock(); defer { lock.unlock() }; return state }
 
@@ -165,11 +174,21 @@ final class LoadGovernor: @unchecked Sendable {
     private func recomputePacing() {
         lock.lock()
         var p = 0.0
-        if state.userChoice == .lowerPriority { p = max(p, 0.5) }
-        if state.thermal.rawValue >= ProcessInfo.ThermalState.serious.rawValue { p = max(p, 0.2) }
-        if let g = state.gpuLatencyP90Ms, g > 8 { p = max(p, 0.15) }   // the display's frames are waiting on the GPU
+        var why: String?
+        let hot = Self.enabled && state.thermal.rawValue >= ProcessInfo.ThermalState.serious.rawValue
+        if let g = state.gpuLatencyP90Ms, g > 8 { p = 0.15; why = "to keep the display smooth (the GPU is busy)" }
+        if hot { p = max(p, 0.2); why = "while the Mac is hot" }
+        if state.userChoice == .lowerPriority { p = max(p, 0.5); why = "because you chose Lower priority" }
         state.pacing = p
+        state.pacingReason = p > 0 ? why : nil
+        let changed = state.thermalBackoff != hot
+        state.thermalBackoff = hot
         lock.unlock()
+        // A hot Mac: the helpers (where an encode's heat is) move to the background band, not only the producer's rests.
+        if changed {
+            ChildPolicy.shared.setThermalBackoff(hot)
+            Log.notice(.app, hot ? "Mac is hot: helpers run in the background band and Lumora rests between frames" : "Mac has cooled: back to normal priority")
+        }
     }
 
     // MARK: - Outputs
@@ -202,6 +221,9 @@ final class LoadGovernor: @unchecked Sendable {
         while let why = pauseReason {
             if why != logged { Log.notice(.app, why); logged = why }
             do { try await Task.sleep(nanoseconds: 1_000_000_000) } catch { return }
+            // Re-read memory pressure while paused for it, so the pause ends once memory has recovered even when
+            // no render is being monitored and no further pressure event comes.
+            if current.memoryPause != nil, let level = Self.pressureReader() { setPressure(level, source: "while paused") }
         }
         if logged != nil { Log.notice(.app, "Resumed") }
         let key = withUnsafeCurrentTask { $0?.hashValue } ?? 0
@@ -239,6 +261,7 @@ final class LoadGovernor: @unchecked Sendable {
         lastPressureHigh = 0
         lock.unlock()
         ChildPolicy.shared.setLowerPriority(false)
+        ChildPolicy.shared.setThermalBackoff(false)
     }
 }
 

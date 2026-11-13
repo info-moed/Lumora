@@ -82,6 +82,71 @@ final class MonitorSamplerTests: XCTestCase {
         XCTAssertLessThan(withScan, 50)
     }
 
+    /// Helpers that start and exit between two ticks (quality-search trials, metric calls) are still Lumora's CPU,
+    /// not other apps': the sampler counts what reaped helpers used, checked against getrusage(RUSAGE_CHILDREN).
+    func testShortLivedHelpersAreCounted() throws {
+        let sampler = SystemSampler.shared
+        sampler.sampleNow()
+        let before = sampler.childCPUSeconds
+        var r0 = rusage(); getrusage(RUSAGE_CHILDREN, &r0)
+        for _ in 0..<3 {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/bin/sh")
+            p.arguments = ["-c", "i=0; while [ $i -lt 60000 ]; do i=$((i+1)); done"]
+            try p.run()
+            p.waitUntilExit()
+        }
+        var r1 = rusage(); getrusage(RUSAGE_CHILDREN, &r1)
+        sampler.sampleNow()
+        let counted = sampler.childCPUSeconds - before
+        func secs(_ t: timeval) -> Double { Double(t.tv_sec) + Double(t.tv_usec) / 1e6 }
+        let reaped = secs(r1.ru_utime) + secs(r1.ru_stime) - secs(r0.ru_utime) - secs(r0.ru_stime)
+        print(String(format: "Short-lived helpers: %.3f CPU-s by getrusage, %.3f CPU-s counted by the sampler", reaped, counted))
+        XCTAssertGreaterThan(reaped, 0.005)
+        XCTAssertGreaterThan(counted, reaped * 0.8, "helpers that lived between two ticks were missed")
+        XCTAssertLessThan(counted, reaped * 1.25 + 0.05, "counted twice")
+    }
+
+    /// The other-apps scan keeps its 5 s pace however often it is asked for.
+    func testAppScanKeepsItsPace() {
+        let sampler = SystemSampler.shared
+        sampler.wantAppScan(false)
+        sampler.wantAppScan(true)
+        let first = sampler.sampleNow().appsScannedAt
+        XCTAssertGreaterThan(first, 0, "turning the scan on scans at once")
+        for _ in 0..<3 {
+            sampler.wantAppScan(true)                    // what every monitor tick does while the panel is open
+            XCTAssertEqual(sampler.sampleNow().appsScannedAt, first, "scanned again within 5 s")
+        }
+        sampler.wantAppScan(false)
+    }
+
+    /// The GPU probe's command really runs on the GPU (an empty command buffer never does), and its wait is timed
+    /// by the GPU's own end timestamp.
+    func testGPUProbeRunsOnTheGPU() throws {
+        try TestHardware.requireGPU()
+        let r = ResponsivenessProbe.shared.probeGPUSpan()
+        print(String(format: "GPU probe: GPU span %.3f ms, wait until done %.3f ms", r.span, r.wait ?? -1))
+        XCTAssertGreaterThan(r.span, 0, "the probe must execute on the GPU")
+        XCTAssertNotNil(r.wait)
+    }
+
+    /// Each export's responsiveness covers only its own readings, also after the kept readings reach their cap.
+    func testResponsivenessMarkSurvivesTheCap() {
+        let probe = ResponsivenessProbe.shared
+        probe.resetReadings()
+        for _ in 0..<1300 { probe.record(mainMs: 2, rendering: true) }
+        let mark = probe.mark()
+        for _ in 0..<10 { probe.record(mainMs: 50, rendering: true) }
+        let s = probe.busyMain(since: mark)
+        XCTAssertEqual(s.count, 10)
+        XCTAssertEqual(s.p50, 50)
+        XCTAssertNil(probe.idleBaseline, "a few idle pings are no baseline")
+        for _ in 0..<ResponsivenessProbe.baselineMinimum { probe.record(mainMs: 3, rendering: false) }
+        XCTAssertEqual(probe.idleBaseline?.p95, 3)
+        probe.resetReadings()
+    }
+
     func testAppGroupingByBundle() {
         XCTAssertEqual(SystemSampler.groupName(path: "/Applications/Safari.app/Contents/MacOS/Safari"), "Safari")
         XCTAssertEqual(SystemSampler.groupName(path: "/Applications/Xcode.app/Contents/Developer/Toolchains/X.xctoolchain/usr/bin/swift-frontend"), "Xcode")
