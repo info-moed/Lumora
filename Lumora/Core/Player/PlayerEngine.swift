@@ -64,12 +64,13 @@ final class DecodeWorker: @unchecked Sendable {
         let old = backend
         backend = b
         pendingStart = frame
+        // The decode thread may still be inside old.next(); it stops the old backend itself once it returns. Added
+        // under the lock: the decode thread takes `retired` under it before it starts the new backend.
+        retired.append(old)
         old.interrupt()
         cond.signal()
         cond.unlock()
         queue.flush()
-        // The decode thread may still be inside old.next(); it stops the old backend itself once it returns.
-        retired.append(old)
     }
 
     func shutdown() {
@@ -145,6 +146,14 @@ final class DecodeWorker: @unchecked Sendable {
     }
 }
 
+/// The token of the audio start that may still run, readable from the background start.
+final class AudioGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var token = 0
+    func set(_ t: Int) { lock.lock(); token = t; lock.unlock() }
+    func isCurrent(_ t: Int) -> Bool { lock.lock(); defer { lock.unlock() }; return token == t }
+}
+
 /// One player: probes the file, picks the decoder, decodes on its own thread, keeps audio and video in sync on the
 /// audio clock (or the host clock when there is no audio), and hands the view the frame due at each display refresh.
 @MainActor
@@ -194,6 +203,9 @@ final class PlayerEngine {
     @ObservationIgnored private var audio: AudioOutput?
     @ObservationIgnored private var hostClock = HostClock()
     @ObservationIgnored private var awaiting: Int?
+    /// The highest frame index a decoder has delivered (it exists), and whether a seek is looking for the real end.
+    @ObservationIgnored private var highestSeen = -1
+    @ObservationIgnored private var endSearch = false
     @ObservationIgnored private var endOfStream: Int?
     @ObservationIgnored private var lastStatsUpdate: CFTimeInterval = 0
     @ObservationIgnored private var reverseTimer: Timer?
@@ -202,6 +214,8 @@ final class PlayerEngine {
     @ObservationIgnored private var preDecoder: PreDecoder?
     @ObservationIgnored private var slowSince: CFTimeInterval?
     @ObservationIgnored private var audioStarting = 0
+    @ObservationIgnored private let audioGate = AudioGate()
+    private static let audioStartQueue = DispatchQueue(label: "Lumora player audio start", qos: .userInteractive)
     @ObservationIgnored private var frameLayout: FrameLayout?
     @ObservationIgnored private var openGeneration = 0
     @ObservationIgnored private var speedSamples: [Double] = []
@@ -313,7 +327,11 @@ final class PlayerEngine {
     }
 
     /// The pre-decode cache: segment workers fill it, playback reads it. nil when the disk is too full for it.
-    private func makeCacheBackend(info: MediaInfo, choice: DecoderChoice, capacity: Int) throws -> PlayerVideoBackend? {
+    /// `template`: the FFmpeg backend playing now, when switching to the cache mid-file. Segment workers then read
+    /// what it reads (a raw stream's indexed copy, with its frame table), never the raw stream itself, whose
+    /// timestamps don't follow the player's rate.
+    private func makeCacheBackend(info: MediaInfo, choice: DecoderChoice, capacity: Int,
+                                  template: FFmpegPipeBackend? = nil) throws -> PlayerVideoBackend? {
         let v = info.video
         let layout: FrameLayout
         if choice.backend == .ffmpeg, let fmt = choice.pixelFormat, let l = FrameLayout.ffmpeg(fmt, width: v.width, height: v.height) {
@@ -338,6 +356,7 @@ final class PlayerEngine {
                 b.limit = n
                 return b
             }
+            if let template { return try template.segmentWorker(limit: n) }
             let b = try FFmpegPipeBackend(info: info, choice: choice, poolCapacity: 4)
             b.limit = n
             return b
@@ -428,10 +447,20 @@ final class PlayerEngine {
             if let n = worker?.backend.note { decoderNote = n }
             if let c = (worker?.backend as? FFmpegPipeBackend)?.choice, c != choice { choice?.tool = c.tool; choice?.hardware = c.hardware }
         case .endOfStream(let last):
+            if let a = awaiting, last < a {
+                recoverPastEnd(target: a)
+                return
+            }
+            if last >= 0 { highestSeen = max(highestSeen, last) }
             endOfStream = last
             if let n = worker?.backend.note { decoderNote = n }
             if last >= 0, let i = info, (i.frameCount ?? Int.max) > last + 1 || i.frameCount == nil {
                 info?.frameCount = last + 1
+            }
+            if endSearch, last >= 0 {
+                // The end was found: land on the last frame the user was heading for.
+                endSearch = false
+                if currentIndex != last { seek(toFrame: last) }
             }
         case .failed(let err):
             if case .ready = phase, currentFrame != nil {
@@ -442,6 +471,22 @@ final class PlayerEngine {
                 fail(err)
             }
         }
+    }
+
+    /// A seek ran past the real end: the frame count was an estimate (a container duration that includes a longer
+    /// audio track, before the exact frame table arrives) and the decoder ended without delivering `a`. Frames from
+    /// `a` on don't exist, so bisect between the highest frame seen and `a` until the decoder delivers, then land
+    /// on the last frame (handled at that run's end of stream).
+    private func recoverPastEnd(target a: Int) {
+        guard a > 0 else {
+            awaiting = nil
+            endOfStream = -1
+            return
+        }
+        info?.frameCount = a
+        let low = max(0, min(highestSeen, a - 1))
+        seek(toFrame: a - low <= 1 ? low : low + (a - low) / 2)
+        endSearch = true
     }
 
     // MARK: Transport
@@ -463,8 +508,7 @@ final class PlayerEngine {
         stopReverse()
         isPlaying = false
         rate = 1
-        audio?.stop()
-        audioActive = false
+        stopAudio()
         hostClock.set(media: currentFrame?.pts ?? currentTime, host: CACurrentMediaTime(), rate: 0)
         if phase == .buffering { phase = .ready; bufferingReason = nil }
     }
@@ -508,8 +552,7 @@ final class PlayerEngine {
 
     private func startClock() {
         let at = currentFrame?.pts ?? currentTime
-        audio?.stop()
-        audioActive = false
+        stopAudio()
         if rate == 1, let info, !info.audio.isEmpty, !reversing {
             // Hold the video clock until audio is flowing, then audio drives it.
             hostClock.set(media: at, host: CACurrentMediaTime(), rate: 0)
@@ -522,22 +565,37 @@ final class PlayerEngine {
 
     private func restartAudio() { if isPlaying { startClock() } }
 
+    /// Silences audio now and cancels a start still running in the background (it undoes itself when it finishes).
+    private func stopAudio() {
+        audioStarting += 1
+        audioGate.set(audioStarting)
+        audio?.stop()
+        audioActive = false
+    }
+
     private func startAudio(at t: Double) {
         guard let info else { return }
         audioStarting += 1
         let token = audioStarting
+        let gate = audioGate
+        gate.set(token)
         let track = min(audioTrack, max(0, info.audio.count - 1))
         let manual = manualAudio
         if audio == nil { audio = try? AudioOutput(manualRendering: manual) }
         guard let out = audio else { hostClock.set(media: t, host: CACurrentMediaTime(), rate: rate); return }
-        DispatchQueue.global(qos: .userInteractive).async {
+        // Starts run one at a time; each one checks the gate after its slow parts (spawning the decoder, pre-rolling a
+        // second of audio): a pause, seek or newer start in the meantime makes it stop what it started.
+        Self.audioStartQueue.async {
+            guard gate.isCurrent(token) else { return }
             var ok = false
             if let src = try? PlayerAudio.makeSource(info: info, track: track, at: t) {
-                ok = (try? out.start(source: src, at: t)) != nil
+                if gate.isCurrent(token) { ok = (try? out.start(source: src, at: t)) != nil } else { src.stop() }
+                if !gate.isCurrent(token) { out.stop(); return }
             }
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
-                    guard token == self.audioStarting, self.isPlaying else { if ok && token != self.audioStarting { } ; return }
+                    guard token == self.audioStarting else { return }      // superseded: the newer start owns the output
+                    guard self.isPlaying else { self.stopAudio(); return }
                     if ok {
                         self.audioActive = true
                         self.applyVolume()
@@ -567,10 +625,10 @@ final class PlayerEngine {
         guard let worker else { return }
         let target = max(0, min(i, frameCount - 1))
         endOfStream = nil
+        endSearch = false
         stopReverse()
         let wasPlaying = isPlaying
-        audio?.stop()
-        audioActive = false
+        stopAudio()
         awaiting = target
         currentIndex = target
         worker.restart(at: target)
@@ -610,6 +668,7 @@ final class PlayerEngine {
 
     private func present(_ f: PlayerFrame) {
         currentFrame = f
+        highestSeen = max(highestSeen, f.index)
         if currentIndex != f.index { currentIndex = f.index }
         stats.shown += 1
         renderToken &+= 1
@@ -666,8 +725,7 @@ final class PlayerEngine {
     // MARK: Buffering
 
     private func enterBuffering(_ reason: String) {
-        audio?.stop()
-        audioActive = false
+        stopAudio()
         hostClock.set(media: currentFrame?.pts ?? currentTime, host: CACurrentMediaTime(), rate: 0)
         phase = .buffering
         bufferingReason = reason
@@ -728,9 +786,10 @@ final class PlayerEngine {
     /// A decoder that stays below real time switches to the pre-decode cache (when it can start mid-file).
     private func considerPreDecode() {
         guard !preDecoding, preDecodeOverride != false, let info, let choice, choice.backend == .ffmpeg,
-              choice.seekModel == .random, stats.realTimeFactor > 0, stats.realTimeFactor < 1.05, let q = queue else { return }
+              let live = worker?.backend as? FFmpegPipeBackend, live.choice.seekModel == .random,
+              stats.realTimeFactor > 0, stats.realTimeFactor < 1.05, let q = queue else { return }
         do {
-            guard let b = try makeCacheBackend(info: info, choice: choice, capacity: q.capacity) else { return }
+            guard let b = try makeCacheBackend(info: info, choice: live.choice, capacity: q.capacity, template: live) else { return }
             worker?.replace(backend: b, at: currentIndex)
             awaiting = currentIndex
             decoderNote = "\(choice.tool) decodes at \(String(format: "%.2f", stats.realTimeFactor))× real time here, so frames are pre-decoded to disk first."
@@ -769,27 +828,27 @@ final class PlayerEngine {
     /// The uniforms for drawing the current frame into a viewport, plus the tone-mapping summary for the overlay.
     func uniforms(for frame: PlayerFrame, display: DisplayState, viewport: SIMD4<Float>) -> PlayerUniforms? {
         guard let info else { return nil }
-        let out: Int32
-        if settings.toneMapping == .macOS && frame.color.isHDR || (settings.toneMapping == .macOS && interpret == .pq) {
-            out = (frame.color.transfer == 18 || interpret == .hlg) ? Int32(PLAYER_OUT_HLG) : Int32(PLAYER_OUT_PQ)
-        } else {
-            out = Int32(PLAYER_OUT_EXTENDED_LINEAR)
-        }
+        let out = output(for: frame).kernelMode
         let (u, summary) = PlayerRenderer.uniforms(frame: frame, info: info, display: display, settings: settings,
                                                    interpret: interpret, viewport: viewport, outputMode: out)
         if summary != toneMap { toneMap = summary }
         return u
     }
 
-    /// Whether the picture needs an EDR layer (HDR source or forced interpretation).
+    /// How `frame` reaches the screen: the kernel's output encoding and the layer's color space both come from it.
+    func output(for frame: PlayerFrame) -> PlayerRenderer.Output {
+        guard let info else { return .extendedLinear(edr: false) }
+        return PlayerRenderer.output(frameColor: frame.color, storage: frame.layout.storage, info: info, settings: settings, interpret: interpret)
+    }
+
+    /// Whether the picture needs an EDR layer (HDR source or forced interpretation), by the same rule as `output(for:)`.
     var isHDR: Bool {
-        switch interpret {
-        case .pq, .hlg: return true
-        case .sdr: return false
-        case .auto:
-            guard let v = info?.video else { return false }
-            return v.color.isHDR || v.alternativeTransfer == 18 || (v.dolbyVision.map { $0.blCompatibilityID == 0 } ?? false)
-        }
+        if let f = currentFrame { return output(for: f).wantsEDR }
+        guard let info else { return false }
+        let v = info.video
+        let converted = choice?.backend == .avfoundation && (v.dolbyVision.map { $0.blCompatibilityID == 0 && ($0.profile == 5 || $0.profile == 10) } ?? false)
+        return PlayerRenderer.output(frameColor: v.color, storage: converted ? .rgbaTexture : .planarBuffer, info: info,
+                                     settings: settings, interpret: interpret).wantsEDR
     }
 
     // MARK: Teardown
@@ -800,8 +859,7 @@ final class PlayerEngine {
         stopReverse()
         messageTimer?.invalidate()
         isPlaying = false
-        audio?.stop()
-        audioActive = false
+        stopAudio()
         preDecoder?.stop()
         worker?.shutdown()
         cache?.flushIndex()
@@ -812,6 +870,8 @@ final class PlayerEngine {
         preDecoding = false
         currentFrame = nil
         awaiting = nil
+        highestSeen = -1
+        endSearch = false
         endOfStream = nil
         decoderNote = nil
         cachedRanges = []

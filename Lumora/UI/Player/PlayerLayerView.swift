@@ -99,15 +99,19 @@ final class PlayerMetalView: NSView {
         guard let engine, size.width >= 1, size.height >= 1 else { return }
         let l = metalLayer
         l.drawableSize = size
-        let macOS = engine.settings.toneMapping == .macOS && engine.isHDR
-        let hlg = (frame?.color.transfer == 18 && engine.interpret == .auto) || engine.interpret == .hlg
-        l.wantsExtendedDynamicRangeContent = engine.isHDR
-        if macOS {
-            l.colorspace = CGColorSpace(name: hlg ? CGColorSpace.itur_2100_HLG : CGColorSpace.itur_2100_PQ)
+        // The same decision picks the kernel's output encoding (engine.uniforms), so layer and pixels always agree.
+        let output = frame.map { engine.output(for: $0) } ?? .extendedLinear(edr: engine.isHDR)
+        l.wantsExtendedDynamicRangeContent = output.wantsEDR
+        switch output {
+        case .pq:
+            l.colorspace = CGColorSpace(name: CGColorSpace.itur_2100_PQ)
             let peak = Float(engine.toneMap?.sourcePeak ?? 1000)
             let minNits = Float(engine.info?.video.hdr?.mdcvMinNits ?? 0.005)
-            l.edrMetadata = hlg ? CAEDRMetadata.hlg : CAEDRMetadata.hdr10(minLuminance: minNits, maxLuminance: peak, opticalOutputScale: 100)
-        } else {
+            l.edrMetadata = CAEDRMetadata.hdr10(minLuminance: minNits, maxLuminance: peak, opticalOutputScale: 100)
+        case .hlg:
+            l.colorspace = CGColorSpace(name: CGColorSpace.itur_2100_HLG)
+            l.edrMetadata = CAEDRMetadata.hlg
+        case .extendedLinear:
             l.colorspace = CGColorSpace(name: CGColorSpace.extendedLinearITUR_2020)
             l.edrMetadata = nil              // Lumora tone maps to the headroom itself
         }

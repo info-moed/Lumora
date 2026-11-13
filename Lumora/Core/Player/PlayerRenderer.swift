@@ -156,25 +156,68 @@ final class PlayerRenderer {
         return (assumed, "assumed (no metadata)")
     }
 
-    /// Builds the kernel's uniforms for a frame drawn into `viewport` (pixels) of a destination.
-    static func uniforms(frame: PlayerFrame, info: MediaInfo, display: DisplayState, settings: PlayerSettings,
-                         interpret: InterpretMode, viewport: SIMD4<Float>, outputMode: Int32 = Int32(PLAYER_OUT_EXTENDED_LINEAR))
-        -> (PlayerUniforms, ToneMapSummary) {
-        var color = frame.color
+    /// The signal as the player reads it: the frame's tags with "Interpret as" and an alternative transfer SEI applied.
+    static func effectiveColor(_ frameColor: SignalColor, info: MediaInfo, interpret: InterpretMode) -> SignalColor {
+        var color = frameColor
         switch interpret {
         case .auto: if let alt = info.video.alternativeTransfer, alt == 18 || alt == 16 { color.transfer = alt }
         case .sdr: if color.isHDR { color.transfer = 1 }
         case .pq: color.transfer = 16
         case .hlg: color.transfer = 18
         }
+        return color
+    }
+
+    /// How a frame reaches the screen. The kernel's output encoding and the layer's color space and EDR flag come
+    /// from this one decision, so they always agree.
+    enum Output: Equatable {
+        /// Linear BT.2020, 1.0 = reference white; Lumora tone maps to the headroom. `edr` is false for SDR.
+        case extendedLinear(edr: Bool)
+        /// The PQ or HLG signal itself in an itur_2100 layer; macOS tone maps.
+        case pq, hlg
+
+        var kernelMode: Int32 {
+            switch self {
+            case .extendedLinear: return Int32(PLAYER_OUT_EXTENDED_LINEAR)
+            case .pq: return Int32(PLAYER_OUT_PQ)
+            case .hlg: return Int32(PLAYER_OUT_HLG)
+            }
+        }
+        var wantsEDR: Bool { if case .extendedLinear(let e) = self { return e }; return true }
+    }
+
+    /// Decides the output from the effective signal: macOS tone mapping passes PQ and HLG through; everything else
+    /// (SDR, or Lumora's own tone mapping) is extended linear. A frame macOS already converted (Dolby Vision 5) is PQ.
+    static func output(frameColor: SignalColor, storage: FrameLayout.Storage, info: MediaInfo, settings: PlayerSettings,
+                       interpret: InterpretMode) -> Output {
+        let transfer = storage == .rgbaTexture ? 16 : effectiveColor(frameColor, info: info, interpret: interpret).transfer
+        let hdr = transfer == 16 || transfer == 18
+        guard hdr else { return .extendedLinear(edr: false) }
+        guard settings.toneMapping == .macOS else { return .extendedLinear(edr: true) }
+        return transfer == 18 ? .hlg : .pq
+    }
+
+    /// HLG's nominal display peak for a display of `dstPeak` nits: the display's own peak, within BT.2100's
+    /// 400-2000 nit range for the system gamma formula. Below 400 nits the 400-nit rendering is tone mapped to the
+    /// display, so diffuse white rises smoothly with the headroom and never jumps.
+    static func hlgNominalPeak(displayPeak dstPeak: Double) -> Double { min(2000, max(400, dstPeak)) }
+
+    /// Builds the kernel's uniforms for a frame drawn into `viewport` (pixels) of a destination.
+    static func uniforms(frame: PlayerFrame, info: MediaInfo, display: DisplayState, settings: PlayerSettings,
+                         interpret: InterpretMode, viewport: SIMD4<Float>, outputMode: Int32 = Int32(PLAYER_OUT_EXTENDED_LINEAR))
+        -> (PlayerUniforms, ToneMapSummary) {
+        let color = effectiveColor(frame.color, info: info, interpret: interpret)
         let l = frame.layout
         var u = PlayerUniforms()
         let (m, mode) = l.forcesGBR ? (matrix_identity_float3x3, Int32(PLAYER_MATRIX_GBR)) : matrix(for: color.matrix)
         u.yuvToRgb = m
         u.matrixMode = (l.chroma != .c444 && mode == Int32(PLAYER_MATRIX_GBR)) ? Int32(PLAYER_MATRIX_YCBCR) : mode
         if u.matrixMode == Int32(PLAYER_MATRIX_YCBCR) && mode == Int32(PLAYER_MATRIX_GBR) { u.yuvToRgb = matrix(for: 9).0 }
-        let gamut = color.gamut
-        u.toBT2020 = ColorScience.matrix(from: gamut, to: .rec2020)
+        // macOS hands Dolby Vision 5 over as PQ BT.2020 R'G'B' (its profile 5 VUI primaries are usually unspecified
+        // and would be guessed as BT.709), so that path needs no gamut conversion.
+        let gamut: Gamut = l.storage == .rgbaTexture ? .rec2020 : color.gamut
+        u.toBT2020 = l.storage == .rgbaTexture ? matrix_identity_float3x3 : ColorScience.matrix(from: gamut, to: .rec2020)
+        u.rotation = Int32(info.video.rotation)
         u.viewport = viewport
         u.lumaSize = SIMD4(Float(l.width), Float(l.height), Float(l.width) / max(1, viewport.z), Float(l.height) / max(1, viewport.w))
         let (sx, sy) = l.chroma.subsampling
@@ -202,9 +245,9 @@ final class PlayerRenderer {
         if isPQ || l.storage == .rgbaTexture {
             (srcPeak, source) = sourcePeak(info, assumed: Double(settings.assumedPeak))
         } else if isHLG {
-            // BT.2100: the HLG OOTF targets the display's own peak (400-2000 nits). On a screen without HDR headroom
-            // the nominal 1000-nit rendering is tone mapped like PQ, which keeps diffuse white near SDR white.
-            let lw = display.headroom > 1.25 ? min(2000, max(400, dstPeak)) : 1000
+            // BT.2100: the HLG OOTF targets the display's own peak (400-2000 nits, see hlgNominalPeak); a dimmer
+            // display gets the 400-nit rendering tone mapped like PQ.
+            let lw = hlgNominalPeak(displayPeak: dstPeak)
             u.hlgLw = Float(lw)
             u.hlgGamma = Float(hlgGamma(lw))
             srcPeak = lw

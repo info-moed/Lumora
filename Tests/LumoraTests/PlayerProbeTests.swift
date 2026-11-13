@@ -53,20 +53,35 @@ final class PlayerProbeTests: XCTestCase {
         XCTAssertEqual(table.count, 24, "every frame is a packet even without timestamps")
     }
 
-    func testThirdPartyVVCHLGIsFlaggedForTheOverride() throws {
+    func testThirdPartyVVCHLGPlaysAsHLG() throws {
         // VVenC's --hdr hlg_2020 tags transfer 14 (BT.2020) plus the alternative-transfer SEI, which FFmpeg's VVC
-        // decoder ignores: the probe can't see HLG, so it offers "Interpret as HLG".
-        try PlayerFixtures.require("ffprobe", "vvencapp")
+        // decoder ignores: the probe reads the SEI itself, from the raw stream and from an MP4 copy.
+        try PlayerFixtures.require("ffmpeg", "ffprobe", "vvencapp")
         let y4m = try PlayerFixtures.indexY4M("index.y4m", spec: .init())
         let hlg = try PlayerFixtures.cached("vvc-hlg.266") {
             try PlayerFixtures.run("vvencapp", ["-i", y4m.path, "--preset", "faster", "-q", "34", "--hdr", "hlg_2020", "-o", $0.path])
         }
-        let i = try MediaProbe.probe(hlg)
-        XCTAssertEqual(i.video.color.primaries, 9)
-        XCTAssertTrue([14, 18].contains(i.video.color.transfer), "transfer \(i.video.color.transfer)")
-        if i.video.color.transfer == 14 {
-            XCTAssertTrue(i.notes.contains { $0.contains("Interpret as HLG") }, "\(i.notes)")
+        var files = [hlg]
+        if PlayerFixtures.tool("MP4Box") != nil {
+            files.append(try PlayerFixtures.cached("vvc-hlg.mp4") { try PlayerFixtures.run("MP4Box", ["-add", "\(hlg.path):fps=24", "-new", $0.path]) })
         }
+        var macOS = PlayerSettings(); macOS.toneMapping = .macOS
+        for url in files {
+            let i = try MediaProbe.probe(url)
+            let name = url.lastPathComponent
+            XCTAssertEqual(i.video.color.primaries, 9, name)
+            XCTAssertTrue([14, 18].contains(i.video.color.transfer), "\(name): transfer \(i.video.color.transfer)")
+            if i.video.color.transfer == 14 {
+                XCTAssertEqual(i.video.alternativeTransfer, 18, name)
+                XCTAssertTrue(i.notes.contains { $0.contains("playing as HLG") }, "\(name): \(i.notes)")
+                XCTAssertFalse(i.notes.contains { $0.contains("Interpret as HLG") }, name)
+            }
+            let out = PlayerRenderer.output(frameColor: i.video.color, storage: .planarBuffer, info: i, settings: macOS, interpret: .auto)
+            XCTAssertEqual(out, .hlg, name)
+        }
+        // A plain BT.2020 SDR VVC stream has no such SEI.
+        let sdr = try PlayerFixtures.indexClip("vvc.266")
+        XCTAssertNil(VVCSEI.alternativeTransfer(firstAccessUnitOf: sdr))
     }
 
     func testAV2StreamColorRandomAccessPointsAndManifestRate() throws {

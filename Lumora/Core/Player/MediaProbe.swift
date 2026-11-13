@@ -221,6 +221,7 @@ enum MediaProbe {
         var duration: Double = 0
         var format: CMFormatDescription?
         var audioTracks = 0
+        var transform = CGAffineTransform.identity
     }
 
     static func probeAVFoundation(_ url: URL, into info: inout MediaInfo) {
@@ -229,6 +230,7 @@ enum MediaProbe {
             var f = AVFFacts()
             guard let t = try await asset.loadTracks(withMediaType: .video).first else { return f }
             let (rate, range, fds, decodable) = try await t.load(.nominalFrameRate, .timeRange, .formatDescriptions, .isDecodable)
+            f.transform = (try? await t.load(.preferredTransform)) ?? .identity
             f.decodable = decodable
             f.rate = rate
             f.duration = range.duration.seconds
@@ -280,6 +282,10 @@ enum MediaProbe {
         if !hdr.isEmpty { v.hdr = hdr }
         let atoms = ext[kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms as String] as? [String: Any] ?? [:]
         if let record = (atoms["dvcC"] ?? atoms["dvvC"] ?? atoms["dvwC"]) as? Data { v.dolbyVision = parseDOVIRecord(record) }
+        // preferredTransform in AVFoundation's y-down space: (a, b) is where the x axis goes, so atan2(b, a) turns clockwise.
+        let t = facts.transform
+        v.rotation = VideoInfo.quarterTurns(clockwise: atan2(Double(t.b), Double(t.a)) * 180 / .pi)
+        v.mirrored = Double(t.a * t.d - t.b * t.c) < 0
         info.video = v
         if facts.rate > 0 { (info.rateNum, info.rateDen) = rationalFrameRate(Double(facts.rate)) }
         if facts.duration.isFinite, facts.duration > 0 { info.duration = facts.duration }
@@ -388,9 +394,19 @@ enum MediaProbe {
                 }
             } else if type.contains("2094-40") || type.contains("HDR10+") {
                 v.hdr10Plus = true
+            } else if type.lowercased().contains("display matrix") || type.lowercased().contains("displaymatrix") {
+                // FFmpeg's rotation is counterclockwise (av_display_rotation_get); a negative determinant mirrors.
+                if let r = rational(sd["rotation"]) { v.rotation = VideoInfo.quarterTurns(clockwise: -r) }
+                if let m = sd["displaymatrix"] as? String, let det = displayMatrixDeterminant(m) { v.mirrored = det < 0 }
             }
         }
         if !hdr.isEmpty { v.hdr = hdr }
+        // FFmpeg's VVC decoder doesn't apply the alternative transfer characteristics SEI (VVenC --hdr hlg_2020 tags
+        // BT.2020 SDR and signals HLG there), so read it from the first access unit.
+        if v.codec == .vvc, v.alternativeTransfer == nil, v.color.transfer == 14 || v.color.transfer == 15,
+           let alt = VVCSEI.alternativeTransfer(firstAccessUnitOf: url) {
+            v.alternativeTransfer = alt
+        }
         info.video = v
 
         // Timing.
@@ -398,6 +414,7 @@ enum MediaProbe {
         if let st = Double(s["start_time"] as? String ?? "") ?? Double(format["start_time"] as? String ?? ""), st.isFinite, abs(st) < 86_400 {
             info.startTime = st
         }
+        if let st = Double(format["start_time"] as? String ?? ""), st.isFinite, abs(st) < 86_400 { info.formatStartTime = st }
         if !info.avfDecodable || info.fps <= 0 {
             let rate = parseRate(s["avg_frame_rate"] as? String) ?? parseRate(s["r_frame_rate"] as? String)
             if let r = rate {
@@ -423,6 +440,7 @@ enum MediaProbe {
             var n = 0
             var tracks: [AudioInfo] = []
             for a in streams where a["codec_type"] as? String == "audio" {
+                if let st = Double(a["start_time"] as? String ?? ""), st.isFinite, abs(st) < 86_400 { info.audioStartTimes[n] = st }
                 tracks.append(AudioInfo(index: n, codec: a["codec_name"] as? String ?? "audio", channels: a["channels"] as? Int ?? 2,
                                         sampleRate: Int(a["sample_rate"] as? String ?? "") ?? 48000,
                                         language: (a["tags"] as? [String: Any])?["language"] as? String))
@@ -430,6 +448,17 @@ enum MediaProbe {
             }
             info.audio = tracks
         }
+    }
+
+    /// a·d − b·c of FFmpeg's printed 3×3 display matrix ("00000000: a b u" rows, 16.16 fixed point).
+    static func displayMatrixDeterminant(_ text: String) -> Double? {
+        let rows = text.split(separator: "\n").compactMap { line -> [Double]? in
+            guard let colon = line.firstIndex(of: ":") else { return nil }
+            let n = line[line.index(after: colon)...].split(separator: " ").compactMap { Double($0) }
+            return n.count == 3 ? n : nil
+        }
+        guard rows.count >= 2 else { return nil }
+        return rows[0][0] * rows[1][1] - rows[0][1] * rows[1][0]
     }
 
     private static func firstLine(_ s: String) -> String {
@@ -473,10 +502,11 @@ enum MediaProbe {
         if let dv = v.dolbyVision { info.notes.append(dv.summary) }
         if v.hdr10Plus { info.notes.append("HDR10+: dynamic metadata ignored, static HDR10 used.") }
         if v.color.matrix == 10 || v.color.matrix == 14 { info.notes.append("\(v.color.matrixName): shown with the BT.2020 NCL matrix.") }
-        if v.codec == .vvc, v.color.transfer == 14 || v.color.transfer == 15 {
+        if v.codec == .vvc, v.color.transfer == 14 || v.color.transfer == 15, v.alternativeTransfer == nil {
             info.notes.append("Tagged BT.2020 SDR. If this is HLG carried with an alternative-transfer SEI (FFmpeg's VVC decoder doesn't apply it), choose Interpret as HLG.")
         }
         if let alt = v.alternativeTransfer, alt == 18 { info.notes.append("Alternative transfer SEI: playing as HLG.") }
+        if v.mirrored { info.notes.append("The display matrix mirrors the picture; it is shown unmirrored.") }
         if v.codec == .av2 { info.notes.append("AV2 can't carry mastering metadata; the HDR peak comes from Lumora's export record or Settings → Player.") }
     }
 
@@ -563,5 +593,78 @@ struct FrameTable: Codable, Equatable {
         let sorted = rows.map { ($0.0!, $0.1) }.sorted { $0.0 < $1.0 }
         guard let t0 = sorted.first?.0 else { return FrameTable(pts: [], keyFrames: []) }
         return FrameTable(pts: sorted.map { $0.0 - t0 }, keyFrames: sorted.indices.filter { sorted[$0].1 })
+    }
+}
+
+/// The alternative transfer characteristics SEI (payload type 147, H.274) of a VVC stream, read from its first
+/// access unit in Annex B form: the file itself for a raw stream, else one packet copied out by FFmpeg.
+enum VVCSEI {
+    static func alternativeTransfer(firstAccessUnitOf url: URL) -> Int? {
+        let data: Data
+        if MediaProbe.rawStreamExtensions.contains(url.pathExtension.lowercased()) {
+            guard let fh = try? FileHandle(forReadingFrom: url) else { return nil }
+            defer { try? fh.close() }
+            data = (try? fh.read(upToCount: 1 << 20)) ?? Data()
+        } else {
+            guard let d = try? ToolLocator.run("ffmpeg", ["-v", "error", "-nostdin", "-i", url.path, "-map", "0:v:0", "-c", "copy",
+                                                         "-frames:v", "1", "-f", "vvc", "-"], timeout: 10, maxOutput: 64 << 20)
+            else { return nil }
+            data = d
+        }
+        return alternativeTransfer(annexB: data)
+    }
+
+    /// Scans prefix SEI NAL units (type 23) until the first slice; nil when the stream has no such SEI.
+    static func alternativeTransfer(annexB d: Data) -> Int? {
+        let b = [UInt8](d)
+        var starts: [Int] = []
+        var i = 0
+        while i + 2 < b.count {
+            if b[i] == 0, b[i + 1] == 0, b[i + 2] == 1 { starts.append(i + 3); i += 3 } else { i += 1 }
+            if starts.count > 512 { break }
+        }
+        for (k, s) in starts.enumerated() where s + 2 <= b.count {
+            let type = Int(b[s + 1] >> 3) & 31
+            if type <= 11 { break }                      // a VCL NAL unit (slice): the prefix SEI comes before it
+            guard type == 23 else { continue }
+            var end = k + 1 < starts.count ? starts[k + 1] - 3 : b.count
+            while end > s + 2 && b[end - 1] == 0 { end -= 1 }                    // trailing zero bytes of the next start code
+            if let v = parseSEI(rbsp(b[(s + 2)..<end])) { return v }
+        }
+        return nil
+    }
+
+    /// Removes emulation prevention bytes (00 00 03 → 00 00).
+    static func rbsp(_ s: ArraySlice<UInt8>) -> [UInt8] {
+        var out: [UInt8] = []
+        out.reserveCapacity(s.count)
+        var zeros = 0
+        for x in s {
+            if zeros >= 2 && x == 3 { zeros = 0; continue }
+            out.append(x)
+            zeros = x == 0 ? zeros + 1 : 0
+        }
+        return out
+    }
+
+    static func parseSEI(_ p: [UInt8]) -> Int? {
+        var i = 0
+        while i < p.count {
+            if p[i] == 0x80 && i == p.count - 1 { break }                         // rbsp_trailing_bits
+            var type = 0, size = 0
+            while i < p.count && p[i] == 0xFF { type += 255; i += 1 }
+            guard i < p.count else { break }
+            type += Int(p[i]); i += 1
+            while i < p.count && p[i] == 0xFF { size += 255; i += 1 }
+            guard i < p.count else { break }
+            size += Int(p[i]); i += 1
+            guard i + size <= p.count else { break }
+            if type == 147, size >= 1 {
+                let v = Int(p[i])
+                return (1...18).contains(v) ? v : nil
+            }
+            i += size
+        }
+        return nil
     }
 }

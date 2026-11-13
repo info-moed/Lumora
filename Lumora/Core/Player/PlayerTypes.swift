@@ -277,11 +277,26 @@ struct VideoInfo: Equatable {
     var hdr10Plus = false
     /// The alternative transfer characteristics SEI (e.g. 18 for HLG carried as BT.2020 SDR).
     var alternativeTransfer: Int?
+    /// Clockwise rotation the picture is shown with (display matrix / preferredTransform): 0, 90, 180 or 270.
+    var rotation = 0
+    /// The display matrix also mirrors the picture (not applied; noted in the overlay).
+    var mirrored = false
+
+    /// Width and height of the picture as shown (swapped for 90° and 270° rotations).
+    var rotatesSideways: Bool { rotation == 90 || rotation == 270 }
 
     var displayAspect: Double {
         guard height > 0 else { return 16.0 / 9 }
         let sar = sarNum > 0 && sarDen > 0 ? Double(sarNum) / Double(sarDen) : 1
-        return Double(width) * min(4, max(0.25, sar)) / Double(height)
+        let stored = Double(width) * min(4, max(0.25, sar)) / Double(height)
+        return rotatesSideways ? 1 / stored : stored
+    }
+
+    /// Normalizes a rotation in degrees (any sign, any multiple of 360) to 0, 90, 180 or 270, clockwise.
+    static func quarterTurns(clockwise degrees: Double) -> Int {
+        guard degrees.isFinite else { return 0 }
+        let q = Int((degrees / 90).rounded()) % 4
+        return ((q + 4) % 4) * 90
     }
 }
 
@@ -327,6 +342,10 @@ struct MediaInfo: Equatable {
     var manifestPeakNits: Double?
     /// The container's first video timestamp (FFmpeg's start_time), for exact seeks with -copyts.
     var startTime: Double = 0
+    /// The container's own start_time (the earliest stream): FFmpeg's input -ss counts from it.
+    var formatStartTime: Double = 0
+    /// Each audio track's first timestamp, by track number, when FFmpeg read the file.
+    var audioStartTimes: [Int: Double] = [:]
 
     var fps: Double { Double(rateNum) / Double(max(1, rateDen)) }
     var estimatedFrameCount: Int { frameCount ?? safeFrameCount(seconds: duration, fps: fps) }

@@ -361,7 +361,8 @@ struct InfoOverlay: View {
         }
         if let note = engine.decoderNote { r.append(("", note)) }
         r.append(("Picture", "\(v.width)×\(v.height)" + (v.sarNum != v.sarDen ? " (SAR \(v.sarNum):\(v.sarDen))" : "")
-            + " · \(MediaProbe.formatRate(info.fps)) fps\(info.frameRateKnown ? "" : " (assumed)") · \(v.bitDepth)-bit \(v.chroma)"))
+            + " · \(MediaProbe.formatRate(info.fps)) fps\(info.frameRateKnown ? "" : " (assumed)") · \(v.bitDepth)-bit \(v.chroma)"
+            + (v.rotation != 0 ? " · shown rotated \(v.rotation)°" : "")))
         r.append(("Chroma siting", c.chromaLocation.description + tag(c.chromaLocationTagged)))
         r.append(("Transfer", (engine.interpret == .auto ? c.transferName : "\(engine.interpret.label) (override)") + tag(c.transferTagged)))
         r.append(("Primaries", c.primariesName + tag(c.primariesTagged)))
@@ -389,7 +390,7 @@ struct InfoOverlay: View {
         if let c = h?.maxCLL { parts.append("MaxCLL \(Int(c))") }
         if let f = h?.maxFALL { parts.append("MaxFALL \(Int(f))") }
         if parts.isEmpty {
-            if !info.video.color.isHDR && engine.interpret != .pq { return "none (SDR)" }
+            if !engine.isHDR { return "none (SDR)" }
             if let p = info.manifestPeakNits { return "none in the stream; Lumora's export record says \(Int(p)) nits" }
             return "none, assuming \(Int(engine.settings.assumedPeak)) nits"
         }

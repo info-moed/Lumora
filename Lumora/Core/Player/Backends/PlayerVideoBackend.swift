@@ -45,9 +45,12 @@ enum PlayerBackends {
 /// Metal buffers: no conversion, no per-frame allocation.
 final class FFmpegPipeBackend: PlayerVideoBackend, @unchecked Sendable {
     let info: MediaInfo
-    private(set) var choice: DecoderChoice
-    private(set) var note: String?
     private let lock = NSLock()
+    /// Written on the decode thread (software fallback, end-of-file note) and read on the main thread: always under `lock`.
+    private var _choice: DecoderChoice
+    private var _note: String?
+    var choice: DecoderChoice { lock.lock(); defer { lock.unlock() }; return _choice }
+    var note: String? { lock.lock(); defer { lock.unlock() }; return _note }
     private var child: ChildProcess?
     private var layout: FrameLayout
     private var pool: BufferPool
@@ -64,11 +67,11 @@ final class FFmpegPipeBackend: PlayerVideoBackend, @unchecked Sendable {
     private var frameTable: FrameTable?
     /// Stop after this many frames (segment workers of the pre-decode cache).
     var limit: Int?
-    var randomAccessPoints: [Int]? { frameTable?.keyFrames }
+    var randomAccessPoints: [Int]? { lock.lock(); defer { lock.unlock() }; return frameTable?.keyFrames }
 
     init(info: MediaInfo, choice: DecoderChoice, poolCapacity: Int) throws {
         self.info = info
-        self.choice = choice
+        self._choice = choice
         self.poolCapacity = poolCapacity
         self.input = info.url
         self.inputRate = info.fps
@@ -90,12 +93,26 @@ final class FFmpegPipeBackend: PlayerVideoBackend, @unchecked Sendable {
         lock.lock()
         input = url
         inputRate = rate
-        choice.seekModel = .random
+        _choice.seekModel = .random
         lock.unlock()
     }
 
+    /// A segment worker for the pre-decode cache that reads what this backend reads now: the indexed copy of a raw
+    /// stream (whose timestamps follow the player's rate) and the frame table, with the decoder it ended up using.
+    func segmentWorker(limit n: Int) throws -> FFmpegPipeBackend {
+        lock.lock()
+        let c = _choice, src = input, rate = inputRate, table = frameTable
+        lock.unlock()
+        let b = try FFmpegPipeBackend(info: info, choice: c, poolCapacity: 4)
+        if src != info.url { b.useIndexedCopy(src, rate: rate) }
+        if let table { b.setFrameTable(table) }
+        b.limit = n
+        return b
+    }
+
     private func pts(_ i: Int) -> Double {
-        if let t = frameTable, t.timed, i < t.pts.count, t.pts.count >= (info.frameCount ?? 0) - 1 { return t.pts[i] }
+        lock.lock(); let table = frameTable; lock.unlock()
+        if let t = table, t.timed, i < t.pts.count, t.pts.count >= (info.frameCount ?? 0) - 1 { return t.pts[i] }
         return Double(i) / info.fps
     }
 
@@ -107,14 +124,16 @@ final class FFmpegPipeBackend: PlayerVideoBackend, @unchecked Sendable {
         lock.unlock()
         old?.terminate()
         let target = max(0, i)
-        var args = ["-v", "error", "-nostdin"]
-        if choice.hwaccel { args += ["-hwaccel", "videotoolbox"] }
-        if let dec = choice.ffmpegDecoder { args += ["-c:v", dec] }
         lock.lock()
-        let seekable = choice.seekModel == .random
+        let ch = _choice
+        let seekable = ch.seekModel == .random
         let src = input, rate = inputRate
         let table = frameTable.flatMap { $0.timed ? $0 : nil }
         lock.unlock()
+        // -noautorotate: frames come out as stored (the probed width × height); the renderer applies the rotation.
+        var args = ["-v", "error", "-nostdin", "-noautorotate"]
+        if ch.hwaccel { args += ["-hwaccel", "videotoolbox"] }
+        if let dec = ch.ffmpegDecoder { args += ["-c:v", dec] }
         var outputSeek: [String] = []
         if seekable && target > 0 {
             // Two-stage seek, exact even with open GOPs (leading pictures before an intra frame, as VVenC and x265 write
@@ -127,6 +146,9 @@ final class FFmpegPipeBackend: PlayerVideoBackend, @unchecked Sendable {
                 if keys.count >= 2 { coarse = info.startTime + table.pts[keys[keys.count - 2]] - 0.5 / rate }
                 else { coarse = 0 }
             }
+            // An input -ss counts from the container's start (FFmpeg adds the format start_time itself), while `coarse`
+            // is an absolute timestamp: a TS file starting at 1.4 s would otherwise land 1.4 s late.
+            coarse -= info.formatStartTime
             if coarse > 0 { args += ["-ss", String(format: "%.6f", coarse)] }
             args += ["-copyts"]
             outputSeek = ["-ss", String(format: "%.6f", max(0, t - min(0.25 / rate, 0.002)))]
@@ -137,7 +159,7 @@ final class FFmpegPipeBackend: PlayerVideoBackend, @unchecked Sendable {
             nextIndex = 0
         }
         args += ["-i", src.path] + outputSeek + ["-map", "0:v:0", "-an", "-sn", "-dn", "-fps_mode", "passthrough",
-                 "-f", "rawvideo", "-pix_fmt", choice.pixelFormat ?? "yuv420p", "-"]
+                 "-f", "rawvideo", "-pix_fmt", ch.pixelFormat ?? "yuv420p", "-"]
         let c = try ChildProcess(tool: "ffmpeg", args: args, qos: .userInitiated)
         lock.lock()
         child = c
@@ -172,7 +194,8 @@ final class FFmpegPipeBackend: PlayerVideoBackend, @unchecked Sendable {
             if wasInterrupted { return nil }
             let status = c.waitForExit(timeout: 3)
             if got == 0 && readSinceStart == 0 && status != 0 {
-                if choice.hwaccel, let fb = choice.softwareFallback {
+                let ch = choice
+                if ch.hwaccel, let fb = ch.softwareFallback {
                     // VideoToolbox couldn't start on this stream (profile, level, odd size): software decode.
                     switchToSoftware(fb)
                     try start(atFrame: requested)
@@ -181,7 +204,7 @@ final class FFmpegPipeBackend: PlayerVideoBackend, @unchecked Sendable {
                 throw PlayerError.decoderFailed("ffmpeg", c.stderrTail)
             }
             if got > 0 {
-                note = "The file ends early at frame \(nextIndex) (a partial frame was dropped)."
+                lock.lock(); _note = "The file ends early at frame \(nextIndex) (a partial frame was dropped)."; lock.unlock()
             }
             return nil
         }
@@ -189,17 +212,17 @@ final class FFmpegPipeBackend: PlayerVideoBackend, @unchecked Sendable {
 
     private func switchToSoftware(_ decoder: String) {
         lock.lock()
-        choice.hwaccel = false
-        choice.hardware = false
-        choice.ffmpegDecoder = decoder
-        choice.tool = "ffmpeg \(decoder)"
-        choice.pixelFormat = DecoderSelector.softwarePixelFormat(info.video)
-        if let l = FrameLayout.ffmpeg(choice.pixelFormat!, width: info.video.width, height: info.video.height) {
+        _choice.hwaccel = false
+        _choice.hardware = false
+        _choice.ffmpegDecoder = decoder
+        _choice.tool = "ffmpeg \(decoder)"
+        _choice.pixelFormat = DecoderSelector.softwarePixelFormat(info.video)
+        if let l = FrameLayout.ffmpeg(_choice.pixelFormat!, width: info.video.width, height: info.video.height) {
             layout = l
             pool.close()
             pool = BufferPool(device: MetalContext.shared.device, length: l.frameBytes, capacity: poolCapacity)
         }
-        note = "VideoToolbox couldn't decode this stream, so FFmpeg decodes it in software (\(decoder))."
+        _note = "VideoToolbox couldn't decode this stream, so FFmpeg decodes it in software (\(decoder))."
         lock.unlock()
     }
 

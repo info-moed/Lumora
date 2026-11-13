@@ -119,7 +119,18 @@ kernel void playerKernel(texture2d<float, access::read>  yTex   [[texture(0)]],
         return;
     }
     // Luma-plane coordinate of this output pixel; lumaSize.zw is the scale, exactly 1 for a 1:1 view.
-    float2 p = (pix - u.viewport.xy) * u.lumaSize.zw;
+    float2 p;
+    if (u.rotation == 0) {
+        p = (pix - u.viewport.xy) * u.lumaSize.zw;
+    } else {
+        // The picture is shown rotated clockwise (display matrix): map the shown position back to the stored frame.
+        float2 q = (pix - u.viewport.xy) / u.viewport.zw;
+        float2 s;
+        if (u.rotation == 90)       s = float2(q.y, 1.0f - q.x);
+        else if (u.rotation == 180) s = float2(1.0f - q.x, 1.0f - q.y);
+        else                        s = float2(1.0f - q.y, q.x);
+        p = s * u.lumaSize.xy;
+    }
     float2 cpos = p * u.chroma.zw + u.chromaOffset.xy;
 
     if (kPlayerLayout == PLAYER_LAYOUT_RGBA_TEXTURE) {

@@ -19,19 +19,31 @@ enum PlayerAudio {
            let s = try? AVFAudioSource(url: info.url, track: track, at: seconds) {
             return s
         }
-        return try FFmpegAudioSource(url: info.url, track: track, at: seconds)
+        return try FFmpegAudioSource(url: info.url, track: track, at: seconds, videoStart: info.startTime,
+                                     formatStart: info.formatStartTime)
+    }
+
+    /// FFmpeg arguments that put audio sample 0 exactly at media time `seconds` (counted from the first video
+    /// frame). An input -ss counts from the container's start, the earliest stream, so the target is shifted by the
+    /// video's own start; aresample's first_pts=0 then pads with silence when the audio track starts later than that
+    /// (TS captures, -itsoffset) and trims when it starts earlier.
+    static func ffmpegArgs(path: String, track: Int, at seconds: Double, videoStart: Double, formatStart: Double) -> [String] {
+        var args = ["-v", "error", "-nostdin"]
+        let target = max(0, seconds) + videoStart - formatStart
+        if target > 0.000_5 { args += ["-ss", String(format: "%.6f", target)] }
+        args += ["-i", path, "-map", "0:a:\(track)", "-vn", "-sn", "-dn", "-af", "aresample=48000:first_pts=0",
+                 "-f", "f32le", "-ac", "2", "-ar", "48000", "-"]
+        return args
     }
 }
 
-/// `ffmpeg -ss T -i FILE -map 0:a:N -f f32le -ac 2 -ar 48000 -`: any audio codec FFmpeg reads, resampled.
+/// `ffmpeg -ss T -i FILE -map 0:a:N -af aresample=48000:first_pts=0 -f f32le -ac 2 -ar 48000 -`: any audio codec
+/// FFmpeg reads, resampled, aligned to the video's timeline.
 final class FFmpegAudioSource: PlayerAudioSource {
     private let child: ChildProcess
-    private var dropBytes = 0
 
-    init(url: URL, track: Int, at seconds: Double) throws {
-        var args = ["-v", "error", "-nostdin"]
-        if seconds > 0 { args += ["-ss", String(format: "%.6f", seconds)] }
-        args += ["-i", url.path, "-map", "0:a:\(track)", "-vn", "-sn", "-dn", "-f", "f32le", "-ac", "2", "-ar", "48000", "-"]
+    init(url: URL, track: Int, at seconds: Double, videoStart: Double = 0, formatStart: Double = 0) throws {
+        let args = PlayerAudio.ffmpegArgs(path: url.path, track: track, at: seconds, videoStart: videoStart, formatStart: formatStart)
         child = try ChildProcess(tool: "ffmpeg", args: args, qos: .userInitiated)
     }
 
@@ -82,15 +94,22 @@ final class AVFAudioSource: PlayerAudioSource {
             if pendingAt >= pending.count {
                 guard reader.status == .reading, let sb = output.copyNextSampleBuffer(),
                       let block = CMSampleBufferGetDataBuffer(sb) else { break }
+                var lead = 0
                 if first {
-                    // The reader starts at the packet holding T; drop the samples before T so audio lands exactly.
+                    // The reader starts at the packet holding T; drop the samples before T so audio lands exactly, or
+                    // lead with silence when the audio track only starts after T.
                     first = false
                     let pts = CMSampleBufferGetPresentationTimeStamp(sb).seconds
                     if pts.isFinite, pts < start { trim = Int(((start - pts) * PlayerAudio.sampleRate).rounded()) }
+                    if pts.isFinite, pts > start + 0.5 / PlayerAudio.sampleRate {
+                        lead = min(Int(((pts - start) * PlayerAudio.sampleRate).rounded()), Int(PlayerAudio.sampleRate) * 60)
+                    }
                 }
                 let bytes = CMBlockBufferGetDataLength(block)
-                pending = [Float](repeating: 0, count: bytes / 4)
-                pending.withUnsafeMutableBytes { _ = CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: bytes, destination: $0.baseAddress!) }
+                pending = [Float](repeating: 0, count: lead * 2 + bytes / 4)
+                pending.withUnsafeMutableBytes {
+                    _ = CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: bytes, destination: $0.baseAddress! + lead * 8)
+                }
                 pendingAt = min(pending.count, trim * 2)
                 trim = max(0, trim - pending.count / 2)
                 continue
@@ -161,6 +180,9 @@ final class AudioOutput: @unchecked Sendable {
         lock.unlock()
         // Schedule the first second before playing so the clock starts with audio actually flowing.
         for _ in 0..<4 { sem.wait(); if !scheduleChunk(gen: gen, sem: sem) { break } }
+        // stop() from another thread while pre-rolling: stay silent (the caller sees the stop and stops again).
+        lock.lock(); let current = generation == gen; lock.unlock()
+        guard current else { return }
         node.play()
         isRunning = true
         let t = Thread { [weak self] in

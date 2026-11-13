@@ -2,7 +2,7 @@ import Foundation
 
 /// A decoder child process whose stdout the player reads with read(2), straight into frame buffers.
 /// stderr is drained into a small ring so error messages can be shown; every child is tracked until it has been
-/// killed and reaped, so stopping a player (or closing its window) never leaves a decoder running.
+/// reaped, so tests can check that stopping a player (or closing its window) never leaves a decoder running.
 final class ChildProcess: @unchecked Sendable {
     let name: String
     private let process = Process()
@@ -17,8 +17,9 @@ final class ChildProcess: @unchecked Sendable {
 
     /// Children that have been started and not yet reaped. Tests check it is empty after a player stops.
     private static let registryLock = NSLock()
-    private static var live: Set<Int32> = []
-    static var livePIDs: Set<Int32> { registryLock.lock(); defer { registryLock.unlock() }; return live }
+    /// The Process objects stay here until reaped, so a ChildProcess released right after terminate() still gets reaped.
+    private static var live: [Int32: Process] = [:]
+    static var livePIDs: Set<Int32> { registryLock.lock(); defer { registryLock.unlock() }; return Set(live.keys) }
 
     init(tool name: String, args: [String], qos: QualityOfService = .userInitiated) throws {
         guard let exe = ToolLocator.url(for: name) else {
@@ -32,12 +33,23 @@ final class ChildProcess: @unchecked Sendable {
         process.standardError = errPipe
         process.qualityOfService = qos
         let exited = self.exited
-        process.terminationHandler = { _ in exited.signal() }
+        let state = self.state
+        // Foundation reaps the child before it calls this handler: from here on its PID may belong to another
+        // process, so nothing signals it again, and the registry forgets it.
+        process.terminationHandler = { p in
+            state.markReaped()
+            Self.registryLock.lock(); Self.live[p.processIdentifier] = nil; Self.registryLock.unlock()
+            exited.signal()
+        }
+        // The registry lock is held across the launch so a child that exits at once is removed after it was added.
+        Self.registryLock.lock()
         do { try process.run() } catch {
+            Self.registryLock.unlock()
             throw PlayerError.decoderFailed(name, error.localizedDescription)
         }
         pid = process.processIdentifier
-        Self.registryLock.lock(); Self.live.insert(pid); Self.registryLock.unlock()
+        Self.live[pid] = process
+        Self.registryLock.unlock()
         let fd = errPipe.fileHandleForReading.fileDescriptor
         let done = errDone
         Thread.detachNewThread { [weak self] in
@@ -51,6 +63,20 @@ final class ChildProcess: @unchecked Sendable {
             done.signal()
         }
     }
+
+    /// Whether the child has been reaped, shared with the termination handler.
+    private final class State: @unchecked Sendable {
+        private let lock = NSLock()
+        private var reaped = false
+        func markReaped() { lock.lock(); reaped = true; lock.unlock() }
+        var isReaped: Bool { lock.lock(); defer { lock.unlock() }; return reaped }
+        /// Sends `signal` only while the child has not been reaped (its PID is still its own).
+        func signal(_ pid: Int32, _ sig: Int32) {
+            lock.lock(); defer { lock.unlock() }
+            if !reaped, pid > 0 { kill(pid, sig) }
+        }
+    }
+    private let state = State()
 
     deinit { terminate() }
 
@@ -93,6 +119,8 @@ final class ChildProcess: @unchecked Sendable {
     }
 
     var isRunning: Bool { process.isRunning }
+    /// Foundation has reaped the child: its PID is no longer its own and is never signaled again.
+    var hasBeenReaped: Bool { state.isReaped }
 
     /// Waits for the process to exit by itself; nil on timeout.
     func waitForExit(timeout: TimeInterval) -> Int32? {
@@ -103,24 +131,20 @@ final class ChildProcess: @unchecked Sendable {
         return process.terminationStatus
     }
 
-    /// Asks the child to quit without waiting (safe to call from the main thread); `terminate` reaps it later.
+    /// Makes the child quit now, without waiting (safe from the main thread). Its output is being thrown away, so it
+    /// gets SIGKILL: FFmpeg ignores SIGTERM while it is blocked writing to a full pipe, which is where a decoder
+    /// running ahead of the screen spends its time. A child that already exited (and was reaped) is never signaled.
     func interrupt() {
-        lock.lock(); let done = stopped; lock.unlock()
-        if !done, pid > 0 { kill(pid, SIGTERM) }
+        if process.isRunning { state.signal(pid, SIGKILL) }
     }
 
-    /// SIGTERM, then SIGKILL if it hasn't gone within a second; waits until the child has been reaped.
+    /// Kills the child and returns at once; Foundation reaps it on its own queue and the registry then forgets it.
+    /// Never blocks, so it is safe on the main thread (pause, seek, rate changes) and in deinit.
     func terminate() {
         lock.lock()
         if stopped { lock.unlock(); return }
         stopped = true
         lock.unlock()
-        if process.isRunning { process.terminate() }
-        if exited.wait(timeout: .now() + 1) == .timedOut {
-            kill(pid, SIGKILL)
-            _ = exited.wait(timeout: .now() + 3)
-        }
-        exited.signal()
-        Self.registryLock.lock(); Self.live.remove(pid); Self.registryLock.unlock()
+        if process.isRunning { state.signal(pid, SIGKILL) }
     }
 }

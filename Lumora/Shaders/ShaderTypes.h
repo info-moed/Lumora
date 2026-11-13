@@ -204,7 +204,7 @@ typedef struct {
     float eetfMaxLum;                // BT.2390: normalized PQ of the display peak
     float eetfKS;                    // BT.2390: knee start
     float eetfMinLum;                // BT.2390: normalized PQ of the display black
-    int   pad0;
+    int   rotation;                  // clockwise rotation the picture is shown with: 0, 90, 180, 270
     int   pad1;
 } PlayerUniforms;
 

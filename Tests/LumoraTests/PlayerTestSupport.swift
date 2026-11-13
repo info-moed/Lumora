@@ -204,6 +204,16 @@ enum PlayerFixtures {
                                                               "-cpu-used", "8", "-pix_fmt", "yuv420p10le", "-f", "webm", $0.path]) }
         case "h264.mp4":
             return try cached("index-h264.mp4") { try ffmpeg(["-i", y4m.path, "-c:v", "libx264", "-g", "8", "-pix_fmt", "yuv420p", "-f", "mp4", $0.path]) }
+        case "h264.ts":
+            // MPEG-TS starts its clock at 1.4 s: seeks must count from the container's own start.
+            return try cached("index-h264.ts") { try ffmpeg(["-i", y4m.path, "-c:v", "libx264", "-g", "8", "-pix_fmt", "yuv420p", "-f", "mpegts", $0.path]) }
+        case "h264-rot.mp4", "h264-rot.mkv":
+            // Display matrix: shown rotated 90° counterclockwise (FFmpeg's rotation 90), i.e. 270° clockwise.
+            let mp4 = try indexClip("h264.mp4")
+            let ext = kind.hasSuffix("mkv") ? "mkv" : "mp4"
+            return try cached("index-h264-rot.\(ext)") {
+                try ffmpeg(["-display_rotation", "90", "-i", mp4.path, "-c", "copy", "-f", ext == "mkv" ? "matroska" : "mp4", $0.path])
+            }
         case "vvc.266":
             return try cached("index-vvc.266") {
                 try run("vvencapp", ["-i", y4m.path, "--preset", "faster", "-q", "30", "--intraperiod", "8", "-o", $0.path])

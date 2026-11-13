@@ -73,6 +73,13 @@ final class PlayerSeekTests: XCTestCase {
         try check("y4m", expect: .ffmpeg)
     }
 
+    func testMPEGTSWithANonZeroStart() throws {
+        try PlayerFixtures.require("ffmpeg", "ffprobe")
+        let info = try MediaProbe.probe(try PlayerFixtures.indexClip("h264.ts"))
+        XCTAssertGreaterThan(info.formatStartTime, 1, "TS clocks start at 1.4 s")
+        try check("h264.ts", expect: .ffmpeg)
+    }
+
     func testRawVVCDecodesForwardThenSeeksDirectlyAfterRemux() throws {
         try PlayerFixtures.require("ffmpeg", "ffprobe", "vvencapp", "MP4Box")
         let saved = PreDecodeCache.rootOverride, savedFloor = PreDecodeCache.floorBytes

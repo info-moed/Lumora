@@ -130,7 +130,8 @@ Every frame goes from the decoder's own samples to the display in one GPU pass:
 2. **Chroma** is interpolated at its real position (left, center, top-left… as tagged; left when untagged).
 3. **Range and matrix:** limited or full range; BT.709, BT.2020 NCL, BT.601, YCgCo or GBR.
 4. **Transfer to light:** PQ (SMPTE ST 2084) in absolute nits; HLG through the BT.2100 system gamma for the display's
-   peak (γ = 1.2 at 1000 nits, 1.033 at 400, 1.326 at 2000); SDR through BT.1886 (gamma 2.4).
+   peak (γ = 1.2 at 1000 nits, 1.033 at 400, 1.326 at 2000; a dimmer screen gets the 400-nit rendering tone mapped
+   to it, so the picture brightens smoothly as the headroom grows); SDR through BT.1886 (gamma 2.4).
 5. **Primaries** converted to BT.2020.
 6. **Tone mapping** with the BT.2390 EETF to what the screen can show right now: its EDR headroom (read every frame and
    smoothed, so brightness changes are followed without flicker) × the reference white. When the screen reaches the
@@ -145,7 +146,15 @@ exported the file (AV2 can't carry mastering metadata), else **Settings → Play
 (BT.2408). Reference modes on Pro Display XDR and MacBook Pro always use 100 nits.
 
 **Tone mapping: macOS** in Settings passes the PQ or HLG signal through with its metadata and lets macOS tone map, for
-comparison.
+comparison. "Interpret as" changes what is passed through: an HDR file shown as SDR goes out as SDR, HLG read as PQ
+goes out as PQ.
+
+**HLG from VVenC:** `vvencapp --hdr hlg_2020` tags the stream BT.2020 SDR and signals HLG in an alternative transfer
+characteristics SEI, which FFmpeg's VVC decoder doesn't apply. The Player reads that SEI itself (from a raw stream or
+the first packet of an MP4 or MKV) and plays the file as HLG.
+
+**Rotation:** phone footage with a rotation tag (MP4, MOV or Matroska) is shown upright on every
+decoder; the info overlay says so.
 
 **Dolby Vision and HDR10+:** profiles 8.x and 7 play their HDR10 (or HLG) base layer; profile 5 is converted to PQ by
 macOS, which works only from MP4 or MOV (profile 5 in MKV is refused with an explanation). HDR10+ plays as HDR10.
@@ -154,7 +163,9 @@ macOS, which works only from MP4 or MOV (profile 5 in MKV is refused with an exp
 
 Audio plays in sync on the audio clock: the frame on screen is the one due at the moment its sound reaches your
 speakers or headphones, output latency included. MP4 and MOV audio is decoded by AVFoundation, everything else by
-FFmpeg. Several audio tracks get a picker. Files without audio (raw streams) play on the system clock.
+FFmpeg. Several audio tracks get a picker. Files without audio (raw streams) play on the system clock. An audio track
+that starts later than the video (TS captures, offset muxes) is led in with silence, so it stays in sync from the first
+frame.
 
 ## When something can't play
 
@@ -190,6 +201,7 @@ accepts every option the Player passes it.
 - Variable frame rate: files FFmpeg decodes follow the exact frame times from FFmpeg's packet list; files AVFoundation
   decodes play at their nominal rate.
 - Reverse play steps frame by frame; on uncached AV2 it is off.
+- A display matrix that mirrors the picture is noted in the overlay but not applied (rotation is).
 - Settings changes apply to Player windows opened afterwards.
 - The automated tests check every number on the way to the screen offscreen; how it looks on a real HDR display is not
   something they can check.
