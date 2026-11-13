@@ -8,9 +8,9 @@ enum LibraryLookup {
     /// across the first time it's read.
     static var apiKey: String {
         get {
-            if let legacy = UserDefaults.standard.string(forKey: "tmdbKey") {
+            if let legacy = Prefs.store.string(forKey: "tmdbKey") {
                 if !legacy.isEmpty { Keychain.set(legacy, account: "tmdb") }
-                UserDefaults.standard.removeObject(forKey: "tmdbKey")
+                Prefs.store.removeObject(forKey: "tmdbKey")
             }
             return Keychain.get(account: "tmdb") ?? ""
         }

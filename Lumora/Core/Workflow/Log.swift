@@ -27,8 +27,8 @@ struct LogEntry: Identifiable, Hashable {
 final class LogStore {
     static let shared = LogStore()
     private(set) var entries: [LogEntry] = []
-    var verbose = UserDefaults.standard.bool(forKey: "verboseLogging") {
-        didSet { UserDefaults.standard.set(verbose, forKey: "verboseLogging") }
+    var verbose = Prefs.store.bool(forKey: "verboseLogging") {
+        didSet { Prefs.store.set(verbose, forKey: "verboseLogging") }
     }
     let capacity = 20_000
 

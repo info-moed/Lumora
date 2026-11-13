@@ -108,12 +108,12 @@ final class ScratchManager {
     static let shared = ScratchManager()
 
     var root: URL {
-        didSet { UserDefaults.standard.set(root.path, forKey: "scratchRoot"); refresh() }
+        didSet { Prefs.store.set(root.path, forKey: "scratchRoot"); refresh() }
     }
     private(set) var volume: VolumeInfo?
 
     private init() {
-        if let p = UserDefaults.standard.string(forKey: "scratchRoot") {
+        if let p = Prefs.store.string(forKey: "scratchRoot") {
             root = URL(fileURLWithPath: p)
         } else {
             root = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("Lumora Scratch")
@@ -126,7 +126,7 @@ final class ScratchManager {
 
     /// A fresh folder for one job, removed by the caller when done.
     nonisolated static func jobDirectory(_ label: String) throws -> URL {
-        let base = URL(fileURLWithPath: UserDefaults.standard.string(forKey: "scratchRoot")
+        let base = URL(fileURLWithPath: Prefs.store.string(forKey: "scratchRoot")
                        ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
                         .appendingPathComponent("Lumora Scratch").path)
         let dir = base.appendingPathComponent("\(label)-\(UUID().uuidString.prefix(8))", isDirectory: true)
@@ -135,7 +135,7 @@ final class ScratchManager {
     }
 
     nonisolated static var proxiesFolder: URL {
-        let base = URL(fileURLWithPath: UserDefaults.standard.string(forKey: "scratchRoot")
+        let base = URL(fileURLWithPath: Prefs.store.string(forKey: "scratchRoot")
                        ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
                         .appendingPathComponent("Lumora Scratch").path)
         let dir = base.appendingPathComponent("Proxies", isDirectory: true)
@@ -172,7 +172,7 @@ struct StoragePlan {
 
     static func make(for d: SourceDescriptor, measureSpeed: Bool = true) -> StoragePlan {
         let src = StorageInspector.describe(d.url)
-        let scratchRoot = URL(fileURLWithPath: UserDefaults.standard.string(forKey: "scratchRoot")
+        let scratchRoot = URL(fileURLWithPath: Prefs.store.string(forKey: "scratchRoot")
                               ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].path)
         let scratch = StorageInspector.describe(scratchRoot)
         let size = (try? d.url.resourceValues(forKeys: [.totalFileSizeKey]).totalFileSize).map { Double($0 ?? 0) } ?? 0

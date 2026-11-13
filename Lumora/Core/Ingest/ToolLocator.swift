@@ -3,7 +3,7 @@ import Foundation
 /// Finds helper command-line tools: bundled copies first (Contents/Resources/bin), then Homebrew.
 enum ToolLocator {
     static func url(for name: String) -> URL? {
-        if let override = UserDefaults.standard.string(forKey: "toolPath.\(name)"),
+        if let override = Prefs.store.string(forKey: "toolPath.\(name)"),
            FileManager.default.isExecutableFile(atPath: override) {
             return URL(fileURLWithPath: override)
         }

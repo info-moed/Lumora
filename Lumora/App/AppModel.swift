@@ -46,8 +46,8 @@ final class AppModel {
     var contentKind: ContentKind = .realLife { didSet { if oldValue != contentKind { applyTuning() } } }
     var storagePlan: StoragePlan?
     var proxyDescriptor: SourceDescriptor?
-    var autoStage = UserDefaults.standard.object(forKey: "autoStage") as? Bool ?? true {
-        didSet { UserDefaults.standard.set(autoStage, forKey: "autoStage") }
+    var autoStage = Prefs.store.object(forKey: "autoStage") as? Bool ?? true {
+        didSet { Prefs.store.set(autoStage, forKey: "autoStage") }
     }
     var useTargetQuality = true
     var qualityTarget = QualityTarget()
@@ -63,15 +63,15 @@ final class AppModel {
     var suggestedUpscaleModel: String?
 
     // Time budget planner
-    var planMode: PlanMode = PlanMode(rawValue: UserDefaults.standard.string(forKey: "planMode") ?? "") ?? .bestForMac {
-        didSet { UserDefaults.standard.set(planMode.rawValue, forKey: "planMode") }
+    var planMode: PlanMode = PlanMode(rawValue: Prefs.store.string(forKey: "planMode") ?? "") ?? .bestForMac {
+        didSet { Prefs.store.set(planMode.rawValue, forKey: "planMode") }
     }
-    var budgetHours: Double = UserDefaults.standard.object(forKey: "budgetHours") as? Double ?? 4 {
-        didSet { UserDefaults.standard.set(budgetHours, forKey: "budgetHours") }
+    var budgetHours: Double = Prefs.store.object(forKey: "budgetHours") as? Double ?? 4 {
+        didSet { Prefs.store.set(budgetHours, forKey: "budgetHours") }
     }
     var optionOverrides: [String: Bool] = [:]
-    var dismissedUpgrades: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "dismissedUpgrades") ?? []) {
-        didSet { UserDefaults.standard.set(Array(dismissedUpgrades), forKey: "dismissedUpgrades") }
+    var dismissedUpgrades: Set<String> = Set(Prefs.store.stringArray(forKey: "dismissedUpgrades") ?? []) {
+        didSet { Prefs.store.set(Array(dismissedUpgrades), forKey: "dismissedUpgrades") }
     }
     var planVersion = 0
 
@@ -89,12 +89,12 @@ final class AppModel {
     var makeItPop = false { didSet { applyDisplay() } }
 
     // Beginner mode
-    var simpleMode = UserDefaults.standard.object(forKey: "simpleMode") as? Bool ?? true {
-        didSet { UserDefaults.standard.set(simpleMode, forKey: "simpleMode") }
+    var simpleMode = Prefs.store.object(forKey: "simpleMode") as? Bool ?? true {
+        didSet { Prefs.store.set(simpleMode, forKey: "simpleMode") }
     }
     var goal: Goal = .watchOnTV
-    var playsAV1 = UserDefaults.standard.object(forKey: "playsAV1") as? Bool ?? true {
-        didSet { UserDefaults.standard.set(playsAV1, forKey: "playsAV1") }
+    var playsAV1 = Prefs.store.object(forKey: "playsAV1") as? Bool ?? true {
+        didSet { Prefs.store.set(playsAV1, forKey: "playsAV1") }
     }
     var trial: InterpolationTrial?
     var trialBusy = false

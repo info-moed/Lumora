@@ -924,19 +924,19 @@ final class CampaignIngestTests: XCTestCase {
     /// Runs `body` with `scratchRoot` pointed at a temp folder, restoring the user's setting afterwards.
     func withTemporaryScratch(_ body: (URL) async throws -> Void) async throws {
         let key = "scratchRoot"
-        let saved = UserDefaults.standard.object(forKey: key)
+        let saved = Prefs.store.object(forKey: key)
         let root = Self.work.appendingPathComponent("scratch-\(UUID().uuidString.prefix(6))", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        UserDefaults.standard.set(root.path, forKey: key)
+        Prefs.store.set(root.path, forKey: key)
         defer {
-            if let saved { UserDefaults.standard.set(saved, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
+            if let saved { Prefs.store.set(saved, forKey: key) } else { Prefs.store.removeObject(forKey: key) }
             try? FileManager.default.removeItem(at: root)
         }
         try await body(root)
     }
 
     func testScratchJobDirectoryStagingAndPlan() async throws {
-        let before = UserDefaults.standard.object(forKey: "scratchRoot") as? String
+        let before = Prefs.store.object(forKey: "scratchRoot") as? String
         try await withTemporaryScratch { root in
             let job = try ScratchManager.jobDirectory("unit")
             XCTAssertEqual(job.deletingLastPathComponent().standardizedFileURL.path, root.standardizedFileURL.path)
@@ -974,7 +974,7 @@ final class CampaignIngestTests: XCTestCase {
                 XCTAssertNotNil(plan.source); XCTAssertNotNil(plan.scratch)
             }
         }
-        XCTAssertEqual(UserDefaults.standard.object(forKey: "scratchRoot") as? String, before, "scratchRoot restored")
+        XCTAssertEqual(Prefs.store.object(forKey: "scratchRoot") as? String, before, "scratchRoot restored")
     }
 
     func testProxyIsWrittenDuringAnalysis() async throws {

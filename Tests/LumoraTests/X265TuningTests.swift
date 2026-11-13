@@ -287,11 +287,11 @@ final class X265TuningTests: XCTestCase {
 
     /// Runs the export with verbose logging on (restored afterwards) and returns the x265 command lines it logged.
     func exportLoggingEncoder(_ job: ExportJob) async throws -> (URL, [String]) {
-        let stored = UserDefaults.standard.object(forKey: "verboseLogging")
+        let stored = Prefs.store.object(forKey: "verboseLogging")
         LogStore.shared.verbose = true
         defer {
             LogStore.shared.verbose = (stored as? Bool) ?? false
-            if stored == nil { UserDefaults.standard.removeObject(forKey: "verboseLogging") }
+            if stored == nil { Prefs.store.removeObject(forKey: "verboseLogging") }
         }
         let before = LogStore.shared.entries.count
         let url = try await ExportEngine().run(job) { _, _ in }

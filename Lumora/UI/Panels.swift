@@ -223,6 +223,8 @@ struct ModelLabView: View {
     @State private var confirmConvert: RIFERelease?
 
     var body: some View {
+        // Scrolls when the catalog, content types and metrics outgrow the window, so the header is never clipped.
+        ScrollView {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Model Lab").font(Theme.heading(20))
@@ -242,7 +244,7 @@ struct ModelLabView: View {
                 TableColumn("Status") { r in statusView(r) }.width(150)
                 TableColumn("") { r in actions(r) }.width(190)
             }
-            .frame(minHeight: 320)
+            .frame(height: 320)   // a Table inside a ScrollView needs a fixed height
             HStack(alignment: .top, spacing: 30) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Your best model per content type").font(Theme.heading())
@@ -287,13 +289,15 @@ struct ModelLabView: View {
                     Button("Get AVQT (Apple developer download)…") {
                         NSWorkspace.shared.open(URL(string: "https://developer.apple.com/videos/play/wwdc2022/10149/")!)
                     }
-                    Text("libvmaf (VMAF, VMAF NEG, CAMBI, MS-SSIM, PSNR-HVS, CIEDE2000): brew install libvmaf\nXPSNR: FFmpeg 7 or newer\nSSIMULACRA 2: cargo install ssimulacra2_rs")
+                    Text("libvmaf (VMAF, VMAF NEG, CAMBI, MS-SSIM, PSNR-HVS, CIEDE2000): brew install libvmaf\nXPSNR: FFmpeg 7 or newer\nSSIMULACRA 2: scripts/install-ssimulacra2.sh (the plain cargo build cannot read Lumora's Y4M pipes)")
                         .font(Theme.note).foregroundStyle(.secondary)
                 }
             }
             if let message { Text(message).font(Theme.note).foregroundStyle(Theme.fail) }
         }
         .padding(18)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
         .frame(minWidth: 940, minHeight: 760)
         .onAppear { lab.refresh() }
         .alert("Run code from this download?",
@@ -505,7 +509,7 @@ struct OptimizeView: View {
 /// Shown until this Mac has a profile.
 struct OptimizeBanner: View {
     @Environment(\.openWindow) private var openWindow
-    @State private var dismissed = UserDefaults.standard.bool(forKey: "optimizeBannerDismissed")
+    @State private var dismissed = Prefs.store.bool(forKey: "optimizeBannerDismissed")
 
     var body: some View {
         if MacProfile.current == nil && !dismissed {
@@ -515,7 +519,7 @@ struct OptimizeBanner: View {
                     .font(Theme.note)
                 Spacer()
                 Button("Optimize…") { openWindow(id: "optimize") }.controlSize(.small)
-                Button { dismissed = true; UserDefaults.standard.set(true, forKey: "optimizeBannerDismissed") } label: { Image(systemName: "xmark") }
+                Button { dismissed = true; Prefs.store.set(true, forKey: "optimizeBannerDismissed") } label: { Image(systemName: "xmark") }
                     .buttonStyle(.borderless)
             }
             .padding(10)

@@ -25,8 +25,8 @@ final class ScreenshotTests: XCTestCase {
         EDRViewer.snapshotMode = true
         // The "not tuned for this Mac yet" banner isn't part of what the screenshots document; hide it, then put the
         // owner's own setting back afterwards.
-        savedBanner = UserDefaults.standard.object(forKey: "optimizeBannerDismissed")
-        UserDefaults.standard.set(true, forKey: "optimizeBannerDismissed")
+        savedBanner = Prefs.store.object(forKey: "optimizeBannerDismissed")
+        Prefs.store.set(true, forKey: "optimizeBannerDismissed")
     }
 
     private var savedBanner: Any?
@@ -34,8 +34,8 @@ final class ScreenshotTests: XCTestCase {
     override func tearDown() async throws {
         EDRViewer.snapshotMode = false
         InspectorView.defaultTab = .source
-        if let savedBanner { UserDefaults.standard.set(savedBanner, forKey: "optimizeBannerDismissed") }
-        else { UserDefaults.standard.removeObject(forKey: "optimizeBannerDismissed") }
+        if let savedBanner { Prefs.store.set(savedBanner, forKey: "optimizeBannerDismissed") }
+        else { Prefs.store.removeObject(forKey: "optimizeBannerDismissed") }
     }
 
     // MARK: Sample footage (original, generated)

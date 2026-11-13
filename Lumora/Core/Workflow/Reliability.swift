@@ -13,8 +13,8 @@ struct RunRules: Codable, Hashable {
     var webhookURL = ""                  // e.g. an ntfy.sh topic, Pushover or Home Assistant webhook → iPhone
 
     static var current: RunRules {
-        get { (UserDefaults.standard.data(forKey: "runRules")).flatMap { try? JSONDecoder().decode(RunRules.self, from: $0) } ?? RunRules() }
-        set { UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: "runRules") }
+        get { (Prefs.store.data(forKey: "runRules")).flatMap { try? JSONDecoder().decode(RunRules.self, from: $0) } ?? RunRules() }
+        set { Prefs.store.set(try? JSONEncoder().encode(newValue), forKey: "runRules") }
     }
 }
 

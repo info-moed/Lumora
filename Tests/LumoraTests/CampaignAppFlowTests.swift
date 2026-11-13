@@ -43,7 +43,7 @@ final class CampaignAppFlowTests: XCTestCase {
         super.setUp()
         let fm = FileManager.default
         try? fm.createDirectory(at: scratch, withIntermediateDirectories: true)
-        let ud = UserDefaults.standard
+        let ud = Prefs.store
         for k in touchedKeys { if let v = ud.object(forKey: k) { savedDefaults[k] = v } }
         for f in supportFiles {
             if let d = try? Data(contentsOf: f) { savedFiles[f] = d } else { absentFiles.insert(f) }
@@ -73,7 +73,7 @@ final class CampaignAppFlowTests: XCTestCase {
 
     nonisolated override class func tearDown() {
         let fm = FileManager.default
-        let ud = UserDefaults.standard
+        let ud = Prefs.store
         ud.removeVolatileDomain(forName: UserDefaults.argumentDomain)
         ud.setVolatileDomain(savedArgs, forName: UserDefaults.argumentDomain)
         for k in touchedKeys {
@@ -1016,7 +1016,12 @@ final class CampaignAppFlowTests: XCTestCase {
         // A codec that isn't installed shows the reason instead of a broken export.
         m.codec = .av2
         let av2 = try await render(dressed(ExportSheet(), m), name: "export-sheet-av2", size: CGSize(width: 560, height: 680))
-        try assertShows(av2, ["not installed"], "ExportSheet with AV2")
+        if Codec.av2.available {
+            // avmenc is installed here: the sheet offers AV2 normally (10-bit only) instead of a reason.
+            try assertShows(av2, ["AV2", "10-bit"], "ExportSheet with AV2 installed")
+        } else {
+            try assertShows(av2, ["not installed"], "ExportSheet with AV2")
+        }
         m.codec = .hevc
 
         m.interpolation.mode = .multiply(2)

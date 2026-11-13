@@ -31,14 +31,14 @@ final class CampaignWorkflowTests: XCTestCase {
         for f in Self.protectedFiles {
             savedFiles.updateValue(try? Data(contentsOf: Self.appSupport.appendingPathComponent(f)), forKey: f)
         }
-        for k in Self.protectedDefaults { savedDefaults.updateValue(UserDefaults.standard.object(forKey: k), forKey: k) }
+        for k in Self.protectedDefaults { savedDefaults.updateValue(Prefs.store.object(forKey: k), forKey: k) }
         // Quiet, unattended rules: no Mac notifications, never pause for power, heat or hours.
         var r = RunRules()
         r.notifyMac = false; r.pauseOnBattery = false; r.pauseWhenHot = false; r.onlyBetween = false; r.webhookURL = ""
         RunRules.current = r
         let scratch = Self.root.appendingPathComponent("scratch", isDirectory: true)
         try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
-        UserDefaults.standard.set(scratch.path, forKey: "scratchRoot")
+        Prefs.store.set(scratch.path, forKey: "scratchRoot")
         await PauseGate.shared.setPaused(false)
     }
 
@@ -49,7 +49,7 @@ final class CampaignWorkflowTests: XCTestCase {
             if let data { try? data.write(to: u) } else { try? FileManager.default.removeItem(at: u) }
         }
         for (k, v) in savedDefaults {
-            if let v { UserDefaults.standard.set(v, forKey: k) } else { UserDefaults.standard.removeObject(forKey: k) }
+            if let v { Prefs.store.set(v, forKey: k) } else { Prefs.store.removeObject(forKey: k) }
         }
     }
 
@@ -824,7 +824,7 @@ final class CampaignWorkflowTests: XCTestCase {
         XCTAssertEqual([8, 9, 12, 16, 17, 23].map { PauseGate.inWindow(r, now: at($0)) }, [false, true, true, true, false, false])
         r.startHour = 22; r.endHour = 6
         XCTAssertEqual([21, 22, 23, 0, 5, 6, 12].map { PauseGate.inWindow(r, now: at($0)) }, [false, true, true, true, true, false, false])
-        UserDefaults.standard.set(Data("not json".utf8), forKey: "runRules")
+        Prefs.store.set(Data("not json".utf8), forKey: "runRules")
         XCTAssertEqual(RunRules.current, RunRules(), "unreadable rules fall back to the defaults")
     }
 
@@ -918,7 +918,7 @@ final class CampaignWorkflowTests: XCTestCase {
     func testHDRLibraryBundledUserEntriesAndCommunitySync() async throws {
         let userFile = Self.appSupport.appendingPathComponent("hdr_library_user.json")
         try? FileManager.default.removeItem(at: userFile)
-        UserDefaults.standard.removeObject(forKey: "hdrLibraryURL")
+        Prefs.store.removeObject(forKey: "hdrLibraryURL")
 
         // Bundled library (ships empty: Lumora has no ratings of its own).
         let bundled = try XCTUnwrap(Bundle.main.url(forResource: "hdr_library", withExtension: "json"))
@@ -943,7 +943,7 @@ final class CampaignWorkflowTests: XCTestCase {
         let remote = (1...5).map { Self.title("Community \($0)", year: 2000 + $0, p999: 200 * $0, rating: $0 < 3 ? .dim : .great) }
         try JSONEncoder().encode(remote).write(to: community)
         reopened.communityURL = community
-        XCTAssertEqual(UserDefaults.standard.string(forKey: "hdrLibraryURL"), community.absoluteString)
+        XCTAssertEqual(Prefs.store.string(forKey: "hdrLibraryURL"), community.absoluteString)
         try await reopened.syncCommunity()
         XCTAssertEqual(reopened.titles.count, shipped.count + 6)
         XCTAssertEqual(reopened.worst.map(\.title).sorted(), ["Community 1", "Community 2"])

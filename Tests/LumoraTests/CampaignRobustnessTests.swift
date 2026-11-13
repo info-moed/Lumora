@@ -178,10 +178,10 @@ final class CampaignRobustnessTests: XCTestCase {
     /// Points the scratch drive at `folder` for the duration of `body`; always restores the user's setting.
     func withScratchRoot<T>(_ folder: URL, _ body: () async throws -> T) async rethrows -> T {
         let key = "scratchRoot"
-        let saved = UserDefaults.standard.object(forKey: key)
-        UserDefaults.standard.set(folder.path, forKey: key)
+        let saved = Prefs.store.object(forKey: key)
+        Prefs.store.set(folder.path, forKey: key)
         defer {
-            if let saved { UserDefaults.standard.set(saved, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
+            if let saved { Prefs.store.set(saved, forKey: key) } else { Prefs.store.removeObject(forKey: key) }
         }
         return try await body()
     }

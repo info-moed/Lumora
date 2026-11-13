@@ -30,7 +30,7 @@ struct HDRTitle: Codable, Identifiable, Hashable {
 final class HDRLibrary: ObservableObject {
     @Published private(set) var titles: [HDRTitle] = []
     @Published var communityURL: URL? {
-        didSet { UserDefaults.standard.set(communityURL?.absoluteString, forKey: "hdrLibraryURL") }
+        didSet { Prefs.store.set(communityURL?.absoluteString, forKey: "hdrLibraryURL") }
     }
 
     private var userFile: URL {
@@ -41,7 +41,7 @@ final class HDRLibrary: ObservableObject {
     }
 
     init() {
-        communityURL = UserDefaults.standard.string(forKey: "hdrLibraryURL").flatMap(URL.init(string:))
+        communityURL = Prefs.store.string(forKey: "hdrLibraryURL").flatMap(URL.init(string:))
         reloadLocal()
     }
 
