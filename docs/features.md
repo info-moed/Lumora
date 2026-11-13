@@ -104,6 +104,8 @@ Notes from the codec test matrix (`CampaignCodecTests`):
 
 ### AV2 (AVM)
 
+Measured against HEVC on four 10-bit clips, AV2 needs about 20% fewer bits than Lumora's tuned x265 (about 10% on real footage) and about 44% fewer than Apple's hardware encoder, at roughly 800 times x265's encoding time ([AV2 vs HEVC, measured](encoding/av2-vs-hevc.md)).
+
 AV2 is an experimental, raw `.obu` export (video only, no audio), for two reasons:
 
 - The AV2 specification was finalized in mid-2026, but only the slow reference encoder exists.

@@ -281,7 +281,7 @@ enum EncodeRecipes {
                                 ], baseFps1080: 0.006)
         case .hevc:
             return EncodeRecipe(codec: codec, kind: kind, title: "HEVC on the media engine",
-                                summary: "Apple's hardware encoder: dozens of times faster than x265, about 15–25% larger files at the same quality.",
+                                summary: "Apple's hardware encoder: dozens of times faster than x265, about a third larger files at the same quality (measured).",
                                 rungs: [EncodeRung(id: "vt", label: "Media engine", presetValue: "", seedSpeed: 1.0, seedSaving: 0)],
                                 options: [], baseFps1080: 420)
         default:
