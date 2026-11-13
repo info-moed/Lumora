@@ -1764,7 +1764,7 @@
           "source": "https://github.com/juliobbv-p/svt-av1-hdr"
         }
       ],
-      "lumora": "'--tf-strength 1' ('Gentle temporal filter') for every content type except anime, including heavy grain, old anime and low light: with grain synthesis the encoder sees a denoised picture, and strength 1 was 15-46% smaller than no temporal filter against the noise-free original (docs/encoding/tuning-svtav1.md).",
+      "lumora": "'--tf-strength 1' ('Gentle temporal filter') for every content type except anime, including heavy grain, old anime and low light: with grain synthesis the encoder sees a denoised picture, and strength 1 was 15-46% smaller than no temporal filter against the noise-free original. Heavy grain and low light without grain synthesis (presets 8 and 9, grain off, or a film-texture table) get '--enable-tf 0' instead, through EncodeRecipes.svtTemporalFilter (docs/encoding/tuning-svtav1.md).",
       "notes": "In tune 0 the key-frame filter strength is offset too. The fork-only --kf-tf-strength does not exist in mainline. v4.0.1 fixed the default shown in the help."
     },
     {
@@ -2333,7 +2333,7 @@
           "source": "https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Parameters.md"
         }
       ],
-      "lumora": "'--enable-tf 0' for anime only: in the planner's 'No temporal smoothing' option and the encoders.json anime tune (docs/encoding/tuning-svtav1.md).",
+      "lumora": "'--enable-tf 0' for anime: in the planner's 'No temporal smoothing' option and the encoders.json anime tune; and for heavy grain and low light when the encoder codes the real grain (no grain synthesis and no Lumora-removed grain), in place of '--tf-strength 1' (docs/encoding/tuning-svtav1.md).",
       "notes": "Codec Wiki's v3.0 study found TF-off competitive with low --tf-strength but sometimes slightly worse; Minecraft-like content did worse."
     },
     {

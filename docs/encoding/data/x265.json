@@ -1224,7 +1224,7 @@
           "source": "https://silentaperture.gitlab.io/mdbook-guide/encoding/x265.html"
         }
       ],
-      "lumora": "EncodeRecipes hevc12 option 'rd6': `--rd 6`, offered for low light (4% smaller) and old anime (7% smaller) at a measured speed cost of 1.78; it saved nothing on heavy grain (docs/encoding/tuning-x265.md).",
+      "lumora": "EncodeRecipes hevc12 option 'rd6': `--rd 6`, offered for low light (4% smaller) and old anime (7% smaller) at a measured speed cost of 1.78; it saved nothing on heavy grain. Offered on faster, medium and slow only: slower, veryslow and placebo already use rd 6 (docs/encoding/tuning-x265.md).",
       "notes": "Docs: 4 behaves like 3 and 6 like 5. slower/veryslow/placebo already use 6, so Lumora's rd6 option is a no-op on those rungs."
     },
     {
@@ -1683,7 +1683,7 @@
       "hdr": false,
       "advanced": true,
       "recommendations": [],
-      "lumora": "EncodeRecipes hevc12 option 'tskip': `--tskip` for screen content only (probeFlag --tskip, found through --fullhelp). Measured -4.7% VMAF, -11.9% XPSNR BD-rate on the screen clip at no measurable time cost (docs/encoding/tuning-x265.md).",
+      "lumora": "EncodeRecipes hevc12 option 'tskip': `--tskip` for screen content only (probeFlag --tskip, found through --fullhelp). Measured -4.7% VMAF, -11.9% XPSNR BD-rate on the screen clip at no measurable time cost; not offered on placebo, which already uses it (docs/encoding/tuning-x265.md).",
       "notes": "Needs --rd 3+. placebo enables it. Useful for screen content. Listed only in `--fullhelp`, which Lumora's flag probe reads."
     },
     {
@@ -2470,7 +2470,7 @@
           "source": "https://silentaperture.gitlab.io/mdbook-guide/encoding/x265.html"
         }
       ],
-      "lumora": "EncodeRecipes hevc12 option 'rclook': `--rc-lookahead 60`, priced at its measured cost (1.10); saving 2% on anime and 0 elsewhere, so the planner offers it for anime only.",
+      "lumora": "EncodeRecipes hevc12 option 'rclook': `--rc-lookahead 60`, priced at its measured cost (1.10); saving 2% on anime and 0 elsewhere, so the planner offers it for anime only, and not on placebo, whose own look-ahead is 60.",
       "notes": "Values beyond --keyint bring no benefit (docs). placebo uses 60."
     },
     {
@@ -2548,7 +2548,7 @@
           "source": "https://codecs.wiki/docs/encoders/x265"
         }
       ],
-      "lumora": "EncodeRecipes hevc12 option 'bframes': `--bframes 16` for anime kinds, 8 otherwise, priced at the measured cost (1.54 / 1.19) and saving (0), so the planner leaves it out; x265's preset value applies.",
+      "lumora": "EncodeRecipes hevc12 option 'bframes': `--bframes 16` for anime kinds, 8 otherwise, priced at the measured cost (1.54 / 1.19) and saving (0), so the planner leaves it out; x265's preset value applies. 8 B-frames are offered on faster, medium and slow only (slower and up already use 8).",
       "notes": "Sources disagree on 16 for anime: one guide sets 16, the anime guide says it isn't worth it, and the wiki warns it can cost detail at low CRF. slower and up use 8."
     },
     {

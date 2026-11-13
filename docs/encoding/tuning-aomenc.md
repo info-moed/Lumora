@@ -19,7 +19,7 @@ evidence behind the values Lumora now uses in `Lumora/Resources/encoders.json`,
 | 12-bit 4:2:2 and 4:4:4 | refused by Lumora | exported | aomenc only fails when `--profile=2` is passed explicitly; Lumora now passes 0 and aomenc raises it to the Professional profile itself |
 | Grain synthesis scoring | libaom grain was not recognized | recognized | `--denoise-noise-level` (planner option or grain tune) is now scored against the de-grained master with the synthetic grain stripped, like SVT-AV1's |
 | AV1 Pro ladder | published seeds | measured on this Mac | cpu-used 5 is only 3% smaller than 6 (seed 3%, but 0.82 of its speed, not 0.5); cpu-used 4 is 15% smaller (seed 6%) |
-| libaom rungs of the AV1 ladder | seeded at 0.020 of preset 10's speed and 1% smaller than preset 4 | 0.033 of preset 10's speed, about as small as preset 1 | measured against SVT-AV1 presets 10 and 4 on the same clips |
+| libaom rungs of the AV1 ladder | seeded at 0.020 of preset 10's speed and 1% smaller than preset 4 | 0.033 of preset 10's speed, about as small as preset 1 | measured against SVT-AV1 presets 10 and 4 on the same clips; with Lumora's SVT-AV1 extras, SVT-AV1 presets 2 to 0 were about 7-10% smaller at the same time, so the planner does not pick libaom ([below](#speed-ladders-on-this-mac)) |
 | Quantization matrices (`--enable-qm=1`) | recommended for every type, scored at 1.5% saving | off unless the user turns it on | larger at equal XPSNR on every clip (+0.8% to +5.8%) and 4-16% slower |
 | `--passes=1` | in the command line twice | once | tidy-up; stdin input needs exactly one pass |
 | Film grain synthesis (`--denoise-noise-level`) | recommended for heavy grain, old anime and low light (level 10 or 12/8/4), and in the grain tune | off unless the user turns it on (level 4); grain tune empty | 3-26% larger than coding the grain at every level, against both the de-grained master and the noise-free original, and 15-35% slower |
@@ -157,6 +157,27 @@ next to preset 1 (measured 52.9% against 54.1%/50.5%; seeds 0.227 and 0.226) at 
 preset 1 13%. cpu-used 1 and 0 were not measured; their speeds keep the old step from cpu-used 2 and their savings the
 old seeds. `RecommenderTests` now checks that the libaom rungs are slower than SVT-AV1 preset 2 rather than below a
 fixed 0.03.
+
+**libaom against SVT-AV1 with Lumora's extras.** The comparison above is bare encoder against bare encoder, but the
+planner never runs SVT-AV1 bare: it always adds the cheap per-content extras. So tuned SVT-AV1 (presets 2, 1, 0 with
+the extras the planner picks for live action, CG and anime) was measured on faces, CG and anime*, 720p, four CRF
+points each (22-40), `nice -n 15`, one encode at a time, against the libaom curves above. BD-rate against bare SVT-AV1
+preset 4 and CPU time per frame relative to it (geometric mean of the three clips):
+
+| Encoder | VMAF | XPSNR | Mean | CPU time |
+|---|---|---|---|---|
+| SVT-AV1 preset 2 + extras | -19.9% | -18.8% | -19.4% | 3.5x |
+| libaom cpu-used 4 | -14.6% | -9.8% | -12.2% | 3.9x |
+| SVT-AV1 preset 1 + extras | -25.1% | -23.2% | -24.2% | 6.3x |
+| libaom cpu-used 3 | -16.8% | -11.9% | -14.3% | 6.1x |
+| SVT-AV1 preset 0 + extras | -28.2% | -26.6% | -27.4% | 15.6x |
+| libaom cpu-used 2 | -21.0% | -16.0% | -18.5% | 15.6x |
+
+Directly, libaom cpu-used 2 against tuned preset 0 at about the same CPU time (0.8-1.1x) was larger on every clip:
++5.5% (faces), +10.4% (CG), +4.5% (anime*, where VMAF and XPSNR disagree: -10.9% / +19.9%), mean of VMAF and XPSNR.
+**Kept:** the libaom seeds. With the extras' savings on top of SVT-AV1's seeds the planner already ranks every libaom
+rung behind SVT-AV1's slow presets, which is what was measured, so libaom stays on the ladder for the user to choose or
+for plans with SVT-AV1's extras turned off, and the "Maximum can mean libaom" wording is gone.
 
 ---
 

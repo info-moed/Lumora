@@ -256,11 +256,16 @@ final class MacOptimizer {
     }
 
     /// Placeholder values for a benchmark encode. Every placeholder in encoders.json needs one: an unfilled
-    /// `{vvenc_sdr}` reached vvencapp verbatim, which refused it, so VVenC was never measured.
+    /// `{vvenc_sdr}` reached vvencapp verbatim, which refused it, so VVenC was never measured. The color names come
+    /// from each encoder's own PQ names: x265 spells the BT.2020 matrix `bt2020nc`, libaom `bt2020ncl`, and one
+    /// spelling shared by all of them made x265 exit at once, which aborted the whole run before VVenC and libaom
+    /// were measured.
     nonisolated static func benchmarkValues(spec: EncoderSpec, inArg: String, out: String, preset: String, threads: Int) -> [String: String] {
-        ["in": inArg, "out": out, "w": "1920", "h": "1080", "fps_num": "24", "fps_den": "1", "bits": "10",
+        let names = spec.colorNames["pq"] ?? [:]
+        return ["in": inArg, "out": out, "w": "1920", "h": "1080", "fps_num": "24", "fps_den": "1", "bits": "10",
          "preset": preset, "quality": spec.qualityValue(0.8), "threads": "\(threads)", "cp": "9", "tc": "16", "mc": "9",
-         "cp_name": "bt2020", "tc_name": "smpte2084", "mc_name": "bt2020ncl", "vvenc_hdr": "off", "vvenc_sdr": "sdr_709",
+         "cp_name": names["cp"] ?? "bt2020", "tc_name": names["tc"] ?? "smpte2084", "mc_name": names["mc"] ?? "bt2020ncl",
+         "vvenc_hdr": "off", "vvenc_sdr": "sdr_709",
          "vvenc_additional": "", "vvenc_qpa": "1", "maxcll": "1000",
          "maxfall": "400", "svt_mastering": "", "x265_mastering": "", "aom_profile": "0", "x265_profile": "main10", "grain_table": "",
          "svt_grain": "8"]

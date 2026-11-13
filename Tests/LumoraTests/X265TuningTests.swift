@@ -116,10 +116,14 @@ final class X265TuningTests: XCTestCase {
             XCTAssertGreaterThan(a.seedSpeed, b.seedSpeed, b.id)
             XCTAssertLessThan(a.seedSaving, b.seedSaving, b.id)
         }
-        // Given time, the planner adds rd 6 for old anime.
+        // Given time, old anime gets rd 6: the slowest presets use it themselves, so the planner adds it only up to slow.
         let max = EncodePlanner.plan(codec: .hevc12, kind: .oldAnime, frames: 2000, width: 1920, height: 1080, vmafMode: false,
                                      renderFps: 60, mode: .maximum, budget: 86_400, overrides: [:])
-        XCTAssertTrue(max.enabled.contains("rd6"), "\(max.enabled)")
+        XCTAssertTrue(["slower", "veryslow", "placebo"].contains(max.choice.rungID), max.choice.rungID)
+        XCTAssertFalse(max.enabled.contains("rd6"), "\(max.enabled)")
+        let rd6 = EncodeRecipes.recipe(codec: .hevc12, kind: .oldAnime).options.first { $0.id == "rd6" }
+        XCTAssertEqual(rd6?.offered(onRung: "slow"), true)
+        XCTAssertEqual(rd6?.recommendedFor.contains(.oldAnime), true)
     }
 
     func testHelpParsingSeesFullHelpAndNoForms() {

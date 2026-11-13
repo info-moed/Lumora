@@ -296,7 +296,10 @@ there is no coded grain to smear. Against the noise-free truth, `--tf-strength 1
 
 **Adopted:** `--tf-strength 1` for every content type except anime, the same as live action. If grain synthesis is
 switched off for a grainy film the trade-off changes: keeping the real grain, strength 1 was 6-11% smaller on XPSNR for
-low light and old anime but 8.7% larger on heavy grain, and low light banded more (CAMBI +0.084):
+low light and old anime but 8.7% larger on heavy grain, and low light banded more (CAMBI +0.084). So when the encoder
+codes the real grain (presets 8 and 9, where grain synthesis is not offered, grain synthesis turned off, or a film-texture
+table in place of it), heavy grain and low light get `--enable-tf 0` instead; old animation keeps strength 1. One rule,
+`EncodeRecipes.svtTemporalFilter`, decides it for the planner and the export:
 
 | Candidate | Clip | BD-rate VMAF | BD-rate VMAF NEG | BD-rate XPSNR | CAMBI change | CPU time |
 |---|---|---|---|---|---|---|

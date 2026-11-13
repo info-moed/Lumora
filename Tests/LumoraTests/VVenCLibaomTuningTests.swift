@@ -140,7 +140,86 @@ final class VVenCLibaomTuningTests: XCTestCase {
             let values = MacOptimizer.benchmarkValues(spec: spec, inArg: "-", out: "o", preset: spec.preset, threads: 4)
             let args = spec.render(values, hdr: false)
             XCTAssertFalse(args.contains { $0.contains("{") }, "\(key): \(args.filter { $0.contains("{") })")
+            // Each encoder's own spelling: one shared "bt2020ncl" made x265 (which wants bt2020nc) exit and end the run.
+            if let pq = spec.colorNames["pq"] {
+                for (placeholder, name) in [("cp_name", "cp"), ("tc_name", "tc"), ("mc_name", "mc")] {
+                    XCTAssertEqual(values[placeholder], pq[name], "\(key) \(placeholder)")
+                }
+            }
         }
+        let x265 = EncoderCatalog.shared.spec(for: "x265").map {
+            MacOptimizer.benchmarkValues(spec: $0, inArg: "-", out: "o", preset: "medium", threads: 4)
+        }
+        XCTAssertEqual(x265?["mc_name"], "bt2020nc")
+    }
+
+    /// The color values a benchmark renders are ones the installed encoders list in their help (no encode runs).
+    func testBenchmarkColorFlagsAreAcceptedByInstalledEncoders() throws {
+        let flags: [String: [String]] = ["x265": ["--colorprim", "--transfer", "--colormatrix"],
+                                         "aomenc": ["--color-primaries", "--transfer-characteristics", "--matrix-coefficients"],
+                                         "svtav1": ["--color-primaries", "--transfer-characteristics", "--matrix-coefficients"],
+                                         "vvenc": ["--sdr", "--hdr"]]
+        var checked = 0
+        for (key, names) in flags {
+            guard let spec = EncoderCatalog.shared.spec(for: key), let exe = ToolLocator.url(for: spec.binary) else { continue }
+            let args = spec.render(MacOptimizer.benchmarkValues(spec: spec, inArg: "-", out: "o", preset: spec.preset, threads: 4), hdr: false)
+            for flag in names {
+                // "--flag value" (x265, SVT-AV1, VVenC) or "--flag=value" (aomenc).
+                let value = args.firstIndex(of: flag).map { args[$0 + 1] }
+                    ?? args.first { $0.hasPrefix(flag + "=") }.map { String($0.dropFirst(flag.count + 1)) }
+                let v = try XCTUnwrap(value, "\(key) renders \(flag)")
+                let help = Self.helpText(exe, EncodeRecipes.helpArguments(spec.binary), containing: flag)
+                let accepted = Self.acceptedValues(help, flag: flag)
+                XCTAssertFalse(accepted.words.isEmpty, "\(spec.binary) help describes \(flag)")
+                let ok = accepted.words.contains(v) || Int(v).map { n in accepted.ranges.contains { $0.contains(n) } } ?? false
+                XCTAssertTrue(ok, "\(spec.binary) \(flag) \(v) is not among \(accepted.words.sorted())")
+                checked += 1
+            }
+        }
+        if checked == 0 { throw XCTSkip("no software encoders installed") }
+    }
+
+    static func helpText(_ exe: URL, _ arguments: [String], containing flag: String) -> String {
+        for arg in arguments {
+            let p = Process()
+            p.executableURL = exe
+            p.arguments = [arg]
+            let pipe = Pipe()
+            p.standardOutput = pipe
+            p.standardError = pipe
+            p.standardInput = FileHandle.nullDevice
+            guard (try? p.run()) != nil else { continue }
+            let text = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            p.waitUntilExit()
+            if text.contains(flag) { return text }
+        }
+        return ""
+    }
+
+    /// The words and integer ranges in a help entry: the line that starts with `flag` and its continuation lines.
+    static func acceptedValues(_ help: String, flag: String) -> (words: Set<String>, ranges: [ClosedRange<Int>]) {
+        var entry: [Substring] = []
+        for line in help.split(separator: "\n", omittingEmptySubsequences: false) {
+            let t = line.drop { $0 == " " || $0 == "\t" }
+            if entry.isEmpty {
+                guard t.hasPrefix(flag) else { continue }
+                let rest = t.dropFirst(flag.count)
+                if let c = rest.first, c.isLetter || c.isNumber || c == "-" { continue }   // a longer flag
+                entry.append(rest)
+            } else if t.hasPrefix("-") || t.isEmpty {
+                break
+            } else {
+                entry.append(t)
+            }
+        }
+        let tokens = entry.joined(separator: " ").split { !($0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" || $0 == ".") }.map(String.init)
+        var ranges: [ClosedRange<Int>] = []
+        for t in tokens {
+            let parts = t.split(separator: "-").compactMap { Int($0) }
+            if parts.count == 2, parts[0] <= parts[1] { ranges.append(parts[0]...parts[1]) }
+            if let n = Int(t) { ranges.append(n...n) }
+        }
+        return (Set(tokens), ranges)
     }
 
     // MARK: - Real exports

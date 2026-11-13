@@ -1666,7 +1666,7 @@ Strength of the motion-compensated temporal filter used to build alt-ref frames.
 | live action | `1` | Codec Wiki found 1 or lower removes keyframe blocking/smoothing issues, gains flatten below 2, and 4 performs very poorly. | [source](https://codecs.wiki/blog/svt-av1-fourth-deep-dive-p2) |
 | heavy grain | `1 (or --enable-tf 0)` | Weaker temporal filtering preserves real grain; the PSY-derived forks default to 1. | [source](https://github.com/juliobbv-p/svt-av1-hdr) |
 
-**In Lumora:** '`--tf-strength` 1' ('Gentle temporal filter') for every content type except anime, including heavy grain, old anime and low light: with grain synthesis the encoder sees a denoised picture, and strength 1 was 15-46% smaller than no temporal filter against the noise-free original (docs/encoding/tuning-svtav1.md).
+**In Lumora:** '`--tf-strength` 1' ('Gentle temporal filter') for every content type except anime, including heavy grain, old anime and low light: with grain synthesis the encoder sees a denoised picture, and strength 1 was 15-46% smaller than no temporal filter against the noise-free original. Heavy grain and low light without grain synthesis (presets 8 and 9, grain off, or a film-texture table) get '`--enable-tf` 0' instead, through EncodeRecipes.svtTemporalFilter (docs/encoding/tuning-svtav1.md).
 
 **Notes:** In tune 0 the key-frame filter strength is offset too. The fork-only `--kf-tf-strength` does not exist in mainline. v4.0.1 fixed the default shown in the help.
 
@@ -1685,7 +1685,7 @@ Builds temporally filtered alt-ref frames. They improve compression, but the fil
 | anime | `0 (clip dependent)` | The animation deep dive found turning TF off can slightly improve efficiency at high quality and speeds things up, depending on the clip. | [source](https://codecs.wiki/blog/svt-av1-deep-dive) |
 | heavy grain | `0 with high --ac-bias` | Recommended by the SVT-AV1 psychovisual appendix for grain retention. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Parameters.md) |
 
-**In Lumora:** '`--enable-tf` 0' for anime only: in the planner's 'No temporal smoothing' option and the encoders.json anime tune (docs/encoding/tuning-svtav1.md).
+**In Lumora:** '`--enable-tf` 0' for anime: in the planner's 'No temporal smoothing' option and the encoders.json anime tune; and for heavy grain and low light when the encoder codes the real grain (no grain synthesis and no Lumora-removed grain), in place of '`--tf-strength` 1' (docs/encoding/tuning-svtav1.md).
 
 **Notes:** Codec Wiki's v3.0 study found TF-off competitive with low `--tf-strength` but sometimes slightly worse; Minecraft-like content did worse.
 

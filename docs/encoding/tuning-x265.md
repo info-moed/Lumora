@@ -527,8 +527,12 @@ mode 2: mode 3 and mode 1 cost 13-29%.
 | `--tskip` (new, screen) | | 1.0, 8% | screen |
 
 Savings here are the mean of the VMAF and XPSNR BD-rates. x265's `slower`, `veryslow` and `placebo` presets already use rd 6 and 8
-B-frames, so on those rungs the two options change nothing; the planner still prices them per option, not per rung. The always-on extras (AQ, SAO, deblock, psy, intra
-smoothing) are priced at 1.0 as before; their measured CPU-time differences were within the noise.
+B-frames, and `placebo` a 60-frame look-ahead and transform skip (x265's preset table, checked with `--log-level info`), so on
+those rungs these options change nothing. They are offered only on the faster presets (`rd6` and the 8 B-frames on faster,
+medium and slow; the look-ahead and `--tskip` everywhere but placebo), so a slow rung is neither charged their time nor
+credited their saving. 16 B-frames (anime) and 6 references are more than any preset uses and stay on every rung. The
+always-on extras (AQ, SAO, deblock, psy, intra smoothing) are priced at 1.0 as before; their measured CPU-time differences
+were within the noise.
 
 ### Preset ladder on this Mac
 
