@@ -63,20 +63,39 @@ struct FrameCountMismatch: LocalizedError, Codable, Hashable {
 }
 
 /// An error the GPU reported for a command buffer.
+///
+/// These wrappers compute their message and NSError form once, when they are made. Computing them inside the
+/// `errorDescription` / `errorUserInfo` getters bridges the underlying error while Foundation is already bridging this
+/// one, and the runtime's bridging lock is not reentrant (measured: an abort, "Trying to recursively lock an
+/// os_unfair_lock", when a delivery failed).
 struct GPUFault: LocalizedError, CustomNSError {
-    var underlying: NSError
-    var errorDescription: String? { "The graphics processor reported an error: \(underlying.localizedDescription)" }
+    let underlying: NSError
+    private let message: String
+    init(underlying: NSError) {
+        self.underlying = underlying
+        message = "The graphics processor reported an error: \(underlying.localizedDescription)"
+    }
+    var errorDescription: String? { message }
     static var errorDomain: String { "Lumora.GPUFault" }
-    var errorUserInfo: [String: Any] { [NSUnderlyingErrorKey: underlying, NSLocalizedDescriptionKey: errorDescription ?? ""] }
+    var errorUserInfo: [String: Any] { [NSUnderlyingErrorKey: underlying, NSLocalizedDescriptionKey: message] }
 }
 
 /// Saving the finished video failed; the finished file is kept in the checkpoint folder.
 struct DeliveryFailure: LocalizedError, CustomNSError {
-    var underlying: Error
-    var kept: URL
-    var errorDescription: String? { underlying.localizedDescription }
+    let underlying: Error
+    let kept: URL
+    private let underlyingNS: NSError
+    private let message: String
+    init(underlying: Error, kept: URL) {
+        self.underlying = underlying
+        self.kept = kept
+        let ns = underlying as NSError
+        underlyingNS = ns
+        message = ns.localizedDescription
+    }
+    var errorDescription: String? { message }
     static var errorDomain: String { "Lumora.DeliveryFailure" }
-    var errorUserInfo: [String: Any] { [NSUnderlyingErrorKey: underlying as NSError, NSLocalizedDescriptionKey: errorDescription ?? ""] }
+    var errorUserInfo: [String: Any] { [NSUnderlyingErrorKey: underlyingNS, NSLocalizedDescriptionKey: message] }
 }
 
 // MARK: - Classification

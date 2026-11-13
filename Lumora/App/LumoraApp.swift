@@ -12,6 +12,10 @@ enum LumoraMain {
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
             let app = NSApplication.shared
             app.setActivationPolicy(.prohibited)
+            // Test exports log into a temporary folder, never among the user's own export logs (tests can still
+            // point it elsewhere; this is only the fallback).
+            UserDefaults.standard.register(defaults: ["renderLogFolder": FileManager.default.temporaryDirectory
+                .appendingPathComponent("Lumora-test-logs-\(ProcessInfo.processInfo.processIdentifier)").path])
             app.run()
         } else {
             LumoraApp.main()

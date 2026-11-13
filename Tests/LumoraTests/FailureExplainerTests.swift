@@ -224,4 +224,17 @@ final class FailureExplainerTests: XCTestCase {
         XCTAssertFalse(text.contains("someone@example.com"), "email")
         XCTAssertTrue(text.contains("<source>") || text.contains("<output>"))
     }
+
+    /// A drive named after the app (or a tool) hides only its path, not the words the report needs.
+    func testDriveNamedLikeTheAppKeepsTheReportReadable() {
+        let text = DiagnosticScrub.share("Lumora export log\nOutput: /Volumes/Lumora/Movies/x.mkv\nffmpeg failed on “Lumora”",
+                                         names: .init(volumes: ["Lumora"]))
+        XCTAssertTrue(text.contains("Lumora export log"), text)
+        XCTAssertTrue(text.contains("/Volumes/<drive>/Movies"), text)
+        XCTAssertTrue(text.contains("“<drive>”"), text)
+        XCTAssertTrue(text.contains("ffmpeg failed"), text)
+        // A drive that is neither protected nor quoted is still hidden wherever its path appears.
+        let other = DiagnosticScrub.share("on /Volumes/Family Drive/a and Family Drive again")
+        XCTAssertFalse(other.contains("Family Drive"), other)
+    }
 }

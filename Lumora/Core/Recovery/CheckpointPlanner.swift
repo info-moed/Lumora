@@ -37,6 +37,9 @@ enum CheckpointPlanner {
         }
     }
 
+    /// The shortest segment a codec can be joined from without loss (1: no limit beyond the plan's own).
+    static func minFrames(for codec: Codec) -> Int { codec == .vvc ? 64 : 1 }
+
     static func plan(_ i: Input) -> [ExportJournal.PlannedSegment] {
         let n = i.frames
         guard n > 0 else { return [] }
@@ -50,6 +53,9 @@ enum CheckpointPlanner {
         var count = max(1, Int((Double(n) / Double(target)).rounded(.up)))
         // At least two segments per worker, for load balancing, as long as segments keep their minimum length.
         if segmentFramesOverride == nil { count = max(count, min(2 * max(1, i.workers), n / minFrames)) }
+        // VVC: GPAC 26.07 mis-times a VVenC stream joined from segments shorter than one VVenC GOP (32 frames) and
+        // drops pictures (measured: 3 × 24 frames packaged as 25; 3 × 32 and longer exact). Keep two GOPs per segment.
+        count = max(1, min(count, n / minFrames(for: i.codec)))
         count = max(1, min(count, n))
         var bounds = [0]
         let cuts = Set(i.cutStarts)

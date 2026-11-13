@@ -16,6 +16,8 @@ struct RecoveryOptions {
 /// Saved progress that can't be used: the source, the settings, the encoder or Lumora itself changed.
 struct ResumeRefused: LocalizedError {
     var reason: String
+    /// Only the Mac or its macOS build changed (hardware encoder path): Pro can resume anyway.
+    var differentMac = false
     var errorDescription: String? { "Lumora has to start this export over: \(reason)" }
 }
 
@@ -153,7 +155,7 @@ final class RenderSession: @unchecked Sendable {
                     throw ResumeRefused(reason: "the encoder changed since the export began (\(old.binary) \(old.version) → \(encode.binary) \(encode.version)).")
                 }
                 if job.codec.isHardware, old.chip != encode.chip || old.osBuild != encode.osBuild, !options.allowDifferentMac {
-                    throw ResumeRefused(reason: "your Mac was updated since it began, and the hardware encoder may not match the saved part exactly.")
+                    throw ResumeRefused(reason: "your Mac was updated since it began, and the hardware encoder may not match the saved part exactly.", differentMac: true)
                 }
             }
             if let p = j.plan, p.frames != planInput.frames || p.rateNum != rate.num || p.rateDen != rate.den {
@@ -214,8 +216,12 @@ final class RenderSession: @unchecked Sendable {
 
     var plan: ExportJournal.Plan? { lock.lock(); defer { lock.unlock() }; return journal.plan }
 
+    private let saveOrder = NSLock()
+
     private func saveJournal() throws {
         guard let dir else { return }
+        // The snapshot and its write happen in order: an older snapshot never lands after a newer one.
+        saveOrder.lock(); defer { saveOrder.unlock() }
         lock.lock(); let j = journal; lock.unlock()
         try CheckpointStore.save(j, in: dir)
     }
@@ -620,8 +626,8 @@ final class RenderSession: @unchecked Sendable {
             report.simple = r.localizedDescription
             report.means = "The saved progress can't be used safely; nothing was changed."
             report.actions = [.startOver, .discard]
-            // The hardware encoder may not match exactly on another chip or macOS build; Pro can accept that.
-            if r.reason.contains("your Mac was updated") { report.actions.append(.resumeAnyway) }
+            // The hardware encoder may not match exactly on another chip or macOS build; Pro (third button) can accept that.
+            if r.differentMac { report.actions.append(.resumeAnyway) }
         }
         if canceled && !keep { report.progress = 0 }
         report.exportID = exportID

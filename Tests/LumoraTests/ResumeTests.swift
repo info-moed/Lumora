@@ -24,15 +24,7 @@ final class ResumeTests: RecoveryTestCase {
         var refJob = job(p, codec: codec, delivery: delivery, name: "reference.\(ext)")
         configure(&refJob)
         let started = Date()
-        let reference: URL
-        do {
-            reference = try await ExportEngine().run(refJob) { _, _ in }
-        } catch let m as FrameCountMismatch where codec == .vvc {
-            // Measured: GPAC 26.07 + FFmpeg 9.0.2 lose VVC pictures when packaging VVenC streams (wrong composition
-            // times from MP4Box), with or without segments. The frame-count guard refuses the file instead of
-            // delivering a short video; resuming VVC can't be compared until that packaging is fixed.
-            throw XCTSkip("VVC packaging on this Mac drops frames (\(m.got) of \(m.expected)); the guard refused it")
-        }
+        let reference = try await ExportEngine().run(refJob) { _, _ in }
         let refSeconds = Date().timeIntervalSince(started)
         XCTAssertTrue(Self.checkpointFolders().isEmpty, "no saved progress is left after a finished export")
 
@@ -102,7 +94,23 @@ final class ResumeTests: RecoveryTestCase {
     func testSVTAV1ResumeMatchesUninterrupted() async throws { try await resumeMatches(.av1, binary: "SvtAv1EncApp") }
     func testAomencResumeMatchesUninterrupted() async throws { try await resumeMatches(.av1Pro, binary: "aomenc", seconds: 3) }
     func testX265ResumeMatchesUninterrupted() async throws { try await resumeMatches(.hevc12, binary: "x265") }
-    func testVVenCResumeMatchesUninterrupted() async throws { try await resumeMatches(.vvc, binary: "vvencapp", seconds: 3) }
+    /// VVC segments are at least 64 frames (two VVenC GOPs; see CheckpointPlanner.minFrames), so 8 s gives 3 segments.
+    func testVVenCResumeMatchesUninterrupted() async throws {
+        try await resumeMatches(.vvc, binary: "vvencapp", segmentFrames: 64, crashAfter: 1, seconds: 8)
+    }
+
+    /// The planner never cuts VVC shorter than two VVenC GOPs, even when asked to.
+    func testVVCSegmentsAreNeverShorterThanTwoGOPs() {
+        CheckpointPlanner.segmentFramesOverride = 24
+        defer { CheckpointPlanner.segmentFramesOverride = nil }
+        let i = CheckpointPlanner.Input(frames: 200, fps: 24, pixels: 320 * 180, codec: .vvc, workers: 2, cutStarts: [],
+                                        shotStart: { _ in 0 }, measuredFps1080: nil)
+        let segs = CheckpointPlanner.plan(i)
+        XCTAssertEqual(segs.reduce(0) { $0 + $1.count }, 200)
+        XCTAssertTrue(segs.allSatisfy { $0.count >= 64 }, "\(segs.map(\.count))")
+        var other = i; other.codec = .av1
+        XCTAssertEqual(CheckpointPlanner.plan(other).count, 9, "other codecs keep the forced length")
+    }
 
     func testHardwareHEVCResumeMatchesUninterrupted() async throws {
         try TestHardware.requireHardwareHEVC()
@@ -265,6 +273,27 @@ final class ResumeTests: RecoveryTestCase {
         let e = ExportEngine()
         _ = try await e.run(j, options: RecoveryOptions(resume: journal)) { _, _ in }
         XCTAssertEqual(e.session?.encodedSegments.sorted(), [2, 3])
+    }
+
+    /// Segments finishing at the same moment save the journal at the same moment: every save must land.
+    func testConcurrentJournalSavesAllSucceed() async throws {
+        let dir = try CheckpointStore.create("concurrent")
+        let base = ExportJournal(exportID: "concurrent", recipeHash: "h", renderVersion: CheckpointStore.renderVersion,
+                                 source: nil, sourceName: "s.mp4", outputPath: out.appendingPathComponent("o.mkv").path)
+        let failures = await withTaskGroup(of: Int.self) { g in
+            for n in 0..<64 {
+                g.addTask {
+                    var j = base
+                    j.lastEvent = "save \(n)"
+                    return (try? CheckpointStore.save(j, in: dir)) == nil ? 1 : 0
+                }
+            }
+            return await g.reduce(0, +)
+        }
+        XCTAssertEqual(failures, 0, "no save may find another save's journal.json.tmp gone")
+        XCTAssertNotNil(CheckpointStore.load(dir))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dir.appendingPathComponent("journal.json.tmp").path))
+        CheckpointStore.discard("concurrent")
     }
 
     func testSegmentDamagedOnDiskIsRejectedAndRedone() async throws {

@@ -1230,8 +1230,18 @@ final class ExportEngine {
                                                                threads: threads, quality: spec.qualityValue(job.quality))
         FaultInjection.encoderStarted(process, segment: index, attempt: attempt)
 
-        let (prepared, producer) = try await startProducer(ctx, range: (range.lowerBound - preroll)..<range.upperBound,
-                                                           depth: MacProfile.current?.pipelineDepth ?? 4)
+        let started: (BoundedChannel<Prepared>, Task<[QCEvent], Error>)
+        do {
+            started = try await startProducer(ctx, range: (range.lowerBound - preroll)..<range.upperBound,
+                                              depth: MacProfile.current?.pipelineDepth ?? 4)
+        } catch {
+            // The source can't be read (moved, deleted, damaged): stop the encoder that is waiting for frames.
+            try? handle.close()
+            if process.isRunning { process.terminate() }
+            await process.exited()
+            throw error
+        }
+        let (prepared, producer) = started
         // Planar frames are recycled: the grader may run up to `slots - 2` frames ahead of the writer.
         let slots = 6
         let frames = (0..<slots).map { _ in PlanarFrame(device: metal.device, width: ctx.width, height: ctx.height,

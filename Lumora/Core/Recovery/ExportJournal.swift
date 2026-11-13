@@ -184,7 +184,12 @@ enum CheckpointStore {
 
     /// Writes `journal.json.tmp`, flushes it, renames it over `journal.json`, flushes the folder. A power loss leaves
     /// either the old or the new journal, never a torn one (a torn .tmp is ignored).
+    /// Saves run one at a time: two segments finishing together must not share `journal.json.tmp` (the second
+    /// rename would find it gone).
+    private static let saveLock = NSLock()
+
     static func save(_ j: ExportJournal, in dir: URL) throws {
+        saveLock.lock(); defer { saveLock.unlock() }
         var j = j
         j.updated = Date()
         let enc = JSONEncoder()

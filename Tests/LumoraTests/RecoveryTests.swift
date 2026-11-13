@@ -315,6 +315,7 @@ final class RecoveryTests: RecoveryTestCase {
         let r = try XCTUnwrap(e.lastFailure)
         XCTAssertEqual(r.failure.kind, .sourceMoved)
         XCTAssertEqual(r.actions.first, .locateSource)
+        XCTAssertEqual(Self.childProcesses("SvtAv1EncApp"), 0, "no encoder is left waiting for frames that never come")
         // "Locate the file…": the same file, found again; the fingerprint matches, so the export resumes.
         FaultInjection.handler = nil
         _ = try Self.copy(original, as: "moving.mp4")

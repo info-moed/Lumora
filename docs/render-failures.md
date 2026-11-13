@@ -127,7 +127,7 @@ HDR metadata as usual. The result has exactly the same frames and timestamps as 
 - audio and subtitles always come from the source.
 
 Measured on this project's tests (real exports, interrupted and resumed in a fresh engine): SVT-AV1, libaom, x265 and
-the hardware HEVC and ProRes encoders give decoded frames identical to an uninterrupted export, with the same frame
+VVenC, the hardware HEVC and ProRes encoders give decoded frames identical to an uninterrupted export, with the same frame
 count, timestamps, audio, color tags, mastering-display and light-level metadata; AV2 gives a byte-identical stream;
 Dolby Vision RPUs and HDR10+ metadata are byte-identical. Target-quality (VMAF) exports resume per chunk: finished
 chunks keep their pieces and chosen levels, and only the missing chunks are searched again.
@@ -143,10 +143,10 @@ export normally discards its progress; Simple mode asks whether to **Stop and ke
 *Stop*). Files in a batch resume their own saved progress automatically, and a file that fails is explained, marked in
 the queue and skipped, so the rest of the batch goes on.
 
-**Known limit:** on the Mac these tests ran on (GPAC 26.07 with FFmpeg 9.0.2), packaging VVenC (H.266) streams loses
-pictures, with or without segments. Lumora's frame-count check catches this and refuses to save a file with missing
-frames ("Lumora found a gap in the finished video") instead of delivering it; resuming VVC exports can't be verified
-until that packaging is fixed.
+**VVC (H.266):** the packager (GPAC 26.07) mis-times a VVenC stream joined from parts shorter than one VVenC group of
+pictures (32 frames) and drops pictures. Lumora's VVC segments are therefore always at least 64 frames long (in
+practice they are minutes long), and the frame-count check would refuse a file with missing frames ("Lumora found a gap
+in the finished video") rather than save it.
 
 ---
 

@@ -23,17 +23,22 @@ enum DiagnosticScrub {
     static func share(_ s: String, names: Names = Names()) -> String {
         var t = local(s)
         // Drive names: "/Volumes/Holiday Footage/..." → "/Volumes/<drive>/...", and the same names wherever else they
-        // appear (an explanation says “Holiday Footage” is full), plus the drives mounted right now.
+        // appear (an explanation says “Holiday Footage” is full).
         var drives = Set(names.volumes)
         if let re = try? NSRegularExpression(pattern: #"/Volumes/([^/\n]+)"#) {
             for m in re.matches(in: t, range: NSRange(t.startIndex..., in: t)) {
                 if let r = Range(m.range(at: 1), in: t) { drives.insert(String(t[r])) }
             }
         }
-        for v in (try? FileManager.default.contentsOfDirectory(atPath: "/Volumes")) ?? [] where v != "Macintosh HD" && v.count >= 4 { drives.insert(v) }
+        // Drives mounted right now are hidden where a message quotes them; they aren't searched for as bare words
+        // (a drive called "Movies" would otherwise eat every "Movies" in the report).
+        let mounted = ((try? FileManager.default.contentsOfDirectory(atPath: "/Volumes")) ?? []).filter { $0 != "Macintosh HD" && $0.count >= 3 }
         t = t.replacingOccurrences(of: #"/Volumes/[^/\n]+"#, with: "/Volumes/<drive>", options: .regularExpression)
-        for d in drives.filter({ $0.count >= 3 }).sorted(by: { $0.count > $1.count }) {
+        for d in (drives.union(mounted)).filter({ $0.count >= 3 }).sorted(by: { $0.count > $1.count }) {
             t = t.replacingOccurrences(of: "“\(d)”", with: "“<drive>”")
+        }
+        // Bare drive names, except words the report itself needs (a drive named after the app or a tool).
+        for d in drives.filter({ $0.count >= 3 && !protectedWords.contains($0.lowercased()) }).sorted(by: { $0.count > $1.count }) {
             t = t.replacingOccurrences(of: d, with: "<drive>")
         }
         // File names first (longest first, so "clip (repaired)" goes before "clip").
@@ -56,6 +61,10 @@ enum DiagnosticScrub {
                                    options: .regularExpression)
         return t
     }
+
+    /// Words a drive name can't take away from the report: the app and the tools it names.
+    static let protectedWords: Set<String> = ["lumora", "ffmpeg", "ffprobe", "mp4box", "mkvmerge", "x265", "aomenc", "avmenc",
+                                              "vvencapp", "svtav1encapp", "dovi_tool", "hdr10plus_tool", "macos", "export", "exports"]
 
     /// The host name and the computer name (Sharing settings). Read directly: `ProcessInfo.hostName` can block for
     /// seconds on a network lookup.

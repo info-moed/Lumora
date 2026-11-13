@@ -5,6 +5,19 @@ import XCTest
 /// and helpers that compare exports frame by frame. Everything is headless; failures are injected through
 /// FaultInjection (nothing is mounted, filled or unplugged).
 class RecoveryTestCase: XCTestCase {
+    /// Live child processes of this test process with that name (encoders must never be left behind).
+    static func childProcesses(_ name: String) -> Int {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        p.arguments = ["-P", String(ProcessInfo.processInfo.processIdentifier), "-x", name]
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        try? p.run()
+        p.waitUntilExit()
+        let out = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        return out.split(separator: "\n").count
+    }
+
     static let work: URL = {
         let d = FileManager.default.temporaryDirectory
             .appendingPathComponent("LumoraRecovery-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)

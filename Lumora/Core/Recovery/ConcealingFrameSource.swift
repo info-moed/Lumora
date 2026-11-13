@@ -4,10 +4,16 @@ import AVFoundation
 /// An AVFoundation decode error that keeps the original NSError (domain, code, underlying chain) and where it happened.
 /// Its message reads like the older `LumoraError.decodeFailed`.
 struct SourceReadError: LocalizedError, CustomNSError {
-    var underlying: NSError
+    let underlying: NSError
     var seconds: Double?
-    var errorDescription: String? { "Couldn't decode the video: \(underlying.localizedDescription)" }
-    var errorUserInfo: [String: Any] { [NSUnderlyingErrorKey: underlying, NSLocalizedDescriptionKey: errorDescription ?? ""] }
+    private let message: String          // computed once (see GPUFault)
+    init(underlying: NSError, seconds: Double? = nil) {
+        self.underlying = underlying
+        self.seconds = seconds
+        message = "Couldn't decode the video: \(underlying.localizedDescription)"
+    }
+    var errorDescription: String? { message }
+    var errorUserInfo: [String: Any] { [NSUnderlyingErrorKey: underlying, NSLocalizedDescriptionKey: message] }
     static var errorDomain: String { "Lumora.SourceReadError" }
 }
 
