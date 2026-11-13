@@ -18,7 +18,7 @@ struct ExportJob {
     var upscale: UpscaleMode = .off
     var qualityTarget: QualityTarget? = nil     // encode to a VMAF target instead of a fixed setting
     var encodeChoice: EncodeChoice? = nil       // preset + extras chosen by the time-budget planner
-    var filmTexture: FilmTexture = .off         // AV1: add organic film grain at playback (no bitrate cost)
+    var filmTexture: FilmTexture = .off         // AV1/AV2: add organic film grain at playback (no bitrate cost)
     var externalRepair: ExternalRepairPlan? = nil   // rebuild flagged frames of an already-interpolated file
     var frameRange: Range<Int>? = nil              // output only these planned frames (previews)
     var filmTextureStrength: Float = 1
@@ -147,13 +147,16 @@ final class ExportEngine {
                        kr: wide ? 0.2627 : 0.2126, kb: wide ? 0.0593 : 0.0722)
     }
 
-    /// Decides the grain strategy and, when needed, measures this film's grain and writes an AV1 grain table.
+    /// Decides the grain strategy and, when needed, measures this film's grain and writes a grain table (AV1's
+    /// "filmgrn1" for SVT-AV1 and libaom, AV2's "filmgrn2" for AVM: avmenc accepts a filmgrn1 file without an error
+    /// but codes no grain from it).
     private func planGrain(_ ctx: Context, workDir: URL) async throws -> GrainPlan {
         let job = ctx.job
         var g = GrainPlan()
         let ids = Set(job.encodeChoice?.optionIDs ?? [])
         let av1 = job.codec == .av1 || job.codec == .av1Pro
-        let measured = av1 && ids.contains("grainTable")
+        let tables = av1 || job.codec == .av2
+        let measured = tables && ids.contains("grainTable")
         // Without a plan the content tune applies; the SVT-AV1 and libaom grain tunes synthesize grain like the grain extras do.
         let tuneGrain = av1 && job.encodeChoice == nil
             && EncodeRecipes.synthesizesGrain(encoderSpec(job)?.tunes?[ContentTuning.preset(job.contentKind).encoderTune] ?? [])
@@ -161,7 +164,7 @@ final class ExportEngine {
         // so libaom grain synthesis was scored with the synthetic grain applied, against the grainy master.
         let encoderGrain = ids.contains("grain") || ids.contains("aomgrain") || ids.contains("aomgrain10")
             || (av1 && EncodeRecipes.synthesizesGrain(job.encodeChoice?.extraArgs ?? [])) || tuneGrain
-        let texture = av1 && job.filmTexture != .off
+        let texture = tables && job.filmTexture != .off
         guard measured || encoderGrain || texture else { return g }
         g.strip = true
         g.cleanReference = measured || encoderGrain
@@ -178,9 +181,10 @@ final class ExportEngine {
         if measured || texture {
             let tableStats = texture ? job.filmTexture.stats(strength: job.filmTextureStrength) : measuredStats
             let url = workDir.appendingPathComponent("grain.tbl")
-            try GrainTable.write(tableStats, bitDepth: job.bitDepth, to: url)
+            try GrainTable.write(tableStats, bitDepth: job.bitDepth, format: job.codec == .av2 ? .av2 : .av1, to: url)
             g.table = url
-            g.tableFlag = job.codec == .av1Pro ? ["--film-grain-table=\(url.path)"] : ["--fgs-table", url.path]
+            // SVT-AV1 spells it --fgs-table; libaom (also on the libaom rungs of the AV1 ladder) and AVM --film-grain-table.
+            g.tableFlag = encoderSpec(job)?.binary == EncodeRecipes.svtBinary ? ["--fgs-table", url.path] : ["--film-grain-table=\(url.path)"]
         }
         Log.notice(.encode, "Grain: measured σ \(String(format: "%.4f", measuredStats.overall)); \(measured ? "Lumora removes grain and supplies a measured table" : encoderGrain ? "encoder grain synthesis" : "")\(texture ? "; film texture \(job.filmTexture.rawValue)" : ""). Scoring strips synthetic grain.")
         return g
@@ -717,7 +721,8 @@ final class ExportEngine {
         let values: [String: String] = [
             "in": inArg, "out": out.path, "w": "\(ctx.width)", "h": "\(ctx.height)",
             "fps_num": "\(ctx.rate.num)", "fps_den": "\(ctx.rate.den)", "bits": "\(job.bitDepth)",
-            "preset": preset ?? job.encodeChoice?.presetValue ?? spec.preset, "quality": quality, "threads": "\(threads)",
+            "preset": preset ?? job.encodeChoice.flatMap { $0.presetValue.isEmpty ? nil : $0.presetValue } ?? spec.preset,
+            "quality": quality, "threads": "\(threads)",
             "cp": nums.0, "tc": nums.1, "mc": nums.2,
             "cp_name": names["cp"] ?? "", "tc_name": names["tc"] ?? "", "mc_name": names["mc"] ?? "",
             "vvenc_hdr": names["vvenc_hdr"] ?? "off", "vvenc_sdr": names["vvenc_sdr"] ?? "off",
@@ -742,6 +747,7 @@ final class ExportEngine {
             for a in p {
                 if skip { skip = false; continue }
                 if a == "--film-grain" || a == "--film-grain-denoise" || a == "--fgs-table" { skip = true; continue }
+                if a.hasPrefix("--film-grain-table=") { continue }
                 cleaned.append(a)
             }
             p = cleaned + ctx.grain.tableFlag
@@ -1134,6 +1140,21 @@ final class ExportEngine {
         }
     }
 
+    /// An AV2 stream must say what it is: BT.709 for SDR, BT.2020 with PQ or HLG for HDR. avmenc takes the CICP
+    /// names on the command line and writes them into the content interpretation OBU; a wrong or missing description
+    /// makes players guess (and HDR look washed out), so it fails the export instead.
+    static func checkAV2Signaling(_ url: URL, target: OutputTarget.Kind) throws {
+        let want: (Int, Int, Int) = target == .hdr10 ? (9, 16, 9) : (target == .hlg ? (9, 18, 9) : (1, 1, 1))
+        let s = try AV2Stream.summary(of: url)
+        guard let c = s.color else {
+            throw LumoraError.toolFailed("avmenc", "the AV2 stream has no color description (content interpretation OBU).")
+        }
+        guard (c.primaries, c.transfer, c.matrix) == want, !c.fullRange else {
+            throw LumoraError.toolFailed("avmenc", "the AV2 stream is signaled as primaries \(c.primaries), transfer \(c.transfer), matrix \(c.matrix)\(c.fullRange ? ", full range" : ""); expected \(want.0)/\(want.1)/\(want.2), limited range.")
+        }
+        Log.info(.encode, "AV2 stream: \(s.temporalUnits) temporal units, \(s.sequenceHeaders) sequence header(s), CICP \(c.primaries)/\(c.transfer)/\(c.matrix) (description \(c.descriptionIDC))")
+    }
+
     private static func encoderFailure(_ binary: String, log: URL) -> LumoraError {
         let tail = (try? String(contentsOf: log, encoding: .utf8))?.suffix(1500) ?? ""
         return LumoraError.toolFailed(binary, String(tail))
@@ -1154,12 +1175,14 @@ final class ExportEngine {
         }
         let ext = segments[0].pathExtension
 
-        // AV2: no container binding yet; OBU streams concatenate directly.
+        // AV2: no container binding yet; OBU streams concatenate directly (each segment starts with its own temporal
+        // delimiter, sequence header and key frame). FFmpeg can't read AV2, so the color signaling is checked here.
         if ext == "obu" {
             FileManager.default.createFile(atPath: out.path, contents: nil)
             let h = try FileHandle(forWritingTo: out)
             for s in segments { try h.write(contentsOf: try Data(contentsOf: s)) }
             try h.close()
+            try Self.checkAV2Signaling(out, target: job.target.kind)
             return out
         }
 

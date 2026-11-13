@@ -244,7 +244,7 @@
     "input": "stdin",
     "inputArg": "-",
     "ext": "obu",
-    "preset": "5",
+    "preset": "6",
     "qualityBest": 80,
     "qualityWorst": 200,
     "args": [
@@ -252,15 +252,18 @@
       "--obu",
       "-o",
       "{out}",
+      "--passes=1",
       "--cpu-used={preset}",
       "--end-usage=q",
       "--qp={quality}",
       "--bit-depth={bits}",
       "--input-bit-depth={bits}",
       "--threads={threads}",
+      "--row-mt=1",
       "--color-primaries={cp_name}",
       "--transfer-characteristics={tc_name}",
-      "--matrix-coefficients={mc_name}"
+      "--matrix-coefficients={mc_name}",
+      "--chroma-sample-position=center"
     ],
     "hdrArgs": [],
     "colorNames": {
@@ -284,7 +287,9 @@
       "default": [],
       "grain": [],
       "anime": [],
-      "screen": []
+      "screen": [
+        "--tune-content=screen"
+      ]
     }
   }
 }

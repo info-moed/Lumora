@@ -15,7 +15,7 @@ has_children: true
 
 A cross-encoder guide for SVT-AV1, x265, VVenC, libaom (aomenc), AVM (AV2) and Apple VideoToolbox, plus the HDR metadata tools around them (dovi_tool, hdr10plus_tool, MP4Box, mkvmerge, FFmpeg).
 
-**Versions this guide was written against:** SVT-AV1 v4.3.0, x265 4.3+1, VVenC (vvencapp) 1.14.0, aomenc 3.15.3, AVM v1.0.0, FFmpeg 9.0.2, dovi_tool 2.3.4, hdr10plus_tool 1.7.2, MP4Box (GPAC 26.07), mkvmerge v103.0. Encoder options and defaults change between releases, and many published guides describe forks or older versions. Check `--help` on your own build before trusting any flag here.
+**Versions this guide was written against:** SVT-AV1 v4.3.0, x265 4.3+1, VVenC (vvencapp) 1.14.0, aomenc 3.15.3, AVM v1.0.0 (installed and checked as GitLab tag research-v15.0.0), FFmpeg 9.0.2, dovi_tool 2.3.4, hdr10plus_tool 1.7.2, MP4Box (GPAC 26.07), mkvmerge v103.0. Encoder options and defaults change between releases, and many published guides describe forks or older versions. Check `--help` on your own build before trusting any flag here.
 
 **How to read the citations.** Each claim links to the source it came from. Links are reference-style, for example [svt-faq], and the full list is at the end. Statements about Lumora's own behavior cite the Lumora file they come from (paths are relative to the repository root). Where the sources disagree, both views are given. Where a statement is my inference rather than something a source states, it says so.
 
@@ -412,7 +412,7 @@ checked on real exports (the encoder tuning pages give the measurements). It sta
 | x265 flag probing | `--help`, which omits about 50 flags | `--fullhelp` | [x265 tuning](tuning-x265.md) |
 | VVenC HLG and metadata | HLG not signaled; no HDR10 static metadata | `--hdr hlg_2020` with HLG in the VUI; mastering display and light level through `--additional` | [VVenC tuning](tuning-vvenc.md) |
 | VVenC SDR | no color description | `--sdr sdr_709` | [VVenC tuning](tuning-vvenc.md) |
-| AVM grain | `--fgs-table`, which avmenc does not know | no grain option is offered for AV2 | `EncodeRecipes.swift` |
+| AVM grain | `--fgs-table` with an AV1 `filmgrn1` table, which avmenc ignores | `--film-grain-table` with an AV2 `filmgrn2` table; decoded grain matches the requested strength | [Features: AV2](../features.md#av2-avm) |
 | FFmpeg MP4 fallback remux | no `-tag:v hvc1`, no `-strict unofficial` | both, so Apple players accept HEVC and Dolby Vision keeps `dvcC` | `Packager.swift` |
 | MKV color | no Matroska color or mastering metadata | added with mkvmerge for raw HEVC and AV1 | `ExportEngine.swift` |
 

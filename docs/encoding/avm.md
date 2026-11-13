@@ -8,9 +8,9 @@ nav_order: 6
 
 # AVM (AV2 reference encoder)
 
-**Documented version:** AVM v1.0.0 (GitHub tag v1.0.0, commit 966a7d7cd6fcf60360caf5dc413b2aeeb65e144d, 2026-05-26), matching the AV2 v1.0.0 specification. Option tables in av2/arg_defs.c and apps/avmenc.c are byte-identical to GitLab tag research-v15.0.0 (commit 917ddae7db6d340b96246cf337b319dbd9cf98a7). Not installed locally; documented from source, not from --help output. · **Codec:** AV2 · **License:** BSD 3-Clause Clear License plus the Alliance for Open Media Patent License 1.0 · **Homepage:** <https://github.com/AOMediaCodec/avm>
+**Documented version:** AVM research-v15.0.0 (GitLab tag, commit 917ddae7db6d340b96246cf337b319dbd9cf98a7, 2026-05-06), whose option tables match GitHub tag v1.0.0, the AV2 v1.0.0 reference. Checked against the installed avmenc --help (AOMedia Project AV2 Encoder 15.0.0) built from that tag by scripts/install-encoders.sh. Options marked as not listed by --help are parsed by avmenc but missing from its help text. · **Codec:** AV2 · **License:** BSD 3-Clause Clear License plus the Alliance for Open Media Patent License 1.0 · **Homepage:** <https://github.com/AOMediaCodec/avm>
 
-avmenc is the command-line encoder of AVM, the AOMedia Video Model that serves as the official reference software for the AV2 video standard. It exposes every AV2 coding tool as an on/off switch and reaches the highest compression of any AOMedia encoder (AOMedia cites roughly 30% savings over AV1), which makes it the right tool for archival experiments and for checking what AV2 can do. It is extremely slow (a reference implementation built for coding efficiency, not speed), has no two-pass mode, no container that ordinary players understand (raw OBU, IVF, or a provisional WebM 'V_AV2' track), cannot write HDR mastering-display or content-light metadata from the command line, and rejects 12-bit input in default builds.
+avmenc is the command-line encoder of AVM, the AOMedia Video Model that serves as the official reference software for the AV2 video standard. It exposes every AV2 coding tool as an on/off switch and reaches the highest compression of any AOMedia encoder (AOMedia cites roughly 30% savings over AV1), which makes it the right tool for archival experiments and for checking what AV2 can do. It is extremely slow (a reference implementation built for coding efficiency, not speed), has no two-pass mode, no container that ordinary players understand (raw OBU, IVF, or a provisional WebM 'V_AV2' track), cannot write HDR mastering-display or content-light metadata from the command line, and rejects 12-bit input in default builds (AV2 v1.0 has no 12-bit profile).
 
 **Bit depths:** 8, 10 · **Chroma:** 4:0:0, 4:2:0, 4:2:2, 4:4:4
 
@@ -39,6 +39,7 @@ avmenc --cpu-used=3 --end-usage=q --qp=135 --bit-depth=10 --threads=8 --row-mt=1
 - Without `--obu` or `--ivf`, and with an output name that does not end in .obu or .ivf, avmenc writes WebM with the provisional codec ID 'V_AV2', which most tools do not recognize.
 - The `--qp` scale is the 8-bit qindex scale and is shifted internally for 10-bit (24 per extra bit), so the same `--qp` gives similar quality at 8 and 10 bit. 10-bit also accepts negative values down to -48.
 - Leaving `--chroma-sample-position` at 'unspecified' is legal, but the CTC assumes co-located (top-left, Type 2) siting for HDR. Older CTC versions spelled this 'colocated', and that name is not in the v1.0.0 enum.
+- avmdec writes Y4M without a frame rate (F0:0). Tools that pair frames by time, such as FFmpeg's psnr filter, then compare the wrong frames; compare decoded frames by index.
 
 ## Presets
 
@@ -228,7 +229,7 @@ Sources: [source](https://github.com/AOMediaCodec/avm/blob/v1.0.0/av2/av2_cx_ifa
 
 | Flag | Values | Default | What it does | HDR | Lumora |
 |---|---|---|---|---|---|
-| [`--passes`](#passes) | must be 1 | 1 | Number of encoding passes. |  |  |
+| [`--passes`](#passes) | must be 1 | 1 | Number of encoding passes. |  | ✓ |
 | [`--pass`](#pass) | 0/1 | 0 (all passes) | Chooses which pass to run. |  |  |
 | [`--fpf`](#fpf) | file name | not stated | Names the first-pass statistics file. |  |  |
 | [`--enable-tcq`](#enable-tcq) | 0 off, 1 on for every frame, 2 on for key and altref frames | 1 (library default in encoder_usage_cfg; the help text says 2) | Turns on trellis-coded quantization, which picks quantized values along a state trellis so that the coefficients cost fewer bits. |  |  |
@@ -329,7 +330,7 @@ Sources: [source](https://github.com/AOMediaCodec/avm/blob/v1.0.0/av2/av2_cx_ifa
 | Flag | Values | Default | What it does | HDR | Lumora |
 |---|---|---|---|---|---|
 | [`--film-grain-table`](#film-grain-table) | path to an AVM grain table | not stated | Loads film grain synthesis parameters from a text table instead of estimating them. |  | ✓ |
-| [`--film-grain-block-size`](#film-grain-block-size) | 0: 16x16, 1: 32x32 | 0 (16x16) | Sets the block size the decoder uses when laying synthesized grain over the picture. |  |  |
+| [`--film-grain-block-size`](#film-grain-block-size) | 0: 16x16, 1: 32x32 | 0 (16x16) | Sets the block size the decoder uses when laying synthesized grain over the picture. |  | ✓ |
 | [`--arnr-maxframes`](#arnr-maxframes) | 0..15 | not stated (7) | Number of frames blended by the temporal filter when building alt-ref frames. |  |  |
 | [`--arnr-strength`](#arnr-strength) | 0..6 | not stated (5) | Strength of the temporal filter applied to alt-ref frames. |  |  |
 | [`--denoise-block-size`](#denoise-block-size) | block size in pixels | 32 | Block size used by the noise estimator and denoiser that feed film grain synthesis. |  |  |
@@ -456,7 +457,7 @@ Sources: [source](https://github.com/AOMediaCodec/avm/blob/v1.0.0/av2/av2_cx_ifa
 | [`--frame-parallel`](#frame-parallel) | 0: false, 1: true | 0 (false) | Turns on features that allow frames to be decoded in parallel, by disabling backward entropy adaptation between frames. |  |  |
 | [`--mode-cost-upd-freq`](#mode-cost-upd-freq) | 0: SB, 1: SB Row per Tile, 2: Tile | not stated (0 = SB) | How often mode-cost estimates are refreshed during encoding. |  |  |
 | [`--mv-cost-upd-freq`](#mv-cost-upd-freq) | 0: SB, 1: SB Row per Tile, 2: Tile, 3: Off | not stated (0 = SB) | How often motion-vector cost estimates are refreshed. |  |  |
-| [`--row-mt`](#row-mt) | 0: off, 1: on | 1 (on) | Multithreads the encoder across superblock rows inside a tile. |  |  |
+| [`--row-mt`](#row-mt) | 0: off, 1: on | 1 (on) | Multithreads the encoder across superblock rows inside a tile. |  | ✓ |
 | [`--tile-columns`](#tile-columns) | log2 count, 0..6 | not stated (0) | Splits each frame into 2^n tile columns, which can be encoded and decoded in parallel. |  |  |
 | [`--tile-rows`](#tile-rows) | log2 count, 0..6 | not stated (0) | Splits each frame into 2^n tile rows. |  |  |
 | [`--tile-width`](#tile-width) | comma-separated tile widths | not stated | Gives explicit, possibly uneven, tile column widths instead of an even log2 split. |  |  |
@@ -825,6 +826,8 @@ Number of encoding passes. AVM has dropped two-pass encoding, so any value other
 | For | Value | Why | Source |
 |---|---|---|---|
 | archive | `1` | The CTC specifies single-pass encoding for all comparisons. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
+
+**In Lumora:** Always passed as `--passes=1` because AVM has no second pass, so this only states what the encoder does; it also keeps an encode on a pipe working if a future build changes the default (libaom's two-pass default writes an empty file on a pipe).
 
 <a id="pass"></a>
 
@@ -1258,7 +1261,7 @@ Main speed/efficiency trade-off. Higher values prune more of the search. The goo
 | archive | `0` | The CTC requires the best-performing setting (`--cpu-used=0`) for all configurations and comparisons. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 | speed | `6` | 6 is the fastest distinct level. 7-9 behave like 6 in good-quality usage. | [source](https://github.com/AOMediaCodec/avm/blob/v1.0.0/avm/avmcx.h) |
 
-**In Lumora:** Passed as `--cpu-used={preset}.` Lumora's default preset for AVM is 5.
+**In Lumora:** Passed as `--cpu-used={preset}` with a default of 6, the fastest setting with its own speed features; the planner picks 5 or 4 only when the time budget allows. Speeds 7 to 9 are the same as 6.
 
 **Notes:** Even at 6, AVM is a reference encoder and remains very slow. A public test with the simple_encoder example took about 31 s per 320x180 frame at its defaults.
 
@@ -1785,7 +1788,7 @@ Tells the encoder the content type. 'screen' turns on screen-content tools such 
 | screen content | `screen` | The CTC applies `--tune-content=screen` to the screen-sharing class (B2). | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 | CGI | `default (screen optional)` | Gaming and animation (class B1) are encoded with default tuning in mandatory CTC runs. 'screen' is only an optional extra test for them. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 
-**In Lumora:** Not used. Lumora's encoders.json 'tunes' entries for avm (default, grain, anime, screen) are all empty, so even the screen profile passes nothing.
+**In Lumora:** Passed as `--tune-content=screen` for the Screen content type when no time plan is set.
 
 **Notes:** Without this flag the encoder still runs a per-frame screen-content detector.
 
@@ -1817,9 +1820,9 @@ Loads film grain synthesis parameters from a text table instead of estimating th
 |---|---|---|---|
 | heavy grain | `a measured filmgrn2 table, with a denoised source` | Grain synthesis encodes a compact parametric model and re-synthesizes it at the decoder instead of coding the noise itself. | [source](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Appendix-Film-Grain-Synthesis.md) |
 
-**In Lumora:** Not wired correctly for AV2. ExportEngine passes '`--fgs-table` <path>' for every non-libaom codec, which avmenc rejects with 'Unrecognized option'. The correct form is `--film-grain-table=<path>.` Lumora's GrainTable also writes the AV1 'filmgrn1' format, but AVM requires the 'filmgrn2' format, whose 'p' line has extra fields.
+**In Lumora:** Passed as `--film-grain-table=<path>` when film texture or the measured-grain option is on. Lumora writes the table in AVM's own 'filmgrn2' format (GrainTable, format .av2). Verified by encoding and decoding: the decoded grain matches the table's strength, and avmdec `--skip-film-grain` gives the clean picture back.
 
-**Notes:** The table format is defined in avm_dsp/grain_table.c (magic 'filmgrn2'). AV1 tables from libaom or SVT-AV1 will not parse.
+**Notes:** The table format is defined in avm_dsp/grain_table.c (magic 'filmgrn2'). Its 'p' line has 13 values: AV1's 12, with the fifth renamed fgm_scale_from_channel0_flag, then block_size (0 = 16x16, 1 = 32x32). An AV1 'filmgrn1' table is accepted without an error message, but no grain is coded.
 
 <a id="film-grain-block-size"></a>
 
@@ -1830,6 +1833,8 @@ Loads film grain synthesis parameters from a text table instead of estimating th
 Sets the block size the decoder uses when laying synthesized grain over the picture.
 
 **Effect:** quality ± · speed none · size none
+
+**In Lumora:** Not passed. Lumora's grain tables set block_size 0 (16x16), this option's default.
 
 **Notes:** This is new in AV2. AV1 synthesis uses fixed 32x32 luma blocks.
 
@@ -1948,7 +1953,7 @@ Sets the internal coding bit depth. 10-bit improves gradients and is required fo
 | HDR | `10` | The CTC HDR class (BT.2100 PQ) is 10-bit, and 10 is the highest depth any defined AV2 profile supports. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 | anime | `10` | The CTC encodes the synthetic gaming and animation class (B1) at 10-bit even when the source is 8-bit. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 
-**In Lumora:** Passed as `--bit-depth={bits}` from the job's output depth. A 12-bit job will fail on a standard AVM build.
+**In Lumora:** Passed as `--bit-depth={bits}` and always 10: Lumora offers AV2 at 10 bits only, because 12-bit is a test-only profile outside the AV2 v1.0 specification, and a standard build refuses it ('g_bit_depth out of range').
 
 **Notes:** The help says '8 for version <=1, 10 or 12 for version 2', which is inherited wording. If the input is deeper than this value, avmenc raises it to the input depth with a warning. 12-bit needs CONFIG_TESTONLY_12BIT_SUPPORT=1, which defaults to 0.
 
@@ -2003,7 +2008,7 @@ Signals where chroma samples sit relative to luma for 4:2:0 and 4:2:2. It also t
 | HDR | `topleft` | The CTC adds `--chroma-sample-position=topleft` for HDR sequences, which assume co-located (Type 2) chroma. | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 | live action | `left` | The CTC states that BT.709 and other non-HDR video uses vertical chroma siting (Type 0, left). | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
 
-**In Lumora:** Not passed. Lumora's HDR10 and HLG AVM encodes leave chroma siting unspecified. Adding `--chroma-sample-position=topleft` for PQ/HLG would match the CTC.
+**In Lumora:** Always passed as `--chroma-sample-position=center` because Lumora's 4:2:0 and 4:2:2 chroma is averaged over 2x2 (or 2x1) luma sites, so the chroma sample sits in the middle of them (H.273 type 1). AVM writes no siting for 4:4:4.
 
 **Notes:** Parsed both as a global and as a stream option. AVM's enum is richer than AV1's (adds center, top, bottomleft, bottom). CTC v7 and earlier used 'colocated', which is not a valid v1.0.0 value.
 
@@ -2057,7 +2062,7 @@ Writes the CICP transfer function into the sequence header. This is the field th
 |---|---|---|---|
 | HDR | `smpte2084 (HDR10/PQ) or hlg (HLG)` | The CTC HDR class uses smpte2084. 'hlg' is the spelling in AVM's transfer enum. | [source](https://github.com/AOMediaCodec/avm/blob/v1.0.0/av2/arg_defs.c) |
 
-**In Lumora:** Passed as `--transfer-characteristics={tc_name}.` PQ maps to smpte2084, which is valid. HLG maps to 'arib-std-b67', which is NOT in AVM's enum, so every Lumora HLG AV2 encode fails at option parsing. encoders.json avm.colorNames.hlg.tc should be 'hlg'.
+**In Lumora:** Passed as `--transfer-characteristics={tc_name}` with smpte2084 for PQ, hlg for HLG and bt709 for SDR. After every AV2 export Lumora reads the content interpretation OBU back (AV2Stream) and fails the export if the signaling is wrong.
 
 **Notes:** Enum matching is exact and case-sensitive.
 
@@ -2990,6 +2995,8 @@ Multithreads the encoder across superblock rows inside a tile.
 | For | Value | Why | Source |
 |---|---|---|---|
 | archive | `0` | Every CTC tile and thread configuration passes `--row-mt=0.` | [source](https://aomedia.org/docs/CWG-G082_AV2_CTC_v9.pdf) |
+
+**In Lumora:** Always passed as `--row-mt=1`, so builds whose default is off keep row multithreading.
 
 **Notes:** GitHub main has since changed the default to 0 (off). On those builds, pass `--row-mt=1` explicitly to keep the speedup.
 

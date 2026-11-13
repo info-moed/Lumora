@@ -231,6 +231,30 @@ enum EncodeRecipes {
                                     EncodeRung(id: "slow", label: "slow", presetValue: "slow", seedSpeed: 0.037, seedSaving: 0.204),
                                     EncodeRung(id: "slower", label: "slower", presetValue: "slower", seedSpeed: 0.0085, seedSaving: 0.232)
                                 ], options: [], baseFps1080: 14)
+        case .av2:
+            // AVM is the reference encoder: speed 6 is its fastest distinct level (7-9 = 6). Measured with one thread
+            // on a 12-frame live-action clip (320x136, --qp 120 and 160, two-point BD-rate): speed 5 takes 4% more CPU
+            // for 0.4% smaller files, speed 4 36% more for 4%. Speed 6 costs about 37 CPU-seconds per frame there, about
+            // 1,000-1,800 per 1080p frame (a 1280x534 encode at speed 5 took 318), so an 8-core Mac reaches roughly
+            // 0.006 fps at 1080p. Measured at low priority on a busy Mac; a quiet one is faster. docs/features.md → AV2.
+            return EncodeRecipe(codec: codec, kind: kind, title: "AV2 (AVM reference encoder)",
+                                summary: "The reference encoder: the best compression of any open codec, but extremely slow. For short clips and experiments.",
+                                rungs: [
+                                    EncodeRung(id: "s6", label: "speed 6", presetValue: "6", seedSpeed: 1.0, seedSaving: 0),
+                                    EncodeRung(id: "s5", label: "speed 5", presetValue: "5", seedSpeed: 0.96, seedSaving: 0.004),
+                                    EncodeRung(id: "s4", label: "speed 4", presetValue: "4", seedSpeed: 0.73, seedSaving: 0.04)
+                                ],
+                                options: [
+                                    EncodeOption(id: "grainTable", title: "Grain measured from this film",
+                                                 detail: "Lumora removes the grain, measures it, and hands AVM a matching AV2 grain table, so the player re-creates the grain instead of the encoder spending bits on it.",
+                                                 args: ["--film-grain-table={grain_table}"], probeFlag: "--film-grain-table", speedCost: 1.0,
+                                                 vmafSaving: grainy ? 0.1 : 0, visualOnly: true,
+                                                 recommendedFor: [.realLifeHeavyGrain, .oldAnime]),
+                                    EncodeOption(id: "avmscreen", title: "Screen content tools",
+                                                 detail: "Palette and intra block copy on every frame, for screen recordings.",
+                                                 args: ["--tune-content=screen"], probeFlag: "--tune-content", speedCost: 1.0,
+                                                 vmafSaving: kind == .screenContent ? 0.1 : 0, recommendedFor: [.screenContent])
+                                ], baseFps1080: 0.006)
         case .hevc:
             return EncodeRecipe(codec: codec, kind: kind, title: "HEVC on the media engine",
                                 summary: "Apple's hardware encoder: dozens of times faster than x265, about 15–25% larger files at the same quality.",

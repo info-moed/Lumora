@@ -85,14 +85,24 @@ final class GrainProcessor {
     }
 }
 
-/// Writes an AV1 film-grain table (libaom "filmgrn1" text format) usable by SVT-AV1 (--fgs-table) and
-/// libaom (--film-grain-table). Luma grain only, white-noise shape (lag 0), scaled per brightness.
-/// VERIFY: the gaussian-sequence scale constant against your encoder build, and tune "strength" by eye.
+/// Writes a film-grain table: AV1's "filmgrn1" text format (libaom --film-grain-table, SVT-AV1 --fgs-table) or AV2's
+/// "filmgrn2" (AVM --film-grain-table, read by avm_dsp/grain_table.c). Luma grain only, white-noise shape (lag 0),
+/// scaled per brightness. AV2's parameter line differs from AV1's: the fifth value is fgm_scale_from_channel0_flag
+/// (AV1: chroma_scaling_from_luma) and a thirteenth value, block_size (0 = 16×16, 1 = 32×32), follows the chroma
+/// offsets. Both codecs use the same 2048-entry gaussian sequence (standard deviation 512 at 12 bits), shifted
+/// right by 12 − bit depth.
 enum GrainTable {
-    static func write(_ stats: GrainStats, bitDepth: Int, strength: Float = 1, seed: Int = 7391, to url: URL) throws {
+    enum Format { case av1, av2 }
+
+    static func write(_ stats: GrainStats, bitDepth: Int, strength: Float = 1, seed: Int = 7391,
+                      format: Format = .av1, to url: URL) throws {
+        try text(stats, bitDepth: bitDepth, strength: strength, seed: seed, format: format).write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    static func text(_ stats: GrainStats, bitDepth: Int, strength: Float = 1, seed: Int = 7391, format: Format = .av1) -> String {
         let scalingShift = 11
-        // Approximate std of the AV1 gaussian sequence after the bit-depth shift, in output code values.
-        let gaussSigma: Float = bitDepth >= 10 ? 128 : 32
+        // Standard deviation of the gaussian sequence after the bit-depth shift, in output code values.
+        let gaussSigma = Float(512 >> max(0, 12 - bitDepth))
         let codeScale = Float((1 << bitDepth) - 1)
         let picks = stride(from: 0, to: Int(GRAIN_BINS), by: max(1, Int(GRAIN_BINS) / 10)).map { $0 }
         var points: [String] = []
@@ -102,10 +112,13 @@ enum GrainTable {
             let y = Int(min(255, max(0, (sigmaCodes * Float(1 << scalingShift) / gaussSigma).rounded())))
             points.append("\(x) \(y)")
         }
-        let text = """
-        filmgrn1
+        let magic = format == .av1 ? "filmgrn1" : "filmgrn2"
+        // lag, AR shift, grain scale shift, scaling shift, chroma-from-luma, overlap, Cb mult/luma mult/offset, Cr …
+        let params = "0 6 0 \(scalingShift) 0 1 128 192 256 128 192 256" + (format == .av2 ? " 0" : "")
+        return """
+        \(magic)
         E 0 9223372036854775807 1 \(seed) 1
-        \tp 0 6 0 \(scalingShift) 0 1 128 192 256 128 192 256
+        \tp \(params)
         \tsY \(points.count) \(points.joined(separator: " "))
         \tsCb 0
         \tsCr 0
@@ -114,6 +127,5 @@ enum GrainTable {
         \tcCr 0
 
         """
-        try text.write(to: url, atomically: true, encoding: .utf8)
     }
 }

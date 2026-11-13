@@ -17,7 +17,7 @@ OUT = os.path.join(ROOT, "docs", "encoding")
 ORDER = ["svtav1", "x265", "vvenc", "aomenc", "avm", "videotoolbox", "hdrtools"]
 HELP = {  # key -> (binary, help argument)
     "svtav1": ("SvtAv1EncApp", "--help"), "aomenc": ("aomenc", "--help"), "x265": ("x265", "--fullhelp"),
-    "vvenc": ("vvencapp", "--fullhelp"),
+    "vvenc": ("vvencapp", "--fullhelp"), "avm": ("avmenc", "--help"),
 }
 CATEGORIES = ["Input and output", "Rate control", "Speed and presets", "GOP and keyframes", "Psychovisual and tuning",
               "Film grain and noise", "Color and HDR", "Analysis and motion search", "Partitioning and transforms",
@@ -242,7 +242,9 @@ def check():
         new = sorted(f for f in current - documented if len(f) > 3)
         def present(f):
             return f in current or (f.startswith("--no-") and "--" + f[5:] in current)
-        gone = sorted(f for f in documented if f.startswith("--") and not present(f))
+        # Options a tool parses but leaves out of its help (marked "inHelp": false) aren't drift.
+        unlisted = {o["flag"] for o in load(key)["options"] if o.get("inHelp") is False}
+        gone = sorted(f for f in documented - unlisted if f.startswith("--") and not present(f))
         if new or gone:
             drift = True
             report.append(f"  {binary}: {len(new)} option(s) in --help not in the reference: {' '.join(new[:12])}"

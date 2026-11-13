@@ -816,10 +816,16 @@ final class CampaignQualityTests: XCTestCase {
                                     renderFps: 60, mode: .maximum, budget: 3600, overrides: [:])
         XCTAssertEqual(hw.choice.rungID, "vt")
         XCTAssertFalse(hw.notes.contains { $0.contains("Measure on this Mac") })
-        // AV2 (not installed): still plans without crashing; the export itself refuses (see the AV2 test).
+        // AV2 plans with or without avmenc (the export itself refuses without it), always naming a real --cpu-used
+        // value. AVM is so slow that a 10-second 1080p clip outgrows an hour even at speed 6, so a one-hour budget
+        // stays on the fastest speed.
         let av2 = EncodePlanner.plan(codec: .av2, kind: .realLife, frames: 240, width: 1920, height: 1080, vmafMode: false,
                                      renderFps: 60, mode: .bestForMac, budget: 3600, overrides: [:])
-        XCTAssertEqual(av2.choice.rungID, "default")
+        XCTAssertTrue(["6", "5", "4"].contains(av2.choice.presetValue), av2.choice.presetValue)
+        let av2Budget = EncodePlanner.plan(codec: .av2, kind: .realLife, frames: 240, width: 1920, height: 1080, vmafMode: false,
+                                           renderFps: 60, mode: .budget, budget: 3600, overrides: [:])
+        XCTAssertEqual(av2Budget.choice.rungID, "s6")
+        XCTAssertEqual(av2Budget.choice.presetValue, "6")
     }
 
     func testRecipeFlagsMatchAndWorkWithTheRealEncoders() throws {
@@ -897,7 +903,11 @@ final class CampaignQualityTests: XCTestCase {
         // A flag the encoder doesn't know is filtered out; an encoder that isn't installed never blocks the recipe.
         let fake = EncodeOption(id: "fake", title: "", detail: "", args: ["--no-such-flag"], probeFlag: "--no-such-flag-xyz")
         if Codec.av1.available { XCTAssertFalse(EncodeRecipes.available(fake, codec: .av1)) }
-        XCTAssertNil(EncodeRecipes.supportedFlags("avmenc"), "AV2 encoder isn't installed")
+        if ToolLocator.isAvailable("avmenc") {
+            XCTAssertTrue(EncodeRecipes.supportedFlags("avmenc")?.contains("--cpu-used") == true, "avmenc --help should list --cpu-used")
+        } else {
+            XCTAssertNil(EncodeRecipes.supportedFlags("avmenc"), "AV2 encoder isn't installed")
+        }
     }
 
     // MARK: - Measure on this Mac (ExportEngine.calibrate)

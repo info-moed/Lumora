@@ -97,6 +97,9 @@ Full details: [Building from source](building.md#common-build-failures).
 | "SvtAv1EncApp failed: …" (or another encoder) | The message ends with the encoder's own error. A missing library ("Library not loaded") means a broken install: `scripts/deps.sh status` shows it; `brew reinstall <formula>` fixes it. An unknown option means the encoder changed; run `scripts/deps.sh verify` and report it. |
 | "The helper tool “ffmpeg” isn't installed" | `brew install ffmpeg` |
 | Export is very slow | Software encoders (AV1, VVC, AV2) are much slower than hardware HEVC/ProRes. Check Deliver → **Time and quality**, or choose HEVC. Run **Optimize for this Mac** once. |
+| AV2 export takes hours or days | Expected: AVM, the only AV2 encoder, is a reference encoder and runs at minutes per frame (about 2.5 min per 720p frame measured, see [Features → AV2](features.md#av2-avm)). Use it for short clips, or choose AV1 or VVC. |
+| AV2 says avmenc isn't installed | AVM isn't in Homebrew. Run `bash scripts/install-encoders.sh`, which builds `avmenc` and `avmdec` from the official repository into `~/.local/bin` (needs `cmake`; about 10 minutes). |
+| AV2 file won't play | Almost no player reads AV2 yet, and Lumora writes a raw `.obu` stream with no audio. Check it with `avmdec` (see [Command line → Checking output files](command-line.md#checking-output-files)). |
 | Output file is bigger than the source | You're asking for higher quality than the source has. Lower quality or use a quality target; the size forecast warns you before you start. |
 | No sound in the output | Sources read through AVFoundation get their audio copied when the output is `.mov`/`.mp4`; other cases go through FFmpeg. Check the track picker under Deliver → packaging. Slow-motion exports drop audio by design. |
 | A batch stopped part-way | It resumes: Tools → **Resume unfinished batch…**. Check Settings → Runs & Library → **Long runs** (working hours, battery, heat). |

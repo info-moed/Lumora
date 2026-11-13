@@ -73,7 +73,7 @@ More in the [User guide](docs/user-guide.md). All screenshots are regenerated fr
 | Xcode | **27 or later** | Free from the Mac App Store. Only needed to build. |
 | [XcodeGen](https://formulae.brew.sh/formula/xcodegen) | any recent | `brew install xcodegen`. Generates the Xcode project from `project.yml`. |
 | [FFmpeg](https://formulae.brew.sh/formula/ffmpeg) | recommended | `brew install ffmpeg`. Reads files AVFoundation can't (MKV and more), joins segments, carries audio/subtitles. |
-| Software encoders | optional | Only for AV1, VVC, AV2 and 12-bit HEVC: [`svt-av1`](https://formulae.brew.sh/formula/svt-av1), [`aom`](https://formulae.brew.sh/formula/aom), [`x265`](https://formulae.brew.sh/formula/x265), [`vvenc`](https://formulae.brew.sh/formula/vvenc). HDR metadata tools: [`dovi_tool`](https://formulae.brew.sh/formula/dovi_tool), [`hdr10plus_tool`](https://formulae.brew.sh/formula/hdr10plus_tool), [`gpac`](https://formulae.brew.sh/formula/gpac), [`mkvtoolnix`](https://formulae.brew.sh/formula/mkvtoolnix). Quality metrics: [`libvmaf`](https://formulae.brew.sh/formula/libvmaf). See [Getting started → encoders](docs/getting-started.md#step-5-optional-install-the-extra-encoders). |
+| Software encoders | optional | Only for AV1, VVC, AV2 and 12-bit HEVC: [`svt-av1`](https://formulae.brew.sh/formula/svt-av1), [`aom`](https://formulae.brew.sh/formula/aom), [`x265`](https://formulae.brew.sh/formula/x265), [`vvenc`](https://formulae.brew.sh/formula/vvenc); AV2's AVM isn't in Homebrew, so `scripts/install-encoders.sh` builds `avmenc` and `avmdec` from the [official repository](https://gitlab.com/AOMediaCodec/avm) (needs [`cmake`](https://formulae.brew.sh/formula/cmake)). HDR metadata tools: [`dovi_tool`](https://formulae.brew.sh/formula/dovi_tool), [`hdr10plus_tool`](https://formulae.brew.sh/formula/hdr10plus_tool), [`gpac`](https://formulae.brew.sh/formula/gpac), [`mkvtoolnix`](https://formulae.brew.sh/formula/mkvtoolnix). Quality metrics: [`libvmaf`](https://formulae.brew.sh/formula/libvmaf). See [Getting started → encoders](docs/getting-started.md#step-5-optional-install-the-extra-encoders). |
 
 Hardware HEVC and ProRes exports need nothing beyond macOS.
 
@@ -141,6 +141,7 @@ them on every push.
 | Area | What's checked |
 |---|---|
 | Every codec × bit depth × chroma × HDR format | 102 real exports (hardware HEVC, ProRes 422 HQ/4444 XQ, SVT-AV1, libaom, x265 12-bit, VVenC) from SDR and HDR10 sources: codec, profile, bit depth, chroma, color tags, frame count, audio, exposure, HDR10 static metadata; unsupported combinations refused with a clear reason. |
+| AV2 (AVM) | Real exports through the engine, decoded with `avmdec`: SDR, HDR10 and HLG (4:2:0, plus 4:2:2 and 4:4:4), every frame, size, 10-bit, color signaling read back from the stream, 48–49 dB luma PSNR against the same render in ProRes. Film texture travels as AV2 grain (AVM's `filmgrn2` table; decoded grain σ 4.12 for a table asking 4.06). Speed measured: about 2.5 minutes per 720p frame ([details](docs/features.md#av2-avm)). |
 | HDR10+ and Dolby Vision | HDR10+ (hardware HEVC, x265) and Dolby Vision 8.1 (hardware HEVC, x265) and 8.4 (hardware HEVC) verified with `hdr10plus_tool` and `dovi_tool`: one RPU / metadata entry per frame, correct profile, MP4 and MKV. A film's original Dolby Vision is retimed through interpolation and black-bar cropping. |
 | Ingest and analysis | MOV, MP4, MKV, WebM, AVI, Y4M, TS; H.264, HEVC, ProRes, AV1, VP9, MPEG-2; SDR, HDR10, HLG; interlaced, telecined, anamorphic, VFR; letterbox and pillarbox detection; cuts, fades and repeated frames; content types. |
 | Grading | Every look to SDR, HDR10 (1000/2000/4000 nits) and HLG; every control at its extremes; LUT export (matches Lumora's own render through FFmpeg `lut3d`); HDR stills (HEIC, AVIF); presets; reference matching; MetalFX upscaling. |
@@ -157,7 +158,9 @@ them on every push.
 
 - **On a real screen:** the HDR (EDR) preview and the live window. Tests run headless, and the GPU preview layer can't
   be captured offscreen (its frames are checked directly on the GPU instead).
-- **AV2 (AVM):** the reference encoder isn't installed; only its clean "not installed" message is tested.
+- **AV2 (AVM):** playback in a real player (only `avmdec` reads AV2 so far) and full-length exports (AVM runs at
+  minutes per frame, so tests use short clips). avmenc can't write HDR10 mastering or MaxCLL metadata, and AV2 has
+  no 12-bit profile, so neither is offered.
 - **Hardware or software not available here:** vendor RAW SDKs (BRAW, R3D, ARRIRAW, Canon RAW); real camera Bayer DNGs
   and Apple Log footage; hard-drive sources; AirPlay playback to an Apple TV; Mac notifications; TMDB lookups (need a key).
 - **Models and metrics not installed:** FILM, IFRNet and GMFSS (no converters yet), Real-ESRGAN, ColorVideoVDP,
