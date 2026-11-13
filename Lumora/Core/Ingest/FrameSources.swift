@@ -254,6 +254,7 @@ final class FFmpegFrameSource: FrameSource {
         // Close our end of the pipe now: an FFmpeg blocked writing a frame then gets EPIPE and exits, instead of
         // waiting forever on a reader that still exists (the Process keeps the Pipe, and with it the read end, alive).
         try? handle?.close()
+        decoderMessages.detach()
         process = nil
         handle = nil
     }

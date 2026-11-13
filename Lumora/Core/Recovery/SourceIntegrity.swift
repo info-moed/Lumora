@@ -320,6 +320,7 @@ enum SourceIntegrity {
             DispatchQueue.global().async { errData = err.fileHandleForReading.readDataToEndOfFile(); g.leave() }
             let data = out.fileHandleForReading.readDataToEndOfFile()
             g.wait(); done.wait()
+            try? out.fileHandleForReading.close(); try? err.fileHandleForReading.close()
             var best: Double?
             var corrupt = false
             for l in String(decoding: data, as: UTF8.self).split(separator: "\n") {

@@ -23,7 +23,14 @@ enum SegmentValidator {
         let h = try FileHandle(forReadingFrom: url)
         defer { try? h.close() }
         var hasher = SHA256()
-        while let chunk = try h.read(upToCount: 4 << 20), !chunk.isEmpty { hasher.update(data: chunk) }
+        while true {
+            let more: Bool = try autoreleasepool {     // 1 MB at a time: no large buffers held during an export
+                guard let chunk = try h.read(upToCount: 1 << 20), !chunk.isEmpty else { return false }
+                hasher.update(data: chunk)
+                return true
+            }
+            if !more { break }
+        }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 

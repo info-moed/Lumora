@@ -91,6 +91,35 @@ final class SourceIntegrityTests: RecoveryTestCase {
         XCTAssertTrue(mis.problems.first?.summary("really-mkv.mp4").contains("Lumora reads it anyway") ?? false)
     }
 
+    // MARK: No leaks
+
+    func testChecksAndDecoderMessagesDoNotLeakFileDescriptors() async throws {
+        try TestHardware.requireGPU(); try Self.requireTool("ffmpeg")
+        let mkv = try Self.good("mkv")
+        func fds() -> Int { (try? FileManager.default.contentsOfDirectory(atPath: "/dev/fd").count) ?? -1 }
+        _ = await SourceIntegrity.quickCheck(mkv)
+        let before = fds()
+        for _ in 0..<5 { _ = await SourceIntegrity.quickCheck(mkv) }
+        let afterChecks = fds()
+        let (d, _) = try await SourceInspector.inspect(mkv)
+        try await Task.sleep(nanoseconds: 300_000_000)
+        let afterInspect = fds()
+        for _ in 0..<5 {
+            var dd = d; dd.kind = .ffmpeg
+            let src = try FFmpegFrameSource(descriptor: dd)
+            try src.start(at: 0, count: 3)
+            while try src.nextFrame() != nil {}
+            try src.start(at: 10, count: 2)
+            _ = try src.nextFrame()
+            src.cancel()
+        }
+        try await Task.sleep(nanoseconds: 300_000_000)
+        let afterSources = fds()
+        print("[integrity] fds: \(before) → \(afterChecks) after 5 quick checks → \(afterInspect) after inspect → \(afterSources) after 5 FFmpeg sources")
+        XCTAssertLessThanOrEqual(afterChecks - before, 2, "quick checks leak file descriptors")
+        XCTAssertLessThanOrEqual(afterSources - afterInspect, 2, "FFmpeg sources leak file descriptors")
+    }
+
     // MARK: Full scan and decoding past damage
 
     func testFullScanMapsDamageToTimesAndAnalysisKeepsEveryFrame() async throws {

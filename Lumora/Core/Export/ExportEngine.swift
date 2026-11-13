@@ -976,7 +976,8 @@ final class ExportEngine {
         let concurrent = MacProfile.current?.concurrentChunks ?? max(1, min(3, chip.cpuCores / 6))
         let budget = Double(ProcessInfo.processInfo.physicalMemory) * (MacProfile.current?.ramFraction ?? 0.30) / Double(concurrent + 1)
         let maxFrames = max(fps, min(Int(budget / perFrame), fps * 10))
-        let chunks = chunkRanges(ctx, maxFrames: maxFrames, minFrames: fps * 3 / 2)
+        let computedChunks = chunkRanges(ctx, maxFrames: maxFrames, minFrames: fps * 3 / 2)
+        let chunks = session?.targetChunks(computedChunks) ?? computedChunks     // saved with the export, reused on resume
         let threads = max(2, chip.cpuCores / concurrent)
         Log.notice(.quality, "Target VMAF \(target.vmaf) (\(target.pool.rawValue)): \(chunks.count) chunks ≤ \(maxFrames) frames, \(concurrent) at a time, \(threads) threads each. RAM per chunk ≈ \(ByteCountFormatter.string(fromByteCount: Int64(perFrame * Double(maxFrames)), countStyle: .memory))")
         await MainActor.run { EncodeMonitor.shared.reset(target: target, chunks: chunks, totalFrames: ctx.plan.count) }
@@ -1050,17 +1051,23 @@ final class ExportEngine {
             var running = 0
             while let chunk = try await channel.receive() {
                 try Task.checkCancellation()
+                if let saved = self.session?.savedPieces(chunk: chunk.id) {     // finished before an interruption
+                    pieces += saved
+                    await MainActor.run { EncodeMonitor.shared.update(chunk.id) { $0.state = .done } }
+                    continue
+                }
                 if running >= concurrent, let done = try await group.next() { pieces += done; running -= 1 }
                 let scene = job.analysis.scenes[safe: job.analysis.sceneIndex(for: ctx.plan[chunk.start].a)]
                     ?? SceneStats(start: 0, end: 0, keyStops: -1.2, p005: -6, p50: -1, p995: 3, skinFraction: 0, avgChroma: 0)
                 let r = chunk.start..<(chunk.start + chunk.frames.count)
                 let share = Double(ctx.plan[r].filter { $0.kind != .original }.count) / Double(max(1, r.count))
                 group.addTask {
-                    try await tq.encode(frames: chunk.frames, chunkID: chunk.id, start: chunk.start, sceneStats: scene,
+                    let done = try await tq.encode(frames: chunk.frames, chunkID: chunk.id, start: chunk.start, sceneStats: scene,
                                         interpolatedShare: share, kind: job.contentKind, encodeOne: encodeOne,
                                         target: target, rate: ctx.rate, workDir: tmp, threads: threads, codec: job.codec,
                                         hdr: job.target.isHDR, hlg: job.target.kind == .hlg, referenceFrames: chunk.reference,
                                         stripSyntheticGrain: ctx.grain.strip)
+                    return try self.session?.chunkDone(chunk.id, done) ?? done
                 }
                 running += 1
             }

@@ -34,6 +34,7 @@ extension ToolVersions {
         let done = p.exitSignal()
         guard (try? p.run()) != nil else { return "unknown" }
         let data = out.fileHandleForReading.readDataToEndOfFile()
+        try? out.fileHandleForReading.close()
         done.wait()
         let text = String(decoding: data.prefix(64 << 10), as: UTF8.self)
         let lines = text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }

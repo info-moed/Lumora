@@ -155,6 +155,42 @@ final class ResumeTests: RecoveryTestCase {
     func testDolbyVisionRPUsMatchAfterResume() async throws { try await dynamicMetadataMatches(.dolbyVision81, tool: "dovi_tool") }
     func testHDR10PlusMetadataMatchesAfterResume() async throws { try await dynamicMetadataMatches(.hdr10Plus, tool: "hdr10plus_tool") }
 
+    /// Target quality resumes per chunk: finished chunks keep their pieces and levels; only the missing chunks are
+    /// searched again, and the manifest's chunk map equals an uninterrupted export's.
+    func testTargetQualityResumesPerChunk() async throws {
+        try TestHardware.requireGPU(); try Self.requireTool("SvtAv1EncApp")
+        guard VMAFRunner.available else { throw XCTSkip("VMAF not available") }
+        let p = try await Self.prepare(try Self.makeSource("resume-tq.mp4", seconds: 4))
+        let target = await CampaignQualityTests.vmafOnly(90)
+        func tqJob(_ name: String) -> ExportJob {
+            var j = job(p, codec: .av1, name: name)
+            j.qualityTarget = target
+            j.qualityTarget?.maxTrials = 2
+            return j
+        }
+        let refEngine = ExportEngine()
+        let reference = try await refEngine.run(tqJob("tq-reference.mkv")) { _, _ in }
+        let refChunks = refEngine.lastPieces.map { [$0.start, $0.count] }
+        let refLevels = refEngine.lastPieces.map(\.level)
+        XCTAssertGreaterThanOrEqual(refChunks.count, 2, "at least two chunks")
+
+        let j = tqJob("tq-resumed.mkv")
+        FaultInjection.crashAfterSegments = 1
+        _ = await failure(ExportEngine(), j)
+        FaultInjection.crashAfterSegments = nil
+        let journal = try savedJournal()
+        let chunks = try XCTUnwrap(journal.chunkPlan).count
+        XCTAssertEqual(Set(journal.pieces.map(\.chunk)).count, 1, "one chunk was finished before the crash")
+        let e = ExportEngine()
+        let url = try await e.run(j, options: RecoveryOptions(resume: journal)) { _, _ in }
+        XCTAssertEqual(e.session?.reusedSegments.count, 1, "the finished chunk is reused")
+        XCTAssertEqual(e.session?.encodedSegments.count, chunks - 1, "only the missing chunks are searched")
+        XCTAssertEqual(e.lastPieces.map { [$0.start, $0.count] }, refChunks, "same chunk map as an uninterrupted export")
+        XCTAssertEqual(e.lastPieces.map(\.level), refLevels, "same encoder levels")
+        XCTAssertEqual(try Self.frames(url), try Self.frames(reference), "identical frames")
+        print("[resume] target quality: \(chunks) chunks, 1 reused, \(chunks - 1) searched again; frames identical")
+    }
+
     // MARK: Durability
 
     func testCrashBetweenSegmentAndJournalRedoesThatSegment() async throws {

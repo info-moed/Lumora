@@ -30,6 +30,7 @@ enum ToolLocator {
         let exited = p.exitSignal()
         try p.run()
         let data = err.fileHandleForReading.readDataToEndOfFile()
+        try? err.fileHandleForReading.close()     // now, not whenever an autorelease pool drains (file descriptors add up)
         exited.wait()
         return String(decoding: data, as: UTF8.self)
     }
@@ -59,6 +60,7 @@ enum ToolLocator {
         }
         let data = out.fileHandleForReading.readDataToEndOfFile()
         errDone.wait()
+        try? out.fileHandleForReading.close(); try? err.fileHandleForReading.close()
         exited.wait()
         let errText = String(decoding: errData.suffix(2000), as: UTF8.self)
         if let log = RenderLog.current, p.terminationStatus != 0 || p.terminationReason != .exit || !errText.isEmpty {

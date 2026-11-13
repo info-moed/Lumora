@@ -24,10 +24,22 @@ struct ExportJournal: Codable, Identifiable {
             defer { try? h.close() }
             var hasher = SHA256()
             let chunk = 4 << 20
-            if let head = try? h.read(upToCount: chunk) { hasher.update(data: head) }
+            func hash(_ bytes: Int) {
+                var left = bytes
+                while left > 0 {
+                    let done: Bool = autoreleasepool {
+                        guard let d = try? h.read(upToCount: min(left, 1 << 20)), !d.isEmpty else { return true }
+                        hasher.update(data: d)
+                        left -= d.count
+                        return false
+                    }
+                    if done { break }
+                }
+            }
+            hash(chunk)
             if size > Int64(chunk) {
                 try? h.seek(toOffset: UInt64(max(Int64(chunk), size - Int64(chunk))))
-                if let tail = try? h.readToEnd() { hasher.update(data: tail) }
+                hash(chunk)
             }
             return SourceFingerprint(path: url.path, size: size, modified: mod, fileID: id,
                                      headTail: hasher.finalize().map { String(format: "%02x", $0) }.joined())
@@ -73,6 +85,17 @@ struct ExportJournal: Codable, Identifiable {
         var attempt: Int
     }
 
+    /// A finished target-quality piece (a chunk can be split into several at quality dips).
+    struct DonePiece: Codable, Hashable {
+        var chunk: Int
+        var start: Int
+        var count: Int
+        var level: Double
+        var file: String              // relative to the checkpoint folder
+        var bytes: Int64
+        var sha256: String
+    }
+
     var version = 1
     var exportID: String
     var created = Date()
@@ -89,6 +112,8 @@ struct ExportJournal: Codable, Identifiable {
     var levelsSaved = false
     var grain: ExportEngine.GrainPlan?
     var segments: [DoneSegment] = []
+    var chunkPlan: [[Int]]?           // target-quality chunks: [start, count] each, fixed once chosen
+    var pieces: [DonePiece] = []      // target-quality pieces of finished chunks
     var stages: [String: Date] = [:]
     var joinedFile: String?           // relative: the joined video, before HDR10 container / dynamic metadata
     var finalFile: String?            // relative: the finished video, ready to deliver
@@ -105,7 +130,7 @@ struct ExportJournal: Codable, Identifiable {
     var keepProgress = false
 
     var id: String { exportID }
-    var savedFrames: Int { segments.reduce(0) { $0 + $1.frames } }
+    var savedFrames: Int { segments.reduce(0) { $0 + $1.frames } + pieces.reduce(0) { $0 + $1.count } }
     var progress: Double {
         if finalFile != nil || joinedFile != nil { return 1 }
         guard let p = plan, p.frames > 0 else { return 0 }
@@ -229,6 +254,13 @@ enum CheckpointStore {
 
     static func discard(_ id: String, root: URL = CheckpointStore.root) {
         try? FileManager.default.removeItem(at: folder(id, root: root))
+        removeRootIfEmpty(root)
+    }
+
+    /// No saved progress left: no empty "Checkpoints" folder either (the scratch folder stays clean).
+    static func removeRootIfEmpty(_ root: URL = CheckpointStore.root) {
+        // rmdir only removes an empty folder, atomically: an export creating its folder at the same moment is safe.
+        rmdir(root.path)
     }
 
     /// Saved progress expires after 14 days; the oldest goes first when all of it together takes more than a quarter of

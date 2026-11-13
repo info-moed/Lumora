@@ -112,7 +112,7 @@ final class DecoderMessages: @unchecked Sendable {
     var recent: [String] { lock.lock(); defer { lock.unlock() }; return lines }
 
     func attach(log: RenderLog?, label: String) -> Pipe {
-        pipe?.fileHandleForReading.readabilityHandler = nil
+        detach()
         let p = Pipe()
         pipe = p
         p.fileHandleForReading.readabilityHandler = { [weak self] h in
@@ -128,4 +128,14 @@ final class DecoderMessages: @unchecked Sendable {
         }
         return p
     }
+
+    /// Stops reading the previous decoder's messages and closes that pipe right away.
+    func detach() {
+        pipe?.fileHandleForReading.readabilityHandler = nil
+        try? pipe?.fileHandleForReading.close()
+        try? pipe?.fileHandleForWriting.close()
+        pipe = nil
+    }
+
+    deinit { detach() }
 }

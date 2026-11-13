@@ -224,7 +224,7 @@ final class RenderSession: @unchecked Sendable {
             }
         }
         journal.segments = keep
-        let listed = Set(keep.map(\.file))
+        let listed = Set(keep.map(\.file) + journal.pieces.map(\.file))
         let segDir = dir.appendingPathComponent("segments")
         for f in (try? FileManager.default.contentsOfDirectory(atPath: segDir.path)) ?? [] where !listed.contains("segments/" + f) {
             try? FileManager.default.removeItem(at: segDir.appendingPathComponent(f))
@@ -421,6 +421,70 @@ final class RenderSession: @unchecked Sendable {
         if !now.sameContent(fp) { throw SourceChange(moved: false, file: job.descriptor.url.lastPathComponent) }
     }
 
+    // MARK: Target-quality chunks
+
+    /// The chunk plan of a target-quality export: chosen once (it depends on this Mac's memory), then reused.
+    func targetChunks(_ computed: [Range<Int>]) -> [Range<Int>] {
+        if resuming, let saved = journal.chunkPlan, saved.allSatisfy({ $0.count == 2 }),
+           saved.reduce(0, { $0 + $1[1] }) == computed.reduce(0, { $0 + $1.count }) {
+            return saved.map { $0[0]..<($0[0] + $0[1]) }
+        }
+        update { $0.chunkPlan = computed.map { [$0.lowerBound, $0.count] }; $0.pieces = [] }
+        return computed
+    }
+
+    /// The pieces of a chunk finished in an earlier run (checked again), or nil when it has to be encoded.
+    func savedPieces(chunk: Int) -> [TargetQualityEncoder.Piece]? {
+        guard resuming, let dir else { return nil }
+        let saved = lock.withLock { journal.pieces.filter { $0.chunk == chunk } }
+        guard !saved.isEmpty else { return nil }
+        for p in saved {
+            let u = dir.appendingPathComponent(p.file)
+            let bytes = Int64((try? u.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? -1)
+            guard bytes == p.bytes, (try? SegmentValidator.sha256(u)) == p.sha256 else {
+                log.warn("Saved chunk \(chunk) can't be reused (a piece changed on disk); it will be encoded again.", tag: "resume")
+                update { $0.pieces.removeAll { $0.chunk == chunk } }
+                return nil
+            }
+        }
+        lock.withLock { reusedSegments.append(chunk) }
+        log.info("Chunk \(chunk): reusing \(saved.count) saved piece\(saved.count == 1 ? "" : "s") (frames \(saved.map(\.start).min() ?? 0)–\(saved.map { $0.start + $0.count }.max() ?? 0))", tag: "resume")
+        return saved.sorted { $0.start < $1.start }.map {
+            TargetQualityEncoder.Piece(start: $0.start, url: dir.appendingPathComponent($0.file), count: $0.count, level: $0.level)
+        }
+    }
+
+    /// A chunk's accepted pieces: moved into the checkpoint folder, flushed and journaled. Returns them at their new place.
+    func chunkDone(_ chunk: Int, _ pieces: [TargetQualityEncoder.Piece]) throws -> [TargetQualityEncoder.Piece] {
+        guard let dir else { return pieces }
+        var out: [TargetQualityEncoder.Piece] = []
+        var done: [ExportJournal.DonePiece] = []
+        for (k, p) in pieces.enumerated() {
+            let name = String(format: "segments/c%05d.p%d.%@", chunk, k, p.url.pathExtension)
+            let dest = dir.appendingPathComponent(name)
+            try? FileManager.default.removeItem(at: dest)
+            try FileManager.default.moveItem(at: p.url, to: dest)
+            CheckpointStore.fullSync(dest)
+            let bytes = Int64((try? dest.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+            done.append(.init(chunk: chunk, start: p.start, count: p.count, level: p.level, file: name, bytes: bytes,
+                              sha256: try SegmentValidator.sha256(dest)))
+            var moved = p
+            moved.url = dest
+            out.append(moved)
+        }
+        lock.withLock {
+            journal.pieces.removeAll { $0.chunk == chunk }
+            journal.pieces += done
+            encodedSegments.append(chunk)
+        }
+        try saveJournal()
+        log.info("Chunk \(chunk) saved: \(pieces.count) piece\(pieces.count == 1 ? "" : "s"), \(pieces.reduce(0) { $0 + $1.count }) frames", tag: "chunk \(chunk)")
+        if let n = FaultInjection.crashAfterSegments, lock.withLock({ Set(journal.pieces.map(\.chunk)).count }) >= n {
+            throw FaultInjection.SimulatedCrash()
+        }
+        return out
+    }
+
     // MARK: Join, metadata, delivery
 
     /// The joined video must have exactly the planned frames: a short or long result is never delivered.
@@ -489,6 +553,7 @@ final class RenderSession: @unchecked Sendable {
         log.line(.result, "done", String(format: "finished in %.1f s → %@, %@", Date().timeIntervalSince(log.started), job.outputURL.path, size)
                  + (resuming ? " (resumed: \(reusedSegments.count) saved segments reused, \(encodedSegments.count) encoded)" : ""))
         if let dir { try? FileManager.default.removeItem(at: dir) }
+        CheckpointStore.removeRootIfEmpty()
         log.close()
         RenderLog.prune(keep: Self.resumableLogs())
     }
@@ -569,6 +634,7 @@ final class RenderSession: @unchecked Sendable {
             } else {
                 try? FileManager.default.removeItem(at: dir)
                 self.dir = nil
+                CheckpointStore.removeRootIfEmpty()
             }
         }
         log.close()
