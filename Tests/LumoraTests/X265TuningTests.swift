@@ -67,11 +67,13 @@ final class X265TuningTests: XCTestCase {
             let noPlan = EncodeRecipes.x265Args(["--preset", "slow"], bits: 10, chroma: .c420, preset: "slow", kind: kind, planned: false)
             XCTAssertEqual(noPlan, ["--preset", "slow"] + base.flatMap(\.args), "\(kind)")
             XCTAssertFalse(noPlan.contains("--tune"), "\(kind)")
-            // The planner always enables the same set, whatever the mode.
+            // The planner always enables the same set, whatever the mode, except what the picked preset already does
+            // (placebo's own --tskip).
             for mode in PlanMode.allCases {
                 let p = EncodePlanner.plan(codec: .hevc12, kind: kind, frames: 2000, width: 1920, height: 1080, vmafMode: false,
                                            renderFps: 60, mode: mode, budget: 3600, overrides: [:])
-                XCTAssertTrue(Set(base.map(\.id)).isSubset(of: p.enabled), "\(kind) \(mode): \(p.enabled)")
+                let byPreset = Set(base.filter { $0.presetRungs.contains(p.choice.rungID) }.map(\.id))
+                XCTAssertTrue(Set(base.map(\.id)).subtracting(byPreset).isSubset(of: p.enabled), "\(kind) \(mode): \(p.enabled)")
             }
             // An x265 flag appears at most once in the base set, so nothing in it overrides anything else in it.
             let flags = base.flatMap(\.args).filter { $0.hasPrefix("--") }
@@ -116,10 +118,14 @@ final class X265TuningTests: XCTestCase {
             XCTAssertGreaterThan(a.seedSpeed, b.seedSpeed, b.id)
             XCTAssertLessThan(a.seedSaving, b.seedSaving, b.id)
         }
-        // Given time, the planner adds rd 6 for old anime.
+        // Given time, old anime gets rd 6: the slowest presets use it themselves, so the planner adds it only up to slow.
         let max = EncodePlanner.plan(codec: .hevc12, kind: .oldAnime, frames: 2000, width: 1920, height: 1080, vmafMode: false,
                                      renderFps: 60, mode: .maximum, budget: 86_400, overrides: [:])
-        XCTAssertTrue(max.enabled.contains("rd6"), "\(max.enabled)")
+        XCTAssertTrue(["slower", "veryslow", "placebo"].contains(max.choice.rungID), max.choice.rungID)
+        XCTAssertFalse(max.enabled.contains("rd6"), "\(max.enabled)")
+        let rd6 = EncodeRecipes.recipe(codec: .hevc12, kind: .oldAnime).options.first { $0.id == "rd6" }
+        XCTAssertEqual(rd6?.offered(onRung: "slow"), true)
+        XCTAssertEqual(rd6?.recommendedFor.contains(.oldAnime), true)
     }
 
     func testHelpParsingSeesFullHelpAndNoForms() {

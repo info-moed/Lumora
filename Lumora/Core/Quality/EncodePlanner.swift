@@ -13,7 +13,7 @@ enum PlanMode: String, CaseIterable, Codable, Identifiable {
         case .fastest: return "Quickest settings that still use every free improvement."
         case .budget: return "The most efficient settings that finish within your time."
         case .bestForMac: return "Stops where extra time stops paying off on this Mac (less than 2% smaller per doubling of time)."
-        case .maximum: return "Smallest possible file: slowest settings and every extra (for AV1 this can mean libaom). Can take days."
+        case .maximum: return "Smallest possible file: slowest settings and every extra. Can take days."
         }
     }
 }
@@ -35,6 +35,16 @@ struct EncodeCalibration: Codable {
     var rungs: [String: Rung]
     var vmafFps1080: Double?
     var date: Date
+    /// The recipe's seed ladder when this was measured (`EncodeRecipe.seedSignature`). Measured savings are anchored to
+    /// the seed of the first measured rung and mixed with the seeds of the rungs that weren't measured, so a calibration
+    /// from another seed ladder (or from before this was stored) would overrate or underrate the unmeasured rungs.
+    var seedSignature: String? = nil
+
+    /// The calibration if it was measured against this recipe's seeds; nil otherwise (the planner then uses the seeds).
+    static func matching(_ cal: EncodeCalibration?, _ recipe: EncodeRecipe) -> EncodeCalibration? {
+        guard let cal, cal.seedSignature == recipe.seedSignature else { return nil }
+        return cal
+    }
 
     private static var folder: URL {
         let d = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Lumora/Calibration")
@@ -79,6 +89,9 @@ private func plan_enabledGrain(_ offered: [EncodeOption], _ kind: ContentKind) -
 }
 
 enum EncodePlanner {
+    /// libaom on the AV1 ladder, measured against SVT-AV1 with Lumora's extras (docs/encoding/tuning-aomenc.md).
+    static let libaomNote = "This setting uses libaom. On Lumora's test clips, SVT-AV1 presets 2 to 0 with their extras were as small or smaller in the same time."
+
     static func duration(_ s: Double) -> String {
         let f = DateComponentsFormatter()
         f.allowedUnits = s >= 3600 ? [.day, .hour, .minute] : [.minute]
@@ -90,9 +103,11 @@ enum EncodePlanner {
     /// - renderFps: how fast Lumora renders (decode + interpolate + upscale + grade) — the floor for any plan.
     static func plan(codec: Codec, kind: ContentKind, frames: Int, width: Int, height: Int, vmafMode: Bool,
                      renderFps: Double, mode: PlanMode, budget: TimeInterval, overrides: [String: Bool],
-                     metricSecondsPerFrame: Double = 0, chip: ChipProfile = .current) -> EncodePlan {
+                     metricSecondsPerFrame: Double = 0, chip: ChipProfile = .current,
+                     loadCalibration: (Codec, ContentKind) -> EncodeCalibration? = EncodeCalibration.load) -> EncodePlan {
         let recipe = EncodeRecipes.recipe(codec: codec, kind: kind)
-        let cal = EncodeCalibration.load(codec, kind)
+        // A calibration measured against other seeds is ignored: mixed with these it misjudges the unmeasured rungs.
+        let cal = EncodeCalibration.matching(loadCalibration(codec, kind), recipe)
         let pixelScale = Double(1920 * 1080) / Double(max(1, width * height))
         let coreScale = codec.isHardware ? Double(chip.videoEncodeEngines) : Double(chip.cpuCores) / 8.0
         let samples = QualityPredictor.shared.sampleCounts[codec.rawValue] ?? 0
@@ -109,7 +124,9 @@ enum EncodePlanner {
                 let m = cal.rungs[near.element.id]!
                 fps = m.fps1080 * r.seedSpeed / max(0.0001, near.element.seedSpeed)
             }
-            return (fps, r.seedSaving)
+            // What the preset itself does that the seeds' test content didn't reward (x265's rd 6 on old anime, say).
+            let builtIn = recipe.options.filter { $0.encoderKey == r.encoderKey && $0.presetRungs.contains(r.id) }
+            return (fps, 1 - (1 - r.seedSaving) * builtIn.reduce(1.0) { $0 * (1 - $1.vmafSaving) })
         }
 
         let offered = recipe.options.filter { EncodeRecipes.available($0, codec: codec) }
@@ -173,8 +190,13 @@ enum EncodePlanner {
         }
         func choice(_ c: Candidate) -> EncodeChoice {
             let r = recipe.rungs[c.rung]
+            var args = c.opts.flatMap(\.args)
+            if codec == .av1 && r.encoderKey == nil {
+                // The temporal filter follows whether SVT-AV1 synthesizes the grain, as ExportEngine applies it.
+                args = EncodeRecipes.svtTemporalFilter(args, kind: kind)
+            }
             return EncodeChoice(codec: codec, encoderKey: r.encoderKey, rungID: r.id, rungLabel: r.label, presetValue: r.presetValue,
-                                optionIDs: c.opts.map(\.id), extraArgs: c.opts.flatMap(\.args))
+                                optionIDs: c.opts.map(\.id), extraArgs: args)
         }
         var upgrade: EncodePlan.Upgrade?
         if let next = frontier.first(where: { $0.seconds > pick.seconds && $0.saving > pick.saving + 0.01 }) {
@@ -194,11 +216,17 @@ enum EncodePlanner {
         }
         let pickedRung = recipe.rungs[pick.rung]
         for o in offered where overrides[o.id] == true && o.encoderKey == pickedRung.encoderKey && !o.offered(onRung: pickedRung.id) {
-            notes.append("\(o.title) isn't used at \(pickedRung.label): it would cost more time than the faster setting saves.")
+            // x265 options are limited to the presets that don't already set them; elsewhere it's a time trade-off.
+            notes.append(codec == .hevc12 ? "\(o.title) isn't added at \(pickedRung.label): that preset already uses it."
+                                          : "\(o.title) isn't used at \(pickedRung.label): it would cost more time than the faster setting saves.")
         }
         let pickedEncoder = recipe.rungs[pick.rung].encoderKey
-        if pickedEncoder == "aomenc" { notes.append("This setting uses libaom: about as small as SVT-AV1's slowest presets, or a little smaller at cpu-used 3 and 2, for a very long encode.") }
-        let plan = EncodePlan(choice: choice(pick), seconds: pick.seconds, saving: pick.saving, measured: cal != nil,
+        if pickedEncoder == "aomenc" { notes.append(EncodePlanner.libaomNote) }
+        // Seeds and measurements count from a reference that need not be offered (SVT-AV1's preset 10 is gone), so the
+        // reported saving is taken against the fastest rung offered here with no extras, which is what it promises.
+        let fastest = recipe.rungs.indices.first { EncodeRecipes.available(recipe.rungs[$0], codec: codec) } ?? 0
+        let saving = 1 - (1 - pick.saving) / max(0.0001, 1 - rungStats(fastest).saving)
+        let plan = EncodePlan(choice: choice(pick), seconds: pick.seconds, saving: saving, measured: cal != nil,
                               options: offered.filter { $0.encoderKey == pickedEncoder }, enabled: Set(pick.opts.map(\.id)), upgrade: upgrade, notes: notes)
         Log.debug(.encode, "Plan \(mode.rawValue): \(plan.headline), ~\(duration(plan.seconds)), saving \(Int(plan.saving * 100))% vs fastest")
         return plan

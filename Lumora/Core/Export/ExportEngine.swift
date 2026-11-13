@@ -147,24 +147,72 @@ final class ExportEngine {
                        kr: wide ? 0.2627 : 0.2126, kb: wide ? 0.0593 : 0.0722)
     }
 
+    /// Who carries the grain in this export, from its settings alone (planGrain then measures).
+    struct GrainRoles: Equatable {
+        var measured = false       // Lumora removes the grain and supplies a table measured from this film
+        var encoderGrain = false   // the encoder's own grain synthesis runs (metrics compare against a de-grained master)
+        var texture = false        // the user's film texture: a table of added grain on top of the coded picture
+    }
+
+    static func grainRoles(_ job: ExportJob) -> GrainRoles {
+        let ids = Set(job.encodeChoice?.optionIDs ?? [])
+        let av1 = job.codec == .av1 || job.codec == .av1Pro
+        // Grain tables: AV1 (SVT-AV1 and libaom, "filmgrn1") and AV2 (AVM, "filmgrn2").
+        let tables = av1 || job.codec == .av2
+        // Both measured-table options: SVT-AV1's grainTable and libaom's aomtable10 on the archival AV1 ladder.
+        let measured = tables && (ids.contains("grainTable") || ids.contains("aomtable10"))
+        let texture = tables && job.filmTexture != .off
+        // A grain table (measured or film texture) replaces every encoder grain argument (startCLIEncoder removes them),
+        // so the encoder's grain synthesis only counts without one: otherwise the real grain the encoder now codes would
+        // be scored against the de-grained master, and a target quality would overspend.
+        let table = measured || texture
+        // Without a plan the content tune applies; the SVT-AV1 grain tune synthesizes grain like the grain extra does.
+        let tuneGrain = av1 && job.encodeChoice == nil && job.filmTexture == .off
+            && EncodeRecipes.synthesizesGrain(encoder(for: job)?.tunes?[ContentTuning.preset(job.contentKind).encoderTune] ?? [])
+        // libaom's grain (--denoise-noise-level, on either AV1 ladder) counts too: before, only SVT-AV1's was recognized,
+        // so libaom grain synthesis was scored with the synthetic grain applied, against the grainy master.
+        let encoderGrain = !table && (ids.contains("grain") || ids.contains("aomgrain") || ids.contains("aomgrain10")
+            || (av1 && EncodeRecipes.synthesizesGrain(job.encodeChoice?.extraArgs ?? [])) || tuneGrain)
+        return GrainRoles(measured: measured, encoderGrain: encoderGrain, texture: texture)
+    }
+
+    /// How the encoder that actually runs takes a grain table: libaom (AV1 Pro, or a libaom rung of the AV1 ladder) and
+    /// AVM `--film-grain-table=`, SVT-AV1 `--fgs-table`.
+    static func grainTableFlag(_ job: ExportJob, path: String) -> [String] {
+        runsLibaom(job) || job.codec == .av2 ? ["--film-grain-table=\(path)"] : ["--fgs-table", path]
+    }
+
+    static let grainTablePlaceholder = "{grain_table}"
+
+    /// The planned extras with grain settled. With a table (`tableFlag`), every other grain argument goes (SVT-AV1's
+    /// `--film-grain`, `--film-grain-denoise` and `--fgs-table`, libaom's `--film-grain-table=` and
+    /// `--denoise-noise-level=`) and the table flag is the only one. In any case a table option whose placeholder was
+    /// never filled is dropped rather than handed to the encoder verbatim.
+    static func settleGrainArgs(_ args: [String], tableFlag: [String]?) -> [String] {
+        let table = tableFlag != nil
+        var out: [String] = []
+        var i = 0
+        while i < args.count {
+            let a = args[i]
+            let next = i + 1 < args.count ? args[i + 1] : ""
+            if table && ["--film-grain", "--film-grain-denoise", "--fgs-table"].contains(a) { i += 2; continue }
+            if table && (a.hasPrefix("--film-grain-table=") || a.hasPrefix("--denoise-noise-level=")) { i += 1; continue }
+            if a == "--fgs-table" && next.contains(grainTablePlaceholder) { i += 2; continue }
+            if a.contains(grainTablePlaceholder) { i += 1; continue }
+            out.append(a)
+            i += 1
+        }
+        return out + (tableFlag ?? [])
+    }
+
     /// Decides the grain strategy and, when needed, measures this film's grain and writes a grain table (AV1's
     /// "filmgrn1" for SVT-AV1 and libaom, AV2's "filmgrn2" for AVM: avmenc accepts a filmgrn1 file without an error
     /// but codes no grain from it).
     private func planGrain(_ ctx: Context, workDir: URL) async throws -> GrainPlan {
         let job = ctx.job
         var g = GrainPlan()
-        let ids = Set(job.encodeChoice?.optionIDs ?? [])
-        let av1 = job.codec == .av1 || job.codec == .av1Pro
-        let tables = av1 || job.codec == .av2
-        let measured = tables && ids.contains("grainTable")
-        // Without a plan the content tune applies; the SVT-AV1 and libaom grain tunes synthesize grain like the grain extras do.
-        let tuneGrain = av1 && job.encodeChoice == nil
-            && EncodeRecipes.synthesizesGrain(encoderSpec(job)?.tunes?[ContentTuning.preset(job.contentKind).encoderTune] ?? [])
-        // libaom's grain (--denoise-noise-level, on either AV1 ladder) counts too: before, only SVT-AV1's was recognized,
-        // so libaom grain synthesis was scored with the synthetic grain applied, against the grainy master.
-        let encoderGrain = ids.contains("grain") || ids.contains("aomgrain") || ids.contains("aomgrain10")
-            || (av1 && EncodeRecipes.synthesizesGrain(job.encodeChoice?.extraArgs ?? [])) || tuneGrain
-        let texture = tables && job.filmTexture != .off
+        let roles = Self.grainRoles(job)
+        let (measured, encoderGrain, texture) = (roles.measured, roles.encoderGrain, roles.texture)
         guard measured || encoderGrain || texture else { return g }
         g.strip = true
         g.cleanReference = measured || encoderGrain
@@ -183,8 +231,7 @@ final class ExportEngine {
             let url = workDir.appendingPathComponent("grain.tbl")
             try GrainTable.write(tableStats, bitDepth: job.bitDepth, format: job.codec == .av2 ? .av2 : .av1, to: url)
             g.table = url
-            // SVT-AV1 spells it --fgs-table; libaom (also on the libaom rungs of the AV1 ladder) and AVM --film-grain-table.
-            g.tableFlag = encoderSpec(job)?.binary == EncodeRecipes.svtBinary ? ["--fgs-table", url.path] : ["--film-grain-table=\(url.path)"]
+            g.tableFlag = Self.grainTableFlag(job, path: url.path)
         }
         Log.notice(.encode, "Grain: measured σ \(String(format: "%.4f", measuredStats.overall)); \(measured ? "Lumora removes grain and supplies a measured table" : encoderGrain ? "encoder grain synthesis" : "")\(texture ? "; film texture \(job.filmTexture.rawValue)" : ""). Scoring strips synthetic grain.")
         return g
@@ -231,17 +278,22 @@ final class ExportEngine {
         for (n, (idx, chunk)) in affected.enumerated() {
             try Task.checkCancellation()
             status("Repairing chunk \(n + 1) of \(affected.count)", Double(n) / Double(affected.count))
-            let frames = try await renderPlanar(ctx, range: chunk.start..<(chunk.start + chunk.count))
+            // Rendered for grain the way the export was: de-grained frames for the encoder when Lumora removes the grain,
+            // and the de-grained master as the reference when grain synthesis is scored against it (only with a target:
+            // a fixed-quality repair isn't scored).
+            let (frames, reference) = try await renderChunk(ctx, range: chunk.start..<(chunk.start + chunk.count),
+                                                            scored: strict.qualityTarget != nil)
             if var target = strict.qualityTarget {
                 target.fixDips = true
                 let pieces = try await TargetQualityEncoder(engine: self).encode(
                     frames: frames, chunkID: -100 - idx, start: chunk.start,
                     sceneStats: job.analysis.scenes[safe: job.analysis.sceneIndex(for: ctx.plan[chunk.start].a)] ?? job.analysis.scenes[0],
                     interpolatedShare: 0.5, kind: job.contentKind, encodeOne: encodeOne, target: target, rate: ctx.rate,
-                    workDir: tmp, threads: threads, codec: job.codec, hdr: job.target.isHDR, hlg: job.target.kind == .hlg, stripSyntheticGrain: ctx.grain.strip)
+                    workDir: tmp, threads: threads, codec: job.codec, hdr: job.target.isHDR, hlg: job.target.kind == .hlg,
+                    referenceFrames: reference, stripSyntheticGrain: ctx.grain.strip)
                 replacements[idx] = pieces.map(\.url)
             } else {
-                let ext = job.codec == .hevc ? "mov" : (EncoderCatalog.shared.spec(for: job.codec.cliKey ?? "")?.ext ?? "bin")
+                let ext = job.codec == .hevc ? "mov" : (encoderSpec(job)?.ext ?? "bin")
                 let url = tmp.appendingPathComponent("fix\(idx).\(ext)")
                 try await encodeOne(frames, chunk.level, url)
                 replacements[idx] = [url]
@@ -380,7 +432,8 @@ final class ExportEngine {
             measured[rung.id] = EncodeCalibration.Rung(fps1080: Double(frames.count * 2) / max(0.01, seconds) * pixelNorm, saving: saving)
             Log.notice(.encode, "Measured \(rung.label): \(String(format: "%.1f", measured[rung.id]!.fps1080)) fps @1080p-equivalent, \(Int(saving * 100))% smaller than the fastest preset")
         }
-        let cal = EncodeCalibration(rungs: measured, vmafFps1080: vmafRates.isEmpty ? nil : vmafRates.reduce(0, +) / Double(vmafRates.count), date: Date())
+        let cal = EncodeCalibration(rungs: measured, vmafFps1080: vmafRates.isEmpty ? nil : vmafRates.reduce(0, +) / Double(vmafRates.count), date: Date(),
+                                    seedSignature: recipe.seedSignature)
         cal.save(job.codec, job.contentKind)
         return cal
     }
@@ -403,6 +456,59 @@ final class ExportEngine {
         }
         _ = try await producer.value
         return out
+    }
+
+    /// How frames are rendered for grain when they are scored: the same for the target-quality export and for repairs.
+    struct ChunkGrainRender: Equatable {
+        var denoise = false               // make a de-grained copy of each frame
+        var encodeDegrained = false       // the encoder gets the de-grained frames (Lumora removes the grain)
+        var degrainedReference = false    // the metrics compare against the de-grained copy, the encoder gets the grainy frames
+    }
+
+    /// `scored` is false for an encode no metric looks at (a fixed-quality repair): it needs no de-grained reference, so
+    /// it is denoised only when the encoder gets the de-grained frames.
+    static func chunkGrainRender(_ g: GrainPlan, scored: Bool = true) -> ChunkGrainRender {
+        guard g.cleanInput || (scored && g.cleanReference) else { return ChunkGrainRender() }
+        return ChunkGrainRender(denoise: true, encodeDegrained: g.cleanInput, degrainedReference: scored && !g.cleanInput)
+    }
+
+    /// Renders a range of output frames for an encode (see chunkGrainRender): the encoder's frames and, when a scored
+    /// encode's metrics compare against a de-grained master the encoder doesn't get, that master. Without grain handling
+    /// this is renderPlanar.
+    private func renderChunk(_ ctx: Context, range: Range<Int>, scored: Bool = true) async throws
+        -> (frames: [PlanarFrame], reference: [PlanarFrame]?) {
+        let how = Self.chunkGrainRender(ctx.grain, scored: scored)
+        guard how.denoise else { return (try await renderPlanar(ctx, range: range), nil) }
+        let metal = MetalContext.shared
+        let (prepared, producer) = try await startProducer(ctx, range: range, depth: MacProfile.current?.pipelineDepth ?? 4)
+        let renderer = GradeRenderer()
+        let grain = GrainProcessor()
+        let format: MTLPixelFormat = ctx.job.highPrecision ? .rgba32Float : .rgba16Float
+        let rgb = metal.makeTexture(width: ctx.width, height: ctx.height, format: format)
+        let rgbClean = metal.makeTexture(width: ctx.width, height: ctx.height, format: format)
+        var frames: [PlanarFrame] = []
+        var reference: [PlanarFrame] = []
+        while let f = try await prepared.receive() {
+            func planes() -> PlanarFrame {
+                PlanarFrame(device: metal.device, width: ctx.width, height: ctx.height, bits: ctx.job.bitDepth, chroma: ctx.job.chroma)
+            }
+            let encoded = planes()
+            let cb = metal.queue.makeCommandBuffer()!
+            renderer.encodeGrade(cb, source: f.texture, destination: rgb,
+                                 uniforms: uniforms(ctx, sourceIndex: f.sourceIndex, outputIndex: f.outputIndex, crop: f.crop))
+            grain.denoise(cb, rgb, into: rgbClean, sigma: ctx.grain.sigma)
+            renderer.encodePackPlanar(cb, rgb: how.encodeDegrained ? rgbClean : rgb, planes: encoded, matrixKr: ctx.kr, matrixKb: ctx.kb)
+            if how.degrainedReference {
+                let r = planes()
+                renderer.encodePackPlanar(cb, rgb: rgbClean, planes: r, matrixKr: ctx.kr, matrixKb: ctx.kb)
+                reference.append(r)
+            }
+            await cb.commitAndWait()
+            _ = f.keep
+            frames.append(encoded)
+        }
+        _ = try await producer.value
+        return (frames, reference.isEmpty ? nil : reference)
     }
 
     func run(_ job: ExportJob, status: @escaping (String, Double) -> Void) async throws -> URL {
@@ -703,9 +809,15 @@ final class ExportEngine {
     // MARK: - Software encoders (SVT-AV1, libaom, VVenC, AVM, x265)
 
     /// The encoder for this job: the planner's choice (e.g. libaom on the AV1 ladder) or the codec's default.
-    private func encoderSpec(_ job: ExportJob) -> EncoderSpec? {
+    static func encoder(for job: ExportJob) -> EncoderSpec? {
         (job.encodeChoice?.encoderKey ?? job.codec.cliKey).flatMap { EncoderCatalog.shared.spec(for: $0) }
     }
+
+    /// Whether libaom encodes this job: AV1 Pro, or a libaom rung of the archival AV1 ladder. Decisions that depend on
+    /// the encoder (grain table flag, HDR10 container metadata) test this, not the codec.
+    static func runsLibaom(_ job: ExportJob) -> Bool { encoder(for: job)?.binary == "aomenc" }
+
+    private func encoderSpec(_ job: ExportJob) -> EncoderSpec? { Self.encoder(for: job) }
 
     /// Builds and starts an encoder process; returns it with the handle to write Y4M into.
     private func startCLIEncoder(_ ctx: Context, spec: EncoderSpec, out: URL, tmp: URL, tag: String, threads: Int,
@@ -740,22 +852,16 @@ final class ExportEngine {
         ]
         // The planner's extras replace the simpler per-content tune when present.
         var planned = extra ?? job.encodeChoice?.extraArgs
-        if ctx.grain.table != nil, var p = planned {
-            // A grain table replaces the encoder's own grain estimate.
-            var cleaned: [String] = []
-            var skip = false
-            for a in p {
-                if skip { skip = false; continue }
-                if a == "--film-grain" || a == "--film-grain-denoise" || a == "--fgs-table" { skip = true; continue }
-                if a.hasPrefix("--film-grain-table=") { continue }
-                cleaned.append(a)
-            }
-            p = cleaned + ctx.grain.tableFlag
-            planned = p
-        } else if ctx.grain.table != nil {
-            planned = ctx.grain.tableFlag
+        // A grain table replaces the encoder's own grain estimate; an unfilled table placeholder never reaches the encoder.
+        let tableFlag = ctx.grain.table != nil ? ctx.grain.tableFlag : nil
+        if let p = planned {
+            planned = Self.settleGrainArgs(p, tableFlag: tableFlag)
+        } else if let tableFlag {
+            planned = tableFlag
         }
-        if spec.binary == EncodeRecipes.svtBinary, let p = planned { planned = EncodeRecipes.svtArgs(p, pq: kindKey == "pq") }
+        if spec.binary == EncodeRecipes.svtBinary, let p = planned {
+            planned = EncodeRecipes.svtArgs(EncodeRecipes.svtTemporalFilter(p, kind: job.contentKind), pq: kindKey == "pq")
+        }
         let tune = planned == nil ? ContentTuning.preset(job.contentKind).encoderTune : "default"
         let process = Process()
         process.executableURL = exe
@@ -831,7 +937,7 @@ final class ExportEngine {
         let channel = BoundedChannel<ChunkFrames>(capacity: 1)
         let renderer = GradeRenderer()
         let rgb = metal.makeTexture(width: ctx.width, height: ctx.height, format: job.highPrecision ? .rgba32Float : .rgba16Float)
-        let rgbClean = (ctx.grain.cleanInput || ctx.grain.cleanReference)
+        let rgbClean = Self.chunkGrainRender(ctx.grain).denoise
             ? metal.makeTexture(width: ctx.width, height: ctx.height, format: job.highPrecision ? .rgba32Float : .rgba16Float) : nil
         let grainProcessor = GrainProcessor()
         let render = Task {
@@ -849,7 +955,7 @@ final class ExportEngine {
                     var refPlanes: PlanarFrame?
                     if let rgbClean {
                         grainProcessor.denoise(cb, rgb, into: rgbClean, sigma: ctx.grain.sigma)
-                        if ctx.grain.cleanInput {
+                        if Self.chunkGrainRender(ctx.grain).encodeDegrained {
                             renderer.encodePackPlanar(cb, rgb: rgbClean, planes: planes, matrixKr: ctx.kr, matrixKb: ctx.kb)
                         } else {
                             renderer.encodePackPlanar(cb, rgb: rgb, planes: planes, matrixKr: ctx.kr, matrixKb: ctx.kb)
@@ -1007,9 +1113,10 @@ final class ExportEngine {
                     hdr: job.target.isHDR, hlg: job.target.kind == .hlg)
                 bytes = pieces.reduce(0) { $0 + Int64((try? $1.url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
             } else if job.codec.cliKey != nil || job.codec == .hevc {
+                // The encoder that runs (libaom on a libaom rung of the AV1 ladder), so its own quality scale applies.
                 let level = job.codec == .hevc ? Double(job.quality) * 100
-                    : -Double(EncoderCatalog.shared.spec(for: job.codec.cliKey!).map { Int($0.qualityValue(job.quality)) ?? 30 } ?? 30)
-                let url = tmp.appendingPathComponent("s\(n).\(job.codec == .hevc ? "mov" : (EncoderCatalog.shared.spec(for: job.codec.cliKey ?? "")?.ext ?? "bin"))")
+                    : -Double(encoderSpec(job).map { Int($0.qualityValue(job.quality)) ?? 30 } ?? 30)
+                let url = tmp.appendingPathComponent("s\(n).\(job.codec == .hevc ? "mov" : (encoderSpec(job)?.ext ?? "bin"))")
                 try await encodeOne(frames, level, url)
                 bytes = Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
             }
@@ -1280,9 +1387,14 @@ final class ExportEngine {
     }
 
     /// aomenc has no way to write HDR10 static metadata into the AV1 stream, so for Matroska output it goes into
-    /// the container's Color element (MaxCLL/MaxFALL and the mastering display), which players read instead.
+    /// the container's Color element (MaxCLL/MaxFALL and the mastering display), which players read instead. That holds
+    /// for every libaom encode, AV1 Pro and the libaom rungs of the AV1 ladder alike.
+    static func needsContainerHDR10Metadata(_ job: ExportJob) -> Bool {
+        runsLibaom(job) && job.target.kind == .hdr10
+    }
+
     private func addContainerHDR10Metadata(_ ctx: Context, file: URL, tmp: URL) throws -> URL {
-        guard ctx.job.codec == .av1Pro, ctx.job.target.kind == .hdr10, let m = ctx.meta,
+        guard Self.needsContainerHDR10Metadata(ctx.job), let m = ctx.meta,
               file.pathExtension.lowercased() == "mkv" else { return file }
         guard ToolLocator.isAvailable("mkvmerge") else {
             Log.warning(.encode, "libaom AV1 can't carry HDR10 MaxCLL/mastering metadata itself; install mkvmerge (mkvtoolnix) to add it to the .mkv")

@@ -3578,7 +3578,7 @@
           "source": "https://forum.doom9.org/archive/index.php/t-184143.html"
         }
       ],
-      "lumora": "Offered as 'Grain measured from this film (libaom)' on the archival ladder: --film-grain-table={grain_table}, with a table Lumora measures itself.",
+      "lumora": "Offered as 'Grain measured from this film (libaom)' on the archival ladder: --film-grain-table={grain_table}, with a table Lumora measures itself; Lumora then removes the grain before the encoder and drops every other grain flag. AV1 Pro and the libaom rungs of the AV1 ladder also get the film texture through this flag (ExportEngine picks the flag by the encoder that runs, not the codec).",
       "notes": "A grain table does not denoise anything by itself: denoising only runs when --denoise-noise-level is above 0, which defaults to 0. Feed an already denoised source, or the real grain is coded and the synthetic grain is added on top. Large-scale-tile mode ignores the table."
     },
     {
