@@ -11,7 +11,7 @@ final class LiveRenderUITests: XCTestCase {
         RenderMonitor.shared.showForTesting(nil, sample: SystemSample())
         RenderMonitor.testPreview = nil
         RenderMonitor.shared.panelDisappeared()
-        UserDefaults.standard.removeObject(forKey: "renderMonitorDetail")
+        Prefs.store.removeObject(forKey: "renderMonitorDetail")
     }
 
     /// A render in progress, as the monitor would show it.
@@ -75,7 +75,7 @@ final class LiveRenderUITests: XCTestCase {
 
     func render(detail: Bool) async throws -> NSBitmapImageRep {
         try TestHardware.requireGPU()
-        UserDefaults.standard.set(detail, forKey: "renderMonitorDetail")
+        Prefs.store.set(detail, forKey: "renderMonitorDetail")
         let (snap, sample) = Self.syntheticState(preview: Self.gradientTexture())
         RenderMonitor.shared.showForTesting(snap, sample: sample)
         let size = CGSize(width: 1100, height: detail ? 900 : 620)

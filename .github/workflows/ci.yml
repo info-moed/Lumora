@@ -58,6 +58,9 @@ jobs:
       - name: US English
         run: python3 scripts/us-english.py --check
 
+      - name: Preferences go through Prefs
+        run: scripts/check-prefs.sh
+
       - name: Dependency status
         run: scripts/deps.sh status
 

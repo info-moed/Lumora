@@ -6,7 +6,7 @@ import Charts
 /// view adds history charts, stage timings, encoder processes and the busiest other apps.
 struct LiveRenderPanel: View {
     @Environment(RenderMonitor.self) private var monitor
-    @AppStorage("renderMonitorDetail") private var detail = false
+    @AppStorage("renderMonitorDetail", store: Prefs.store) private var detail = false
     @State private var filmstrip: [CGImage] = []
 
     var body: some View {

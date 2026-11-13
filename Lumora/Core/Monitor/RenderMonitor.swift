@@ -20,10 +20,10 @@ final class RenderMonitor {
     private(set) var previewInfo: String = ""
     var selectedLane: LaneID?
     /// Seconds without a finished frame (and without any other sign of life) before a render is called stalled.
-    var stallSetting: Double = UserDefaults.standard.object(forKey: "stallSeconds") as? Double ?? 60 {
-        didSet { UserDefaults.standard.set(stallSetting, forKey: "stallSeconds"); Self.stallStore = stallSetting }
+    var stallSetting: Double = Prefs.store.object(forKey: "stallSeconds") as? Double ?? 60 {
+        didSet { Prefs.store.set(stallSetting, forKey: "stallSeconds"); Self.stallStore = stallSetting }
     }
-    nonisolated(unsafe) static var stallStore: Double = UserDefaults.standard.object(forKey: "stallSeconds") as? Double ?? 60
+    nonisolated(unsafe) static var stallStore: Double = Prefs.store.object(forKey: "stallSeconds") as? Double ?? 60
     nonisolated static var stallSeconds: Double { stallStore }
     nonisolated(unsafe) static var panelOpen = false
 

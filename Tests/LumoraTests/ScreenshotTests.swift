@@ -187,14 +187,14 @@ final class ScreenshotTests: XCTestCase {
         model.previewTarget = saved
         let (snap, sample) = LiveRenderUITests.syntheticState(preview: tex)
         RenderMonitor.shared.showForTesting(snap, sample: sample)
-        let savedDetail = UserDefaults.standard.object(forKey: "renderMonitorDetail")
-        UserDefaults.standard.set(true, forKey: "renderMonitorDetail")
+        let savedDetail = Prefs.store.object(forKey: "renderMonitorDetail")
+        Prefs.store.set(true, forKey: "renderMonitorDetail")
         defer {
             RenderMonitor.shared.showForTesting(nil, sample: SystemSample())
             RenderMonitor.testPreview = nil
             RenderMonitor.shared.panelDisappeared()
-            if let savedDetail { UserDefaults.standard.set(savedDetail, forKey: "renderMonitorDetail") }
-            else { UserDefaults.standard.removeObject(forKey: "renderMonitorDetail") }
+            if let savedDetail { Prefs.store.set(savedDetail, forKey: "renderMonitorDetail") }
+            else { Prefs.store.removeObject(forKey: "renderMonitorDetail") }
         }
         try await shoot("25-render-monitor", dark(LiveRenderPanel().environment(RenderMonitor.shared), model), size: CGSize(width: 1100, height: 860))
     }

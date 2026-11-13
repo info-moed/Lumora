@@ -124,7 +124,7 @@ enum DiskBudget {
         var models: URL
         var downloads: URL
         static var app: Roots {
-            let scratch = URL(fileURLWithPath: UserDefaults.standard.string(forKey: "scratchRoot")
+            let scratch = URL(fileURLWithPath: Prefs.store.string(forKey: "scratchRoot")
                               ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
                                 .appendingPathComponent("Lumora Scratch").path)
             return Roots(scratch: scratch, models: InterpolationModelSpec.modelsFolder,
