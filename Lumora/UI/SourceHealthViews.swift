@@ -40,6 +40,7 @@ struct SourceRepairSheet: View {
     @State private var step = ""
     @State private var report: SourceRepair.Report?
     @State private var error: String?
+    @AppStorage("damagedFrameMethod") private var damagedFrameMethod = "recreate"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -52,8 +53,13 @@ struct SourceRepairSheet: View {
                         Text(p.explanation(name)).font(Theme.body).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                Text("Frames that can't be decoded are rebuilt by repeating the previous good frame; every rebuilt frame is listed in the report. Your original file is never changed.")
+                Text("In the repaired copy, frames that can't be decoded are rebuilt by repeating the previous good frame; every rebuilt frame is listed in the report. Your original file is never changed.")
                     .font(Theme.note).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Picker("When exporting this file as it is:", selection: $damagedFrameMethod) {
+                    Text("Re-create damaged frames from the neighboring frames").tag("recreate")
+                    Text("Repeat the previous good frame").tag("repeat")
+                }
+                .pickerStyle(.radioGroup).font(Theme.note)
                 let dest = SourceRepair.destination(for: d.url, fallback: FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask).first)
                 Text("Saves “\(dest.lastPathComponent)” in \(dest.deletingLastPathComponent().path.displayPath)").font(Theme.note)
                 if running { ProgressView(value: progress) { Text(step).font(Theme.note) } }

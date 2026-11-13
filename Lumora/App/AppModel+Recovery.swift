@@ -3,9 +3,15 @@ import SwiftUI
 
 /// An export that failed, carrying its plain-language report up to the UI (instead of the generic alert).
 struct ReportedFailure: LocalizedError {
-    var report: FailureReport
-    var underlying: Error
-    var errorDescription: String? { underlying.localizedDescription }
+    let report: FailureReport
+    let underlying: Error
+    private let message: String          // computed once, never while Foundation bridges this error (see GPUFault)
+    init(report: FailureReport, underlying: Error) {
+        self.report = report
+        self.underlying = underlying
+        message = underlying.localizedDescription
+    }
+    var errorDescription: String? { message }
 }
 
 /// Failures of the current batch, so one broken file doesn't stop the others and the summary says what happened.
@@ -43,7 +49,7 @@ extension AppModel {
     }
 
     /// One file of a batch: a failure is explained, recorded in the queue and skipped, and the batch goes on.
-    func batchExport(_ job: ExportJob, file: URL, status: @escaping (String, Double) -> Void) async -> URL? {
+    func batchExport(_ job: ExportJob, file: URL, status: @escaping (String, Double) -> Void) async throws -> URL? {
         let engine = ExportEngine()
         do {
             return try await runExport(engine, job, options: {
@@ -51,11 +57,25 @@ extension AppModel {
                 if let offer = ResumeCoordinator.match(job, in: resumeOffers) { o.resume = offer.journal }   // batches resume by themselves
                 return o
             }(), status: status)
+        } catch is CancellationError {
+            throw CancellationError()            // Stop ends the whole batch; it isn't this file failing
         } catch {
             let report = (error as? ReportedFailure)?.report
                 ?? FailureExplainer.explain(FailureClassifier.classify(error, context: FailureContext(sourceName: file.lastPathComponent)))
             BatchFailures.reports.append(report)
             QueueStore.markFailed(file, failure: report.title, exportID: report.exportID)
+            Log.error(.app, "Batch: \(file.lastPathComponent): \(report.title). \(report.simple)")
+            return nil
+        }
+    }
+
+    /// One file of a batch that can't even be opened or analyzed (missing index, unsupported, unreadable): explained,
+    /// marked failed and skipped. Returns nil (skip this file) unless the batch was stopped.
+    func batchSource<T>(_ file: URL, _ body: () async throws -> T) async throws -> T? {
+        do { return try await body() } catch is CancellationError { throw CancellationError() } catch {
+            let report = FailureExplainer.explain(FailureClassifier.classify(error, context: FailureContext(stage: .decode, sourceName: file.lastPathComponent)))
+            BatchFailures.reports.append(report)
+            QueueStore.markFailed(file, failure: report.title, exportID: nil)
             Log.error(.app, "Batch: \(file.lastPathComponent): \(report.title). \(report.simple)")
             return nil
         }
@@ -232,6 +252,14 @@ extension AppModel {
             TaskCenter.shared.finish(t)
             sourceHealth = h
             status = h.summary(url.lastPathComponent)
+            // Exports of this file rebuild the frames the full check found (see RecoveryHooks.rebuildingDamagedFrames).
+            if let found = h.damage, !found.isEmpty, descriptor?.url == url {
+                var merged = analysis?.damage ?? DamageMap()
+                merged.fps = found.fps
+                for span in found.spans { merged.add(span) }
+                merged.truncatedAtSeconds = merged.truncatedAtSeconds ?? found.truncatedAtSeconds
+                analysis?.damage = merged
+            }
         }
     }
 

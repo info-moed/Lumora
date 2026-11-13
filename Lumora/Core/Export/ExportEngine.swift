@@ -675,6 +675,7 @@ final class ExportEngine {
             source = PatchedFrameSource(base: source, plan: repairPlan,
                                         proxyUniforms: UniformBuilder.analysis(source: job.preset.color, gridW: 1, gridH: 1))
         }
+        source = RecoveryHooks.rebuildingDamagedFrames(source, job)
         let analysis = job.analysis
         let stream = try FrameStream(source: source, plan: ctx.plan[range], settings: job.interpolation,
                                      proxyUniforms: UniformBuilder.analysis(source: job.preset.color, gridW: 1, gridH: 1),

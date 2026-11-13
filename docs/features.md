@@ -386,15 +386,16 @@ The full guide is [When a render fails](render-failures.md). In short:
 - **Checkpointed exports.** Every export is cut into a fixed plan of segments; each finished segment is flushed
   (`F_FULLFSYNC`), checked (frame count, keyframe decode, SHA-256) and recorded in a journal written atomically. A
   failure, quit, crash or power loss loses at most the segments being encoded. Resuming encodes only what's missing and
-  gives the same frames as an uninterrupted export (tested for SVT-AV1, libaom, x265, AV2 and the hardware HEVC and ProRes
+  gives the same frames as an uninterrupted export (tested for SVT-AV1, libaom, x265, VVenC, AV2 and the hardware HEVC and ProRes
   encoders; Dolby Vision RPUs and HDR10+ metadata byte-identical). Segment starts inside a shot render up to 16 frames
   first without encoding them, so the grade's temporal smoothing never shows a seam. Target-quality exports resume per
   chunk. Transient failures (a crashed encoder, a GPU fault, a hardware encoder reset) are retried automatically; a
   nearly full scratch drive pauses the export. The Mac is kept awake while an export runs.
 - **Damaged sources.** A quick check on open (container structure, where the data really ends, timestamps, decoding at
   three points) and a full check on request find truncated files, a missing index, damaged frames and broken timestamps.
-  Decoding reads on past damage with FFmpeg when AVFoundation stops at the first bad frame, holding the previous picture
-  so the timeline never shifts. *Repair a copy* rebuilds the container or timestamps losslessly, re-encodes only damaged
+  Decoding reads on past damage with FFmpeg when AVFoundation stops at the first bad frame, so the timeline never
+  shifts; exports re-create up to three missing frames in a row from their neighbors with Lumora's interpolation (or
+  repeat the previous good frame, by choice, and always for longer runs). *Repair a copy* rebuilds the container or timestamps losslessly, re-encodes only damaged
   groups of pictures, and says honestly when a file can't be repaired; the source is never modified.
 
 ## Upscaling

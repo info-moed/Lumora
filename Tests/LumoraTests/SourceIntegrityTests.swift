@@ -149,6 +149,67 @@ final class SourceIntegrityTests: RecoveryTestCase {
         XCTAssertTrue(Self.log(e).contains("decode"), "the damage is in the export log")
     }
 
+    /// Frames the full check found missing are re-created from their good neighbors while exporting (the default) or,
+    /// when the user picks it, the previous good frame is repeated; every other frame passes through untouched.
+    /// Checked on a synthetic source (frame k is a flat gray of level k/40), because decoding a damaged file isn't
+    /// repeatable around the damage (the decoder's concealment varies with threading).
+    @MainActor func testDamagedFramesAreRecreatedFromNeighborsOrRepeated() async throws {
+        try TestHardware.requireGPU(); try Self.requireTool("ffmpeg")
+        let bad = try Self.flipped(try Self.good(), as: "recreate-flipped.mp4")
+        var p = try await Self.prepare(bad)
+        let map = try XCTUnwrap(SourceIntegrity.fullScan(bad).damage)
+        print("[integrity] damage spans: \(map.spans.map { "\($0.kind.rawValue) \($0.start)+\($0.count)" })")
+        // The real file: a short run of missing frames, rebuilt without losing a frame from the timeline.
+        p.analysis.damage = map
+        let j = job(p, codec: .av1, name: "unused.mkv")
+        let real = RecoveryHooks.rebuildingDamagedFrames(ConcealingFrameSource.wrap(try await p.d.makeFrameSource(), descriptor: p.d), j)
+        XCTAssertTrue(real is PatchedFrameSource, "a short run is re-created by default")
+        try real.start(at: 0, count: nil)
+        var n = 0
+        while try real.nextFrame() != nil { n += 1 }
+        XCTAssertEqual(n, p.analysis.frameCount, "every frame of the timeline")
+
+        // Synthetic: frames 10–11 missing (re-created), 20–24 missing (too long: always the previous frame).
+        let ctx = MetalContext.shared
+        func flat(_ v: Float) -> MTLTexture {
+            let t = ctx.makeTexture(width: 32, height: 32, format: .rgba16Float, storage: .shared)
+            let px = [Float16](repeating: Float16(v), count: 32 * 32 * 4)
+            px.withUnsafeBytes { t.replace(region: MTLRegionMake2D(0, 0, 32, 32), mipmapLevel: 0, withBytes: $0.baseAddress!, bytesPerRow: 32 * 8) }
+            return t
+        }
+        var synth = j
+        synth.analysis.damage = DamageMap(spans: [.init(start: 10, count: 2, kind: .missing), .init(start: 20, count: 5, kind: .missing)], fps: 24)
+        synth.analysis.frameCount = 40
+        func read(_ method: String?) throws -> [Float] {
+            setDefault("damagedFrameMethod", method)
+            // What the decoder hands over for a missing frame: a wrong picture (here, white).
+            let base = SequenceFrameSource(width: 32, height: 32, loaders: (0..<40).map { k in
+                { flat(synth.analysis.damage!.missingFrames.contains(k) ? 1 : Float(k) / 40) } })
+            let s = RecoveryHooks.rebuildingDamagedFrames(base, synth)
+            try s.start(at: 0, count: nil)
+            var out: [Float] = []
+            while let f = try s.nextFrame() { out.append(CampaignIngestTests.pixels(f.texture)[0].x) }
+            return out
+        }
+        let repeated = try read("repeat")
+        XCTAssertEqual(repeated.count, 40)
+        for k in [10, 11] { XCTAssertEqual(repeated[k], 9 / 40, accuracy: 0.002, "repeat: frame \(k) shows frame 9") }
+        for k in 20...24 { XCTAssertEqual(repeated[k], 19 / 40, accuracy: 0.002, "frame \(k) shows frame 19") }
+        let rebuilt = try read(nil)
+        XCTAssertEqual(rebuilt.count, 40)
+        for k in [10, 11] {
+            XCTAssertGreaterThan(rebuilt[k], 9.4 / 40, "re-created frame \(k) lies between its neighbors (\(rebuilt[k] * 40) of 9–12)")
+            XCTAssertLessThan(rebuilt[k], 11.6 / 40, "re-created frame \(k) lies between its neighbors (\(rebuilt[k] * 40) of 9–12)")
+        }
+        XCTAssertLessThan(rebuilt[10], rebuilt[11], "re-created frames keep the motion order")
+        for k in 20...24 { XCTAssertEqual(rebuilt[k], 19 / 40, accuracy: 0.002, "a long run keeps the previous frame (\(k))") }
+        for k in (0..<40) where !(10...11).contains(k) && !(20...24).contains(k) {
+            XCTAssertEqual(rebuilt[k], Float(k) / 40, accuracy: 0.002, "frame \(k) untouched")
+            XCTAssertEqual(repeated[k], Float(k) / 40, accuracy: 0.002, "frame \(k) untouched")
+        }
+        print(String(format: "[integrity] re-created frames 10–11 at levels %.2f, %.2f (neighbors 9 and 12); repeat holds 9; frames 20–24 hold 19", rebuilt[10] * 40, rebuilt[11] * 40))
+    }
+
     func testRenderOfTruncatedSourceFailsWithAClearExplanation() async throws {
         try TestHardware.requireGPU(); try Self.requireTool("SvtAv1EncApp")
         let good = try Self.good(faststart: true)

@@ -28,6 +28,40 @@ enum RecoveryHooks {
                                        shotStart: { shotStart[safe: $0] ?? 0 }, measuredFps1080: measured)
     }
 
+    /// How undecodable frames of a damaged source are rebuilt while exporting: "recreate" (default) makes runs of up to
+    /// three of them again from the good frames on either side with Lumora's interpolation (the same engines and
+    /// checks as interpolated-file repair; a plain blend when no model is installed); "repeat" keeps the previous good
+    /// frame. Longer runs always keep the previous frame (a frozen picture), as nothing trustworthy can be made up.
+    static var damagedFrameMethod: String { UserDefaults.standard.string(forKey: "damagedFrameMethod") ?? "recreate" }
+    static let maxRecreatedRun = 3
+
+    /// The export's source with its damaged frames rebuilt (see `damagedFrameMethod`); unchanged when the source has
+    /// no known missing frames or an interpolated-file repair already rebuilds frames.
+    static func rebuildingDamagedFrames(_ source: FrameSource, _ job: ExportJob) -> FrameSource {
+        guard job.externalRepair == nil, let damage = job.analysis.damage else { return source }
+        let missing = damage.spans.filter { $0.kind == .missing && $0.start > 0 }
+        guard !missing.isEmpty else { return source }
+        let last = max(job.analysis.frameCount, job.descriptor.frameCount) - 1
+        let recreate = damagedFrameMethod != "repeat"
+        let short = recreate ? missing.filter { $0.count <= maxRecreatedRun && $0.start + $0.count <= last } : []
+        let held = missing.filter { !short.contains($0) }
+        var out = source
+        if !held.isEmpty {
+            out = HeldFrameSource(base: out, held: Set(held.flatMap { Array($0.range) }))
+            let at = held.map { "\(FailureText.time(damage.seconds($0.start), precise: true)) (\($0.count))" }.joined(separator: ", ")
+            RenderLog.current?.warn("Damaged frames shown as the previous good frame at \(at)", tag: "decode")
+        }
+        if !short.isEmpty {
+            let fps = Double(job.descriptor.fpsNum) / Double(max(1, job.descriptor.fpsDen))
+            let plan = ExternalRepairPlan(flagged: Set(short.flatMap { Array($0.range) }), originalFps: fps, interpolatedFps: fps,
+                                          offsetSeconds: 0, damagedFrames: true)
+            out = PatchedFrameSource(base: out, plan: plan, proxyUniforms: UniformBuilder.analysis(source: job.preset.color, gridW: 1, gridH: 1))
+            let at = short.map { "\(FailureText.time(damage.seconds($0.start), precise: true)) (\($0.count))" }.joined(separator: ", ")
+            RenderLog.current?.warn("Damaged frames re-created from the neighboring frames at \(at)", tag: "decode")
+        }
+        return out
+    }
+
     /// What must not change for saved segments to be reused: the encoder binary and version, its argument template,
     /// threads per segment, and (for the hardware encoder) the chip and macOS build.
     static func fingerprint(_ job: ExportJob, threads: Int) -> ExportJournal.EncodeFingerprint {

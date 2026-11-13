@@ -50,6 +50,15 @@ class RecoveryTestCase: XCTestCase {
         XCTAssertEqual(ud.string(forKey: "scratchRoot"), scratch.path)
     }
 
+    /// Sets (or, with nil, removes) a preference for this test only, in the process-local argument domain.
+    func setDefault(_ key: String, _ value: Any?) {
+        let ud = UserDefaults.standard
+        var args = ud.volatileDomain(forName: UserDefaults.argumentDomain)
+        args[key] = value
+        ud.removeVolatileDomain(forName: UserDefaults.argumentDomain)
+        ud.setVolatileDomain(args, forName: UserDefaults.argumentDomain)
+    }
+
     override func tearDown() async throws {
         FaultInjection.reset()
         UserDefaults.standard.removeVolatileDomain(forName: UserDefaults.argumentDomain)
@@ -154,7 +163,9 @@ class RecoveryTestCase: XCTestCase {
 
     /// Decoded frames of the first video stream: per-frame MD5 and presentation time (framemd5).
     static func frames(_ url: URL) throws -> Frames {
-        let text = try run(try ffmpeg, ["-v", "error", "-nostdin", "-i", url.path, "-map", "0:v:0", "-f", "framemd5", "-"])
+        // passthrough: framemd5's default frame-rate handling drops pictures from some Matroska files (measured on
+        // VVC: 170 of 192), which would look like a lost frame.
+        let text = try run(try ffmpeg, ["-v", "error", "-nostdin", "-i", url.path, "-map", "0:v:0", "-fps_mode", "passthrough", "-f", "framemd5", "-"])
         var h: [String] = [], p: [String] = []
         for line in text.split(separator: "\n") where !line.hasPrefix("#") {
             let parts = line.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }

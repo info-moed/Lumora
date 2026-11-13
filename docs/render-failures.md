@@ -157,9 +157,12 @@ mode): **File check: OK**, **Damaged: 2 frames at 0:01.9**, **Cut short: stops a
 timestamps near 0:01.9**, or **Incomplete: the index is missing**. A file named `.mp4` that is really another format is
 only a note: Lumora reads it anyway. *Full check…* decodes every frame and lists all the damage.
 
-Analysis and exports read on past damage instead of stopping at the first bad frame. Pictures that can't be decoded
-are replaced by the previous good picture, so the timeline never shifts (audio, subtitles and HDR metadata stay in
-sync), and every replaced frame is written to the export log.
+Analysis and exports read on past damage instead of stopping at the first bad frame, and the timeline never shifts
+(audio, subtitles and HDR metadata stay in sync). When an export reads frames the check found missing, up to three in a
+row are **re-created from the good frames on either side** with Lumora's frame interpolation (the same models and checks
+as interpolation; a plain blend when no model is installed). Longer runs show the previous good frame, since nothing
+trustworthy can be made up for them. In *Repair a copy…* you can choose **Repeat the previous good frame** instead. Every
+rebuilt frame and its method is written to the export log.
 
 **Repair a copy…** writes a new file next to the source, named `clip (repaired).mkv` (or into your Movies folder when
 the source's folder can't be written). **Your original file is never changed.**

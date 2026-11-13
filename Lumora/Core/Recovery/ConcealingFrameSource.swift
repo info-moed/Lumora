@@ -145,3 +145,51 @@ final class DecoderMessages: @unchecked Sendable {
 
     deinit { detach() }
 }
+
+/// Shows the previous good frame in place of frames that can't be decoded ("Repeat the previous good frame", and
+/// runs too long to re-create). FFmpeg's constant-rate fill on its own repeats whichever neighbor is nearest in time,
+/// which can be the frame after the damage.
+final class HeldFrameSource: FrameSource {
+    private let base: FrameSource
+    private let held: Set<Int>
+    private var lastGood: DecodedFrame?
+    private var skipFirst = false
+    private(set) var replaced = 0
+
+    var width: Int { base.width }
+    var height: Int { base.height }
+    var fps: Double { base.fps }
+    var frameCount: Int { base.frameCount }
+
+    init(base: FrameSource, held: Set<Int>) {
+        self.base = base
+        self.held = held
+    }
+
+    func start(at frame: Int, count: Int?) throws {
+        // Start on the good frame before a held run, so even the first frame of a segment has something to repeat.
+        var from = frame
+        while from > 0 && held.contains(from) { from -= 1 }
+        skipFirst = from < frame
+        lastGood = nil
+        try base.start(at: from, count: count.map { $0 + (frame - from) })
+        if skipFirst {
+            for _ in from..<frame {
+                guard let f = try base.nextFrame() else { break }
+                if !held.contains(f.index) { lastGood = f }
+            }
+        }
+    }
+
+    func nextFrame() throws -> DecodedFrame? {
+        guard let f = try base.nextFrame() else { return nil }
+        if held.contains(f.index), let g = lastGood {
+            replaced += 1
+            return DecodedFrame(texture: g.texture, index: f.index, backing: g.backing)
+        }
+        lastGood = f
+        return f
+    }
+
+    func cancel() { base.cancel() }
+}

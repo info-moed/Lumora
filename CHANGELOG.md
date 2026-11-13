@@ -21,7 +21,8 @@ Status tags used below:
   a failure, quit, crash or power loss, with the same frames as an uninterrupted export. Transient failures are retried;
   a nearly full scratch drive pauses the export; the Mac stays awake while exporting.
 - **Damaged sources:** a quick check on open, a full check, decoding past damage without shifting the timeline, and
-  *Repair a copy* into a new file (the source is never modified). See [When a render fails](docs/render-failures.md).
+  *Repair a copy* into a new file (the source is never modified). Exports re-create up to three missing frames in a row
+  from their neighbors with Lumora's interpolation, or repeat the previous good frame. See [When a render fails](docs/render-failures.md).
 
 ### Fixed
 - A short or empty decode no longer passes silently; the joined video must have exactly the planned frames.

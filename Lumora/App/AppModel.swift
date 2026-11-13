@@ -982,10 +982,10 @@ final class AppModel {
             for (n, file) in files.enumerated() {
                 await PauseGate.shared.wait()
                 status = "Batch \(n + 1)/\(files.count): \(file.lastPathComponent)"
-                var (d, colors) = try await SourceInspector.inspect(file)
+                guard var (d, colors) = try await batchSource(file, { try await SourceInspector.inspect(file) }) else { continue }
                 if removeBlackBars { d.crop = (try? await CropDetector.detect(d)) ?? UniformBuilder.fullFrame }
                 guard let color = colors.first else { continue }
-                let a = try await SceneAnalyzer.analyze(d, color: color, chip: chip) { _ in }
+                guard let a = try await batchSource(file, { try await SceneAnalyzer.analyze(d, color: color, chip: chip) { _ in } }) else { continue }
                 let r = (color.transfer == .pq || color.transfer == .hlg)
                     ? HDRReportCard.make(title: file.lastPathComponent, descriptor: d, color: color, analysis: a) : nil
                 let profileTask = TaskCenter.shared.begin("Content test: \(file.lastPathComponent)", symbol: "sparkle.magnifyingglass")
@@ -1022,7 +1022,7 @@ final class AppModel {
                 job.filmTexture = filmTexture
                 EncodeMonitor.shared.forecast = nil       // no per-file forecast in batches; never show the previous one
                 let started = Date()
-                let exported = await batchExport(job, file: file, status: { label, v in
+                let exported = try await batchExport(job, file: file, status: { label, v in
                     Task { @MainActor in self.progress = (Double(n) + v) / Double(files.count) }
                 })
                 guard let encoded = exported else { continue }     // explained and marked failed; the batch goes on
@@ -1054,8 +1054,9 @@ final class AppModel {
                 if packaged.video != encoded, encoded.standardizedFileURL != file.standardizedFileURL { try? FileManager.default.removeItem(at: encoded) }
                 QueueStore.markDone(file, output: packaged.video)
             }
-            status = "Batch finished: \(files.count) files" + batchFailureNote()
-            Notifier.send("Lumora batch finished", "\(files.count) files processed" + batchFailureNote())
+            let failed = batchFailureNote()      // read once: it hands the last failure to the sheet and clears the list
+            status = "Batch finished: \(files.count) files" + failed
+            Notifier.send("Lumora batch finished", "\(files.count) files processed" + failed)
         }
     }
 
