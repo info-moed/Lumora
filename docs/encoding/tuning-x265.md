@@ -529,8 +529,11 @@ mode 2: mode 3 and mode 1 cost 13-29%.
 Savings here are the mean of the VMAF and XPSNR BD-rates. x265's `slower`, `veryslow` and `placebo` presets already use rd 6 and 8
 B-frames, and `placebo` a 60-frame look-ahead and transform skip (x265's preset table, checked with `--log-level info`), so on
 those rungs these options change nothing. They are offered only on the faster presets (`rd6` and the 8 B-frames on faster,
-medium and slow; the look-ahead and `--tskip` everywhere but placebo), so a slow rung is neither charged their time nor
-credited their saving. 16 B-frames (anime) and 6 references are more than any preset uses and stay on every rung. The
+medium and slow; the look-ahead and `--tskip` everywhere but placebo), so a slow rung isn't charged their time. The
+preset ladder below was measured on faces and CG, where these save nothing, so the presets that use them are credited
+with their measured saving on the content where it counts (rd 6: 4% low light, 7% old anime on slower and up; the
+look-ahead: 2% anime and `--tskip`: 8% screen on placebo). Without that credit, slow with rd 6 looked better than
+slower and veryslow on old anime, and veryslow with `--tskip` better than placebo on screen content. 16 B-frames (anime) and 6 references are more than any preset uses and stay on every rung. The
 always-on extras (AQ, SAO, deblock, psy, intra smoothing) are priced at 1.0 as before; their measured CPU-time differences
 were within the noise.
 

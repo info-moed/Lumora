@@ -124,7 +124,9 @@ enum EncodePlanner {
                 let m = cal.rungs[near.element.id]!
                 fps = m.fps1080 * r.seedSpeed / max(0.0001, near.element.seedSpeed)
             }
-            return (fps, r.seedSaving)
+            // What the preset itself does that the seeds' test content didn't reward (x265's rd 6 on old anime, say).
+            let builtIn = recipe.options.filter { $0.encoderKey == r.encoderKey && $0.presetRungs.contains(r.id) }
+            return (fps, 1 - (1 - r.seedSaving) * builtIn.reduce(1.0) { $0 * (1 - $1.vmafSaving) })
         }
 
         let offered = recipe.options.filter { EncodeRecipes.available($0, codec: codec) }
@@ -190,8 +192,8 @@ enum EncodePlanner {
             let r = recipe.rungs[c.rung]
             var args = c.opts.flatMap(\.args)
             if codec == .av1 && r.encoderKey == nil {
-                // The temporal filter follows whether the encoder sees a clean picture, as ExportEngine applies it.
-                args = EncodeRecipes.svtTemporalFilter(args, kind: kind, cleanInput: c.opts.contains { $0.id == "grainTable" })
+                // The temporal filter follows whether SVT-AV1 synthesizes the grain, as ExportEngine applies it.
+                args = EncodeRecipes.svtTemporalFilter(args, kind: kind)
             }
             return EncodeChoice(codec: codec, encoderKey: r.encoderKey, rungID: r.id, rungLabel: r.label, presetValue: r.presetValue,
                                 optionIDs: c.opts.map(\.id), extraArgs: args)

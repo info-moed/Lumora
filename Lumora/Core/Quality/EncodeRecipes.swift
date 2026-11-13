@@ -27,6 +27,9 @@ struct EncodeOption: Codable, Hashable, Identifiable {
     var encoderKey: String? = nil     // which encoder these flags belong to (nil = the codec's default)
     var rungs: Set<String>? = nil     // rung IDs this option is offered on (nil = every rung)
     var rungSpeedCost: [String: Double] = [:]   // measured time multiplier per rung; overrides speedCost there
+    /// Rungs whose preset already uses this setting. It isn't offered there, but where the rung's saving comes from
+    /// seeds measured on content it doesn't help, its saving for this content counts toward the rung (the preset does it).
+    var presetRungs: Set<String> = []
 
     func offered(onRung rung: String) -> Bool { rungs?.contains(rung) ?? true }
     func speedCost(onRung rung: String) -> Double { rungSpeedCost[rung] ?? speedCost }
@@ -79,13 +82,14 @@ enum EncodeRecipes {
                              detail: "Gentler deblocking and sharper rate-distortion decisions. Looks more like the source; VMAF barely notices.",
                              args: ["--sharpness", anime ? "2" : "1"], probeFlag: "--sharpness", visualOnly: true),
                 // Strength 1 everywhere but anime. For heavy grain and low light it beat no temporal filter only with
-                // grain synthesis, when the encoder filters a clean picture (15-46% BD-rate against the noise-free truth,
-                // tuning-svtav1.md); when the real grain is coded, svtTemporalFilter turns the filter off for them.
+                // SVT-AV1's own grain synthesis, when the encoder filters a clean picture (15-46% BD-rate against the
+                // noise-free truth, tuning-svtav1.md); without it (real grain coded, or a grain table in its place, which
+                // wasn't measured) svtTemporalFilter turns the filter off for them.
                 EncodeOption(id: "tf", title: kind == .anime ? "No temporal smoothing"
                                  : (svtTFNeedsCleanPicture(kind) ? "Temporal filter for grain" : "Gentle temporal filter"),
                              detail: kind == .anime ? "Turns off the temporal filter that can smear line art."
                                  : (svtTFNeedsCleanPicture(kind)
-                                    ? "Gentle filtering when grain synthesis hands the encoder a clean picture; off when the real grain is coded, so it isn't smeared."
+                                    ? "Gentle filtering when SVT-AV1's grain synthesis hands the encoder a clean picture; off otherwise (the real grain coded, or a grain table), so grain isn't smeared."
                                     : "Keeps texture that the temporal filter would soften."),
                              args: kind == .anime ? ["--enable-tf", "0"] : ["--tf-strength", "1"],
                              probeFlag: kind == .anime ? "--enable-tf" : "--tf-strength", visualOnly: true),
@@ -168,18 +172,20 @@ enum EncodeRecipes {
                              args: ["--aq-mode", "3"] + (x265AQStrength(kind).map { ["--aq-strength", $0] } ?? []), visualOnly: true,
                              recommendedFor: ContentKind.allCases.filter { $0 != .screenContent }),
                 // Options that restate a preset's own setting are offered only on the presets that don't already use it
-                // (x265PresetsBelow), so a rung isn't charged or credited for what it does anyway.
+                // (x265PresetsBelow), so a rung isn't charged for what it does anyway. The presets that use it get its
+                // saving for this content instead (presetRungs): their seeds were measured on faces and CG, where rd 6,
+                // the look-ahead and transform skip save nothing.
                 EncodeOption(id: "bframes", title: anime ? "16 B-frames" : "8 B-frames",
                              detail: "More bidirectional frames. Measured here: no smaller at equal quality, and clearly slower.",
                              args: ["--bframes", anime ? "16" : "8"], speedCost: anime ? 1.54 : 1.19, vmafSaving: 0,
-                             rungs: anime ? nil : x265PresetsBelow("slower")),
+                             rungs: anime ? nil : x265PresetsBelow("slower"), presetRungs: anime ? [] : x265PresetsFrom("slower")),
                 EncodeOption(id: "ref", title: "6 reference frames", detail: "More frames to predict from. Measured here: no smaller, 12% slower.",
                              args: ["--ref", "6"], speedCost: 1.12, vmafSaving: 0),
                 EncodeOption(id: "rclook", title: "60-frame look-ahead",
                              detail: kind == .anime ? "Rate planning over longer stretches; about 2% smaller on flat animation, 11% slower."
                                                     : "Rate planning over longer stretches. Measured here: no smaller, 10% slower.",
                              args: ["--rc-lookahead", "60"], speedCost: 1.10, vmafSaving: kind == .anime ? 0.02 : 0,
-                             rungs: x265PresetsBelow("placebo")),
+                             rungs: x265PresetsBelow("placebo"), presetRungs: ["placebo"]),
                 EncodeOption(id: "sao", title: anime ? "Limited SAO" : "SAO off (keep detail)",
                              detail: anime ? "Limits the edge-smoothing filter so line art and gradients stay clean." : "Turns off the filter that smooths fine detail and grain.",
                              args: anime ? ["--limit-sao"] : ["--no-sao"], visualOnly: true),
@@ -194,13 +200,13 @@ enum EncodeRecipes {
                              args: ["--no-strong-intra-smoothing"], visualOnly: true),
                 EncodeOption(id: "rd6", title: "Full rate-distortion analysis", detail: "rd 6: the most thorough decisions. Much slower; pays off on noisy dark footage.",
                              args: ["--rd", "6"], speedCost: 1.78, vmafSaving: x265RD6Saving(kind), recommendedFor: x265RD6Kinds,
-                             rungs: x265PresetsBelow("slower"))
+                             rungs: x265PresetsBelow("slower"), presetRungs: x265PresetsFrom("slower"))
             ]
             if kind == .screenContent {
                 opts.append(EncodeOption(id: "tskip", title: "Transform skip for text and UI",
                                          detail: "Lets small blocks skip the transform, which keeps sharp synthetic edges such as text.",
                                          args: ["--tskip"], probeFlag: "--tskip", vmafSaving: 0.08, recommendedFor: [.screenContent],
-                                         rungs: x265PresetsBelow("placebo")))
+                                         rungs: x265PresetsBelow("placebo"), presetRungs: ["placebo"]))
             }
             return EncodeRecipe(codec: codec, kind: kind, title: "HEVC 12-bit archival · \(kind.displayName.lowercased())",
                                 summary: "x265. Slow to slower is the usual archival range; veryslow and placebo add little.",
@@ -341,14 +347,15 @@ enum EncodeRecipes {
     }
 
     /// The SVT-AV1 temporal filter for the final arguments. On heavy grain and low light `--tf-strength 1` won only
-    /// when the encoder filtered a clean picture: with grain synthesis (`--film-grain`, which denoises first) or when
-    /// Lumora removes the grain itself before the encoder (`cleanInput`, the measured grain table). When the real grain
-    /// is coded (preset 8 and 9, where grain synthesis isn't offered; grain turned off; a film-texture table), strength 1
-    /// was 8.7% larger on heavy grain at equal XPSNR and banded more on low light, so the filter is turned off there, as
-    /// before. Old animation keeps strength 1 either way (smaller with and without grain synthesis). Used by the planner
-    /// and by ExportEngine, so the plan and the command line agree.
-    static func svtTemporalFilter(_ args: [String], kind: ContentKind, cleanInput: Bool = false) -> [String] {
-        guard svtTFNeedsCleanPicture(kind), !cleanInput, !synthesizesGrain(args) else { return args }
+    /// with SVT-AV1's own grain synthesis (`--film-grain` with `--film-grain-denoise`, which hands the encoder a clean
+    /// picture). Everywhere else the filter is turned off for them, as before: when the real grain is coded (preset 8
+    /// and 9, where grain synthesis isn't offered; grain turned off; a film-texture table), strength 1 was 8.7% larger on
+    /// heavy grain at equal XPSNR and banded more on low light; and a grain table (`--fgs-table`, measured or film
+    /// texture) replaces SVT-AV1's grain synthesis on the command line, a case strength 1 was never measured in. Old
+    /// animation keeps strength 1 either way (smaller with and without grain synthesis). Used by the planner and by
+    /// ExportEngine, so the plan and the command line agree.
+    static func svtTemporalFilter(_ args: [String], kind: ContentKind) -> [String] {
+        guard svtTFNeedsCleanPicture(kind), !synthesizesGrain(args) || args.contains("--fgs-table") else { return args }
         var out: [String] = []
         var i = 0
         while i < args.count {
@@ -495,6 +502,11 @@ enum EncodeRecipes {
     /// `--tskip`, so the options that set those are offered only on the faster presets.
     static func x265PresetsBelow(_ preset: String) -> Set<String> {
         Set(x265Presets.prefix { $0 != preset })
+    }
+
+    /// `preset` and the presets slower than it: the ones that already use what x265PresetsBelow(preset) leaves out.
+    static func x265PresetsFrom(_ preset: String) -> Set<String> {
+        Set(x265Presets.drop { $0 != preset })
     }
 
     /// The x265 command line with the options that can't work in this combination removed:

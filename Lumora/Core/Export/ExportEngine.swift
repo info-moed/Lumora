@@ -275,8 +275,10 @@ final class ExportEngine {
             try Task.checkCancellation()
             status("Repairing chunk \(n + 1) of \(affected.count)", Double(n) / Double(affected.count))
             // Rendered for grain the way the export was: de-grained frames for the encoder when Lumora removes the grain,
-            // and the de-grained master as the reference when grain synthesis is scored against it.
-            let (frames, reference) = try await renderChunk(ctx, range: chunk.start..<(chunk.start + chunk.count))
+            // and the de-grained master as the reference when grain synthesis is scored against it (only with a target:
+            // a fixed-quality repair isn't scored).
+            let (frames, reference) = try await renderChunk(ctx, range: chunk.start..<(chunk.start + chunk.count),
+                                                            scored: strict.qualityTarget != nil)
             if var target = strict.qualityTarget {
                 target.fixDips = true
                 let pieces = try await TargetQualityEncoder(engine: self).encode(
@@ -459,16 +461,19 @@ final class ExportEngine {
         var degrainedReference = false    // the metrics compare against the de-grained copy, the encoder gets the grainy frames
     }
 
-    static func chunkGrainRender(_ g: GrainPlan) -> ChunkGrainRender {
-        guard g.cleanInput || g.cleanReference else { return ChunkGrainRender() }
-        return ChunkGrainRender(denoise: true, encodeDegrained: g.cleanInput, degrainedReference: !g.cleanInput)
+    /// `scored` is false for an encode no metric looks at (a fixed-quality repair): it needs no de-grained reference, so
+    /// it is denoised only when the encoder gets the de-grained frames.
+    static func chunkGrainRender(_ g: GrainPlan, scored: Bool = true) -> ChunkGrainRender {
+        guard g.cleanInput || (scored && g.cleanReference) else { return ChunkGrainRender() }
+        return ChunkGrainRender(denoise: true, encodeDegrained: g.cleanInput, degrainedReference: scored && !g.cleanInput)
     }
 
-    /// Renders a range of output frames for a scored encode (see chunkGrainRender): the encoder's frames and, when
-    /// the metrics compare against a de-grained master the encoder doesn't get, that master. Without grain handling this
-    /// is renderPlanar.
-    private func renderChunk(_ ctx: Context, range: Range<Int>) async throws -> (frames: [PlanarFrame], reference: [PlanarFrame]?) {
-        let how = Self.chunkGrainRender(ctx.grain)
+    /// Renders a range of output frames for an encode (see chunkGrainRender): the encoder's frames and, when a scored
+    /// encode's metrics compare against a de-grained master the encoder doesn't get, that master. Without grain handling
+    /// this is renderPlanar.
+    private func renderChunk(_ ctx: Context, range: Range<Int>, scored: Bool = true) async throws
+        -> (frames: [PlanarFrame], reference: [PlanarFrame]?) {
+        let how = Self.chunkGrainRender(ctx.grain, scored: scored)
         guard how.denoise else { return (try await renderPlanar(ctx, range: range), nil) }
         let metal = MetalContext.shared
         let (prepared, producer) = try await startProducer(ctx, range: range, depth: MacProfile.current?.pipelineDepth ?? 4)
@@ -850,8 +855,7 @@ final class ExportEngine {
             planned = tableFlag
         }
         if spec.binary == EncodeRecipes.svtBinary, let p = planned {
-            planned = EncodeRecipes.svtArgs(EncodeRecipes.svtTemporalFilter(p, kind: job.contentKind, cleanInput: ctx.grain.cleanInput),
-                                            pq: kindKey == "pq")
+            planned = EncodeRecipes.svtArgs(EncodeRecipes.svtTemporalFilter(p, kind: job.contentKind), pq: kindKey == "pq")
         }
         let tune = planned == nil ? ContentTuning.preset(job.contentKind).encoderTune : "default"
         let process = Process()

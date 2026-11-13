@@ -115,6 +115,10 @@ final class ReviewFixTests: XCTestCase {
         g.cleanInput = true
         XCTAssertEqual(ExportEngine.chunkGrainRender(g), .init(denoise: true, encodeDegrained: true, degrainedReference: false),
                        "measured table: de-grained frames in, which are also the reference")
+        // A fixed-quality repair isn't scored: no de-grained reference, and no denoise unless the encoder gets it.
+        XCTAssertEqual(ExportEngine.chunkGrainRender(g, scored: false), .init(denoise: true, encodeDegrained: true, degrainedReference: false))
+        g.cleanInput = false
+        XCTAssertEqual(ExportEngine.chunkGrainRender(g, scored: false), .init(), "encoder grain synthesis, unscored: plain frames")
     }
 
     // MARK: 5. HDR10 container metadata for every libaom encode
@@ -193,18 +197,49 @@ final class ReviewFixTests: XCTestCase {
         }
     }
 
+    func testX265PresetsThatUseAnOptionStillGetItsSaving() {
+        // The slow presets' seeds come from faces and CG, where rd 6, the look-ahead and transform skip save nothing;
+        // on the content where they were measured, the presets that run them get their saving.
+        func seedPlan(_ kind: ContentKind, _ rung: String) -> Double {
+            let p = plan(.hevc12, kind, .maximum, budget: 1e9, overrides: Dictionary(uniqueKeysWithValues:
+                EncodeRecipes.recipe(codec: .hevc12, kind: kind).options.map { ($0.id, false) }))
+            return p.choice.rungID == rung ? p.saving : -1
+        }
+        let rd6 = EncodeRecipes.recipe(codec: .hevc12, kind: .oldAnime).options.first { $0.id == "rd6" }
+        XCTAssertEqual(rd6?.presetRungs, ["slower", "veryslow", "placebo"])
+        XCTAssertEqual(seedPlan(.oldAnime, "placebo"), 1 - (1 - 0.287) * 0.93, accuracy: 1e-9, "placebo runs rd 6 itself")
+        XCTAssertEqual(seedPlan(.screenContent, "placebo"), 1 - (1 - 0.287) * 0.92, accuracy: 1e-9, "placebo runs --tskip itself")
+        XCTAssertEqual(seedPlan(.realLife, "placebo"), 0.287, accuracy: 1e-9, "nothing to add where these save nothing")
+        // So the slow presets stay reachable: sweeping the time budget visits each of them, and none adds the flag again.
+        for kind in [ContentKind.oldAnime, .lowLightNoisy, .screenContent] {
+            var picked: Set<String> = []
+            var budget = 60.0
+            while budget < 1e8 {
+                let p = plan(.hevc12, kind, .budget, budget: budget)
+                picked.insert(p.choice.rungID)
+                if ["slower", "veryslow", "placebo"].contains(p.choice.rungID) { XCTAssertFalse(p.choice.extraArgs.contains("--rd"), "\(kind)") }
+                if p.choice.rungID == "placebo" { XCTAssertFalse(p.choice.extraArgs.contains("--tskip"), "\(kind)") }
+                budget *= 1.15
+            }
+            XCTAssertTrue(picked.isSuperset(of: ["slower", "veryslow", "placebo"]), "\(kind): \(picked.sorted())")
+        }
+        XCTAssertEqual(plan(.hevc12, .screenContent, .maximum, budget: 1e9).choice.rungID, "placebo")
+        XCTAssertEqual(plan(.hevc12, .oldAnime, .maximum, budget: 1e9).choice.rungID, "placebo")
+    }
+
     // MARK: 8. SVT-AV1 temporal filter follows grain synthesis
 
-    func testTemporalFilterOffWhenHeavyGrainOrLowLightCodeTheRealGrain() {
+    func testTemporalFilterOffWhenHeavyGrainOrLowLightCodeTheRealGrain() throws {
         let tf = ["--enable-qm", "1", "--tf-strength", "1"]
         for kind in [ContentKind.realLifeHeavyGrain, .lowLightNoisy] {
             XCTAssertEqual(EncodeRecipes.svtTemporalFilter(tf, kind: kind), ["--enable-qm", "1", "--enable-tf", "0"], "\(kind)")
             XCTAssertEqual(EncodeRecipes.svtTemporalFilter(tf + ["--film-grain", "4", "--film-grain-denoise", "1"], kind: kind),
                            tf + ["--film-grain", "4", "--film-grain-denoise", "1"], "\(kind) with grain synthesis")
-            XCTAssertEqual(EncodeRecipes.svtTemporalFilter(tf + ["--fgs-table", "/t"], kind: kind, cleanInput: true),
-                           tf + ["--fgs-table", "/t"], "\(kind): Lumora removed the grain, the encoder filters a clean picture")
             XCTAssertEqual(EncodeRecipes.svtTemporalFilter(tf + ["--fgs-table", "/t"], kind: kind),
-                           ["--enable-qm", "1", "--enable-tf", "0", "--fgs-table", "/t"], "\(kind): film texture over the coded grain")
+                           ["--enable-qm", "1", "--enable-tf", "0", "--fgs-table", "/t"], "\(kind): a grain table (measured or film texture)")
+            // A table replaces SVT-AV1's grain synthesis on the command line, so the planned --film-grain doesn't count.
+            XCTAssertEqual(EncodeRecipes.svtTemporalFilter(tf + ["--film-grain", "4", "--fgs-table", "{grain_table}"], kind: kind),
+                           ["--enable-qm", "1", "--enable-tf", "0", "--film-grain", "4", "--fgs-table", "{grain_table}"], "\(kind)")
             XCTAssertEqual(EncodeRecipes.svtTemporalFilter(tf + ["--film-grain", "0"], kind: kind), ["--enable-qm", "1", "--enable-tf", "0", "--film-grain", "0"])
         }
         for kind in [ContentKind.oldAnime, .realLife, .cgiAnimation, .anime] {
@@ -219,6 +254,27 @@ final class ReviewFixTests: XCTestCase {
         let max = plan(.av1, .lowLightNoisy, .budget, budget: 1e9)
         if max.choice.encoderKey == nil && EncodeRecipes.synthesizesGrain(max.choice.extraArgs) {
             XCTAssertTrue(max.choice.extraArgs.contains("--tf-strength"), "\(max.choice.extraArgs)")
+        }
+        // Heavy grain: the measured grain table is cheap and recommended, so it is in every plan, preset 9 and 8 included,
+        // and the encoder gets no grain synthesis of its own: the filter is off.
+        let heavyFast = plan(.av1, .realLifeHeavyGrain, .fastest)
+        XCTAssertEqual(heavyFast.choice.rungID, "p9")
+        XCTAssertTrue(heavyFast.enabled.contains("grainTable"), "\(heavyFast.enabled)")
+        XCTAssertTrue(heavyFast.choice.extraArgs.contains("--enable-tf") && !heavyFast.choice.extraArgs.contains("--tf-strength"),
+                      "\(heavyFast.choice.extraArgs)")
+        for mode in PlanMode.allCases {
+            let p = plan(.av1, .realLifeHeavyGrain, mode, budget: 1e9)
+            if p.choice.encoderKey == nil && p.enabled.contains("grainTable") {
+                XCTAssertFalse(p.choice.extraArgs.contains("--tf-strength"), "\(mode) \(p.choice.rungID): \(p.choice.extraArgs)")
+            }
+        }
+        let p8 = try choice(.av1, kind: .realLifeHeavyGrain, rung: "p8", options: ["tf", "grainTable"])
+        XCTAssertEqual(EncodeRecipes.svtTemporalFilter(p8.extraArgs, kind: .realLifeHeavyGrain), ["--enable-tf", "0", "--fgs-table", "{grain_table}"])
+        // Without the table, SVT-AV1's grain synthesis keeps the gentle filter.
+        let synth = plan(.av1, .realLifeHeavyGrain, .maximum, budget: 1e9, overrides: ["grainTable": false, "grain": true])
+        if synth.choice.encoderKey == nil {
+            XCTAssertTrue(synth.choice.extraArgs.contains("--tf-strength") && EncodeRecipes.synthesizesGrain(synth.choice.extraArgs),
+                          "\(synth.choice.extraArgs)")
         }
         XCTAssertEqual(EncodeRecipes.recipe(codec: .av1, kind: .realLifeHeavyGrain).options.first { $0.id == "tf" }?.title, "Temporal filter for grain")
         XCTAssertEqual(EncodeRecipes.recipe(codec: .av1, kind: .oldAnime).options.first { $0.id == "tf" }?.title, "Gentle temporal filter")
