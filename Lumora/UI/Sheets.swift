@@ -10,6 +10,7 @@ struct ExportSheet: View {
         @Bindable var model = model
         VStack(alignment: .leading, spacing: 14) {
             Text("Export").font(.title2.bold())
+            RenderStatusBanner()
             Form {
                 Picker("HDR format", selection: $model.delivery) {
                     ForEach(DeliveryFormat.allCases) { Text($0.displayName).tag($0) }
@@ -57,6 +58,7 @@ struct ExportSheet: View {
             List(model.presets, selection: $selected) { p in Text(p.name).tag(p.id) }
                 .frame(height: 150)
             if let problem = validation { Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange) }
+            DiskPreflightRow()
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }

@@ -36,6 +36,7 @@ struct ContentView: View {
             }
             }
         }
+        .safeAreaInset(edge: .top, spacing: 0) { LoadBanner(insets: EdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14)) }
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Button { model.presentOpenPanel() } label: { Label("Open", systemImage: "plus.rectangle.on.folder") }
@@ -70,6 +71,7 @@ struct ContentView: View {
                     Toggle(isOn: $model.showScopes) { Label("Scopes", systemImage: "waveform.path.ecg") }
                 }
                 ActivityButton()
+                RenderStatusPill()
                 Menu {
                     Button("Compare original and interpolated…") { model.prepareCompare(); openWindow(id: "compare") }
                     Button("Match to a reference release…") { model.matchToReference() }.disabled(model.selectedPreset == nil)

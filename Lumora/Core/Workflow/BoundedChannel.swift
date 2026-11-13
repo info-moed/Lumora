@@ -11,13 +11,17 @@ actor BoundedChannel<Element> {
     private var failure: Error?
     private var receivers: [CheckedContinuation<Element?, Error>] = []
     private var senders: [CheckedContinuation<Void, Never>] = []
+    private let meter: ChannelMeter?      // times both ends' waits for the render monitor
 
-    init(capacity: Int) { self.capacity = max(1, capacity) }
+    init(capacity: Int, meter: ChannelMeter? = nil) { self.capacity = max(1, capacity); self.meter = meter }
 
     func send(_ value: Element) async {
+        let waits = buffer.count >= capacity && !finished
+        if waits { meter?.sendWaiting(true) }
         while buffer.count >= capacity && !finished {
             await withCheckedContinuation { senders.append($0) }
         }
+        if waits { meter?.sendWaiting(false) }
         guard !finished else { return }
         if !receivers.isEmpty {
             receivers.removeFirst().resume(returning: value)
@@ -30,14 +34,20 @@ actor BoundedChannel<Element> {
         if !buffer.isEmpty {
             let v = buffer.removeFirst()
             if !senders.isEmpty { senders.removeFirst().resume() }
+            meter?.took()
             return v
         }
         if let failure { throw failure }
         if finished { return nil }
-        return try await withCheckedThrowingContinuation { receivers.append($0) }
+        meter?.receiveWaiting(true)
+        defer { meter?.receiveWaiting(false) }
+        let v = try await withCheckedThrowingContinuation { receivers.append($0) }
+        if v != nil { meter?.took() }
+        return v
     }
 
     func finish() {
+        meter?.close()
         finished = true
         receivers.forEach { $0.resume(returning: nil) }
         receivers.removeAll()
@@ -46,6 +56,7 @@ actor BoundedChannel<Element> {
     }
 
     func fail(_ error: Error) {
+        meter?.close()
         failure = error
         finished = true
         receivers.forEach { $0.resume(throwing: error) }

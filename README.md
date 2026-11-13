@@ -9,6 +9,8 @@ Metal, AVFoundation and VideoToolbox) that:
 - raises frame rates with **RIFE-class interpolation**, then finds and repairs bad generated frames
 - encodes to a **quality target** (VMAF plus HDR-aware checks) instead of guessing a bitrate
 - explains every recommendation **in plain English**
+- shows a **live preview and load monitor** while it renders: the frame being made (in HDR), CPU, GPU, memory and
+  heat, and a measured verdict on whether the export is making the most of your Mac
 
 It opens in a **Simple mode**: drop a file, say what you want ("watch it on my TV", "make it much smaller"…), and
 Lumora picks the settings and tells you why. **Pro mode** exposes every control.
