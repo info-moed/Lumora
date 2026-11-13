@@ -35,6 +35,7 @@ struct ExportJob {
 /// Renders a job: plan (with interpolation) -> measure light levels -> parallel segments on the
 /// hardware engines or CPU encoders -> join with audio/subtitles -> inject HDR10+ / Dolby Vision metadata.
 final class ExportEngine {
+    let probe = RenderProbe()
     let chip = ChipProfile.current
     private(set) var qcEvents: [QCEvent] = []
 
@@ -515,21 +516,25 @@ final class ExportEngine {
         if let problem = Self.validate(job) { throw LumoraError.unsupported(problem) }
         try Self.checkOutputFolder(job.outputURL)
         var ctx = try baseContext(job)
+        let monitored = probe.begin(job, frames: ctx.plan.count, rate: ctx.rate); defer { monitored.end() }
         let d = job.descriptor
         let plan = ctx.plan
         if let c = job.encodeChoice { Log.notice(.encode, "Encoder settings: \(c.rungLabel) + \(c.optionIDs.joined(separator: ", ")) → \(c.extraArgs.joined(separator: " "))") }
         let grainTmp = try ScratchManager.jobDirectory("grain")
         defer { try? FileManager.default.removeItem(at: grainTmp) }
+        monitored.preparing(.grain)
         ctx.grain = try await planGrain(ctx, workDir: grainTmp)
 
         if job.target.isHDR {
             status("Measuring HDR light levels", 0)
+            monitored.preparing(.lightLevels)
             let levels = try await SceneAnalyzer.measureLightLevels(d, color: job.preset.color, preset: job.preset,
                                                                     analysis: job.analysis, target: job.target,
-                                                                    sourcePeakNits: job.sourcePeakNits) { status("Measuring HDR light levels", $0) }
+                                                                    sourcePeakNits: job.sourcePeakNits) { status("Measuring HDR light levels", $0); monitored.preparingProgress($0) }
             ctx.levels = levels
             ctx.meta = HDRMetadata.Static(peakNits: job.target.effectivePeak, maxCLL: levels.maxCLL, maxFALL: levels.maxFALL)
         }
+        monitored.preparing(nil)
 
         let tmp = try ScratchManager.jobDirectory("export")   // all temp writes on the fast scratch SSD
         Log.info(.encode, "Export \(job.outputURL.lastPathComponent): \(job.codec.displayName), \(job.bitDepth)-bit \(job.chroma.label), \(job.delivery.displayName), scratch \(tmp.path)")
@@ -538,6 +543,7 @@ final class ExportEngine {
         if let t = job.qualityTarget, ![.prores422HQ, .prores4444XQ, .av2].contains(job.codec) {
             Log.notice(.encode, "Encoding to VMAF \(t.vmaf) (\(t.pool.rawValue)) for \(job.contentKind.displayName)")
             let pieces = try await runTargetQuality(ctx, tmp: tmp, status: status)
+            monitored.searchFinished()
             status("Finishing file", 1)
             var result = try addContainerHDR10Metadata(ctx, file: try await join(ctx, segments: pieces, tmp: tmp), tmp: tmp)
             if Self.needsMetadataPass(job.delivery) { result = try injectDynamicMetadata(ctx, file: result, tmp: tmp) }
@@ -643,19 +649,20 @@ final class ExportEngine {
             source = PatchedFrameSource(base: source, plan: repairPlan,
                                         proxyUniforms: UniformBuilder.analysis(source: job.preset.color, gridW: 1, gridH: 1))
         }
+        source = probe.meteredSource(source, lane: range)
         let analysis = job.analysis
         let stream = try FrameStream(source: source, plan: ctx.plan[range], settings: job.interpolation,
                                      proxyUniforms: UniformBuilder.analysis(source: job.preset.color, gridW: 1, gridH: 1),
                                      sceneOf: { analysis.sceneIndex(for: $0) })
         let stage = try PreGradeStage(sourceWidth: job.descriptor.width, sourceHeight: job.descriptor.height,
                                       crop: job.descriptor.crop, mode: job.upscale)
-        let channel = BoundedChannel<Prepared>(capacity: depth)
+        let channel = BoundedChannel<Prepared>(capacity: depth, meter: probe.meter(.prepared, lane: range.lowerBound))
         let task = Task<[QCEvent], Error> {
             do {
                 while let f = try stream.next() {
                     try Task.checkCancellation()
-                    await PauseGate.shared.wait()            // pause / battery / heat / schedule, without losing work
-                    let (tex, crop) = try stage.process(f.texture)
+                    await probe.paused(lane: range.lowerBound) { await PauseGate.shared.wait() }   // pause / battery / heat / schedule, without losing work
+                    let (tex, crop) = try probe.time(.upscale, lane: range.lowerBound) { try stage.process(f.texture) }
                     await channel.send(Prepared(texture: tex, crop: crop, outputIndex: f.outputIndex,
                                                 sourceIndex: f.sourceIndex, keep: f.backing + [f.texture]))
                 }
@@ -728,6 +735,7 @@ final class ExportEngine {
         input.expectsMediaDataInRealTime = false
         // Frame times are i * den / num; the track must count in 1/num s or 23.976/59.94 fps get rounded to 1/600 s.
         input.mediaTimeScale = CMTimeScale(ctx.rate.num)
+        probe.watch(input, lane: range.lowerBound, frames: range.count)
         let pixelFormat: OSType
         switch job.codec {
         case .prores422HQ: pixelFormat = kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange
@@ -766,6 +774,7 @@ final class ExportEngine {
                     let keep = job.codec == .prores4444XQ
                         ? renderer.encodePackY416(cb, rgb: rgb, into: pb, matrixKr: ctx.kr, matrixKb: ctx.kb)
                         : renderer.encodePack(cb, rgb: rgb, into: pb, matrixKr: ctx.kr, matrixKb: ctx.kb)
+                    probe.graded(cb, rgb: rgb, outputIndex: f.outputIndex, lane: range.lowerBound)
                     await cb.commitAndWait()                 // suspends; no thread is blocked
                     _ = (keep, f.keep)
                     await encoded.send((pb, CMTime(value: CMTimeValue(i) * CMTimeValue(ctx.rate.den),
@@ -934,7 +943,7 @@ final class ExportEngine {
 
         // Stage 1+2: render every output frame once into RAM, grouped by chunk.
         let (prepared, producer) = try await startProducer(ctx, range: 0..<ctx.plan.count, depth: MacProfile.current?.pipelineDepth ?? 4)
-        let channel = BoundedChannel<ChunkFrames>(capacity: 1)
+        let channel = BoundedChannel<ChunkFrames>(capacity: 1, meter: probe.meter(.chunks))
         let renderer = GradeRenderer()
         let rgb = metal.makeTexture(width: ctx.width, height: ctx.height, format: job.highPrecision ? .rgba32Float : .rgba16Float)
         let rgbClean = Self.chunkGrainRender(ctx.grain).denoise
@@ -966,6 +975,7 @@ final class ExportEngine {
                     } else {
                         renderer.encodePackPlanar(cb, rgb: rgb, planes: planes, matrixKr: ctx.kr, matrixKb: ctx.kb)
                     }
+                    probe.graded(cb, rgb: rgb, outputIndex: f.outputIndex, lane: 0)
                     await cb.commitAndWait()
                     _ = f.keep
                     current.append(planes)
@@ -1001,7 +1011,7 @@ final class ExportEngine {
             var running = 0
             while let chunk = try await channel.receive() {
                 try Task.checkCancellation()
-                if running >= concurrent, let done = try await group.next() { pieces += done; running -= 1 }
+                if running >= LoadGovernor.shared.limit(concurrent), let done = try await group.next() { pieces += done; running -= 1 }
                 let scene = job.analysis.scenes[safe: job.analysis.sceneIndex(for: ctx.plan[chunk.start].a)]
                     ?? SceneStats(start: 0, end: 0, keyStops: -1.2, p005: -6, p50: -1, p995: 3, skinFraction: 0, avgChroma: 0)
                 let r = chunk.start..<(chunk.start + chunk.frames.count)
@@ -1045,6 +1055,7 @@ final class ExportEngine {
         let job = ctx.job
         let spec = encoderSpec(job)
         return { [unowned self] frames, level, url in
+            let lane = self.probe.trialLane(url, frames: frames.count); defer { lane.close() }
             if job.codec == .hevc {
                 try await self.encodeChunkVT(ctx, frames: frames, quality: level / 100, to: url)
             } else if let spec {
@@ -1056,7 +1067,7 @@ final class ExportEngine {
                     do {
                         guard let first = frames.first else { throw LumoraError.decodeFailed("No frames rendered for this chunk.") }
                         try handle.write(contentsOf: Data(first.y4mHeader(fpsNum: ctx.rate.num, fpsDen: ctx.rate.den).utf8))
-                        for f in frames { try Task.checkCancellation(); try f.write(to: handle) }
+                        for f in frames { try Task.checkCancellation(); try f.write(to: handle); lane.fed() }
                         try handle.close()
                     } catch {
                         if process.isRunning { process.terminate() }
@@ -1177,7 +1188,7 @@ final class ExportEngine {
         let slots = 6
         let frames = (0..<slots).map { _ in PlanarFrame(device: metal.device, width: ctx.width, height: ctx.height,
                                                         bits: job.bitDepth, chroma: job.chroma) }
-        let packed = BoundedChannel<PlanarFrame>(capacity: slots - 2)
+        let packed = BoundedChannel<PlanarFrame>(capacity: slots - 2, meter: probe.meter(.packed, lane: range.lowerBound))
         let renderer = GradeRenderer()
         let rgbFormat: MTLPixelFormat = job.highPrecision ? .rgba32Float : .rgba16Float
         let rgb = metal.makeTexture(width: ctx.width, height: ctx.height, format: rgbFormat)
@@ -1195,6 +1206,7 @@ final class ExportEngine {
                                          temporalKey: job.analysis.sceneIndex(for: f.sourceIndex))
                     if let rgbClean { GrainProcessor().denoise(cb, rgb, into: rgbClean, sigma: ctx.grain.sigma) }
                     renderer.encodePackPlanar(cb, rgb: rgbClean ?? rgb, planes: planes, matrixKr: ctx.kr, matrixKb: ctx.kb)
+                    probe.graded(cb, rgb: rgb, outputIndex: f.outputIndex, lane: range.lowerBound)
                     await cb.commitAndWait()
                     _ = f.keep
                     await packed.send(planes)

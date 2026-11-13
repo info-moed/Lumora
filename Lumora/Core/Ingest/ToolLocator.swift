@@ -106,6 +106,7 @@ extension Process {
     func runWatched() throws {
         trackExit()
         try run()
+        ChildPolicy.started(self)
     }
 }
 

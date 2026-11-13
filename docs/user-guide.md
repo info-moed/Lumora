@@ -29,6 +29,7 @@ each feature, see the [Feature reference](features.md).
   - [Enhance tab](#enhance-tab)
   - [Deliver tab](#deliver-tab)
 - [Exporting](#exporting)
+  - [Watching a render](#watching-a-render)
 - [The Tools menu](#the-tools-menu)
 - [Other windows](#other-windows)
 - [Settings](#settings)
@@ -248,6 +249,28 @@ and `.obu` for AV2.
 
 Progress shows at the bottom of the window and in **Activity**. Use **Pause** to pause; work isn't lost.
 
+### Watching a render
+
+![Live render monitor](images/25-render-monitor.png)
+
+While anything renders, a status pill next to **Activity** in the toolbar says **Rendering**, **Paused**,
+**Waiting** or **Stalled** with the percent done, and the Dock icon shows a progress bar. Click the pill (or
+Tools → **Encode monitor**) for the live monitor:
+
+- **The frame being made**, in HDR when the export is HDR, with frame number, timecode and percent.
+- **How hard the Mac is working:** CPU split into Lumora, its encoders and other apps (performance and efficiency
+  cores separately), GPU, memory and heat, plus speed and time left.
+- **The verdict:** for example "Making good use of your Mac (92%): the encoder is using every core, so this is as
+  fast as this quality setting goes", or "Cores are sitting idle" with what would help. It is based on measured stage
+  times; when Lumora isn't sure it says so.
+- Turn on **Details** for two-minute charts, every parallel segment or quality-search trial, the time per frame for
+  each stage, the encoder processes and the busiest other apps.
+
+If the Mac is overloaded (other apps using most of the CPU, memory tight, or the Mac hot), a banner names the
+busiest apps and offers **Pause**, **Lower priority** or **Continue**. If a drive is about to fill, the render
+pauses on its own and continues when there is space; the export window shows how much space a job needs and has
+**Clear Lumora caches…**.
+
 ---
 
 ## The Tools menu
@@ -286,7 +309,8 @@ Progress shows at the bottom of the window and in **Activity**. Use **Pause** to
   these frames** for a finished export.
 - **Model Lab.** Download, import and convert RIFE releases to Core ML (image and HDR-flow variants), benchmark them
   on your footage, see the best model per content type, and install the extra quality metrics.
-- **Encode monitor.** Live chunk-by-chunk view of quality-target encodes: state, trials, scores, size.
+- **Encode monitor.** The live render monitor (preview, load, verdict; see [Watching a render](#watching-a-render)),
+  above the chunk-by-chunk view of quality-target encodes: state, trials, scores, size.
 - **Optimize for this Mac.** Quick (~5 min), Thorough (~30 min) or Burn-in (hours) tuning, with live CPU/GPU/memory/
   thermal gauges.
 - **Preview on your TV.** AirPlay picker and player for the 15-second test render.
@@ -346,6 +370,7 @@ The **Optimize for this Mac** window has its own **Forget profile** button to di
 | Model Lab environment | `~/Library/Application Support/Lumora/ModelLab/` |
 | Mac optimization profile, learning data, batch queue | `~/Library/Application Support/Lumora/` |
 | Logs | `~/Library/Logs/Lumora/lumora-YYYY-MM-DD.log` |
+| Export summaries (load, bottleneck, time per stage) | `~/Library/Application Support/Lumora/RenderSummaries/` |
 
 Full list, including every settings key: [Command-line guide](command-line.md#files-and-folders).
 

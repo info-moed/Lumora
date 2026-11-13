@@ -169,4 +169,33 @@ final class ScreenshotTests: XCTestCase {
         try await shoot("23-settings-tools", dark(ToolsSettings().padding(20), model), size: CGSize(width: 720, height: 560))
         try await shoot("24-settings-runs", dark(RunRulesSettings().padding(20), model), size: CGSize(width: 720, height: 560))
     }
+
+    /// The live render monitor, with a real graded frame of the sample footage as the preview and a synthetic
+    /// render in progress (two SVT-AV1 segments using every core).
+    func testRenderMonitor() async throws {
+        let model = try await loaded(simple: false)
+        let frame = try XCTUnwrap(model.previewFrame)
+        let saved = model.previewTarget
+        model.previewTarget = .sdr
+        let w = 480, h = Int((480.0 * Double(frame.texture.height) / Double(frame.texture.width)).rounded())
+        let tex = MetalContext.shared.makeTexture(width: w, height: h, format: .rgba16Float)
+        let u = try XCTUnwrap(model.previewUniforms(viewport: SIMD4<Float>(0, 0, Float(w), Float(h))))
+        let cb = try XCTUnwrap(MetalContext.shared.queue.makeCommandBuffer())
+        GradeRenderer().encodeGrade(cb, source: frame.texture, destination: tex, uniforms: u)
+        cb.commit()
+        cb.waitUntilCompleted()
+        model.previewTarget = saved
+        let (snap, sample) = LiveRenderUITests.syntheticState(preview: tex)
+        RenderMonitor.shared.showForTesting(snap, sample: sample)
+        let savedDetail = UserDefaults.standard.object(forKey: "renderMonitorDetail")
+        UserDefaults.standard.set(true, forKey: "renderMonitorDetail")
+        defer {
+            RenderMonitor.shared.showForTesting(nil, sample: SystemSample())
+            RenderMonitor.testPreview = nil
+            RenderMonitor.shared.panelDisappeared()
+            if let savedDetail { UserDefaults.standard.set(savedDetail, forKey: "renderMonitorDetail") }
+            else { UserDefaults.standard.removeObject(forKey: "renderMonitorDetail") }
+        }
+        try await shoot("25-render-monitor", dark(LiveRenderPanel().environment(RenderMonitor.shared), model), size: CGSize(width: 1100, height: 860))
+    }
 }

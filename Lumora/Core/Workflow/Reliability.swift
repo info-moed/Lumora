@@ -37,6 +37,7 @@ actor PauseGate {
     }
 
     func wait() async {
+        await LoadGovernor.shared.holdIfNeeded()     // memory, disk and overload pauses, pacing when hot
         while let why = reason() {
             if why != lastReason { Log.notice(.app, why); lastReason = why }
             try? await Task.sleep(nanoseconds: 2_000_000_000)

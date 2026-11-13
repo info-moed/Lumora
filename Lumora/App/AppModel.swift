@@ -969,7 +969,9 @@ final class AppModel {
     private func runBatch(_ files: [URL], output: URL) {
         let look = selectedPreset?.look
         Notifier.requestPermission()
-        run("Batch: \(files.count) files") { [self] in
+        // Batches run unattended: utility priority, and their encoders a little nicer than a single export's.
+        run("Batch: \(files.count) files", priority: .utility) { [self] in
+          try await ChildPolicy.$inBatch.withValue(true) {
             for (n, file) in files.enumerated() {
                 await PauseGate.shared.wait()
                 status = "Batch \(n + 1)/\(files.count): \(file.lastPathComponent)"
@@ -1044,6 +1046,7 @@ final class AppModel {
                 if packaged.video != encoded, encoded.standardizedFileURL != file.standardizedFileURL { try? FileManager.default.removeItem(at: encoded) }
                 QueueStore.markDone(file, output: packaged.video)
             }
+          }
             status = "Batch finished: \(files.count) files"
             Notifier.send("Lumora batch finished", "\(files.count) files processed")
         }
@@ -1091,6 +1094,7 @@ final class AppModel {
     func export(presetIDs: [UUID], folder: URL) {
         guard let d = descriptor, let a = analysis else { return }
         let chosen = presets.filter { presetIDs.contains($0.id) }
+        warnIfShortOfSpace(folder: folder, copies: chosen.count)
         run("Exporting") { [self] in
             for var p in chosen {
                 try Task.checkCancellation()
@@ -1159,6 +1163,25 @@ final class AppModel {
         }
     }
 
+    /// Before an export: the space it needs on the scratch and export drives, from the size forecast. It warns with
+    /// exact amounts and starts anyway; the render pauses safely if a drive is about to fill. The drives are asked
+    /// off the main thread (each call can take a tenth of a second).
+    private func warnIfShortOfSpace(folder: URL, copies: Int) {
+        guard let d = descriptor else { return }
+        let out = (currentForecast()?.high ?? Int64(Double(d.width * d.height) * 0.15 * Double(max(1, d.frameCount)))) * Int64(max(1, copies))
+        let r = DiskBudget.Request(outputBytes: out, codec: codec, delivery: delivery, scratch: DiskBudget.Roots.app.scratch,
+                                   output: folder.appendingPathComponent("export"), source: d.url)
+        Task { [weak self] in
+            let e = await Task.detached(priority: .utility) { DiskBudget.estimate(r) }.value
+            Log.info(.storage, "Disk check before export: " + e.message)
+            if !e.fits {
+                Log.warning(.storage, "Not enough free space for this export: " + e.message)
+                self?.errorMessage = "Not enough free disk space. " + e.message
+                    + " The export starts anyway and pauses safely before the drive fills; Export → Clear Lumora caches… can free space."
+            }
+        }
+    }
+
     /// "<source name> – <look> – <delivery>.<ext>", the file name an export is written under.
     nonisolated static func exportFileName(source: URL, look: Look, delivery: DeliveryFormat, ext: String) -> String {
         // The source name is shortened if needed so the whole name (look, delivery, ".original-fps.mov") still fits
@@ -1186,12 +1209,12 @@ final class AppModel {
 
     // MARK: Task plumbing
 
-    private func run(_ label: String, _ body: @escaping () async throws -> Void) {
+    private func run(_ label: String, priority: TaskPriority? = nil, _ body: @escaping () async throws -> Void) {
         task?.cancel()
         status = label
         progress = 0
         Log.info(.app, label)
-        task = Task {
+        task = Task(priority: priority) {
             do { try await body() } catch is CancellationError {
                 status = "Canceled"
             } catch {

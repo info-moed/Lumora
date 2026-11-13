@@ -9,6 +9,29 @@ Status tags used below:
 
 ---
 
+## [Unreleased]
+
+### Added — live render monitor
+- **Live preview** of the frame each lane is producing (HDR via EDR when the output is HDR), with frame number,
+  timecode, percent and a filmstrip; a small GPU scale in the grade's own command buffer, never waited on.
+- **Live utilization** once a second with two minutes of history: CPU per cluster split into Lumora, its encoders and
+  other apps; GPU; memory pressure and swap; thermal state; fps, × realtime and time left. Media engine use is
+  inferred from encoder backpressure and labeled as such.
+- **"Making the most of your Mac" verdict** from measured stage times (decode, upscale, interpolation, GPU grade,
+  encoder backpressure, encoder idle, disk), with a capacity score, the reason and one suggestion; it says when it
+  isn't sure.
+- **Alive status** (Rendering live / Paused / Waiting on … / Finishing / Stalled, with a heartbeat) in the toolbar,
+  the export window, the Encode monitor and the Dock icon. Stall detection scales with the run's own frame times.
+- **Overload and disk warnings**: the busiest other apps named, Pause / Lower priority / Continue; disk space checked
+  before an export on every drive involved, with exact amounts and a Lumora-only cache cleaner; renders pause
+  cleanly before a drive fills.
+- **Never seizing up**: helper processes niced (+5, +10 in batches), batches at utility priority, memory-pressure and
+  thermal back-off (helpers in the background band while the Mac is hot), GPU pacing when the display's GPU work is
+  delayed, timed by a GPU command that really runs on the GPU.
+- **Per-export summary** (average load, bottleneck, time per stage, UI responsiveness) in the log and report.
+
+---
+
 ## [0.11.1] — 2026-11-11 · "Builds, runs, tested"
 
 The first version that compiles and runs. Earlier versions were complete source that had never been built.

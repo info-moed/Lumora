@@ -53,7 +53,7 @@ struct LumoraApp: App {
                 .preferredColorScheme(.dark)
         }
         Window("Encode monitor", id: "monitor") {
-            EncodeMonitorView().environment(EncodeMonitor.shared).preferredColorScheme(.dark)
+            EncodeMonitorWindow().environment(EncodeMonitor.shared).preferredColorScheme(.dark)
         }
         Window("Model Lab", id: "models") {
             ModelLabView().environment(model).preferredColorScheme(.dark)

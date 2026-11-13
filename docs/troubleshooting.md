@@ -154,7 +154,12 @@ To use a specific build of a tool, see [Pointing Lumora at specific tools](comma
 |---|---|
 | "Not enough space" or exports stop | Lumora writes temporary files to the scratch drive. Settings → Storage → **Empty scratch**, or choose a bigger/faster drive. |
 | Everything is slow on an external drive | Set Settings → Storage → scratch to your fastest SSD; enable copying slow sources to it. |
-| The Mac gets hot or loud | Expected for long software encodes. Use **Run rules** to work overnight, or Pause. |
+| The Mac gets hot or loud | Expected for long software encodes. Use **Run rules** to work overnight, or Pause. Lumora slows itself down when macOS reports the Mac is hot. |
+| The monitor says "Cores are sitting idle" | The encoder is the limit but not every core is busy. More parallel segments would help: run **Optimize for this Mac** when convenient (it measures the best count). Short clips can't be split, so there is nothing to change. |
+| The monitor says "Making good use of your Mac" but it's slow | The encoder is using every core; this is as fast as that quality setting goes. Choose a faster preset (Deliver → **Time and quality**) for speed. |
+| "Your Mac is overloaded" | Other apps are using most of the CPU or memory. Close the apps it names, or choose **Lower priority** (other apps go first; the export takes longer) or **Pause**. |
+| "Paused: … is almost full" | The render paused before the drive filled. Free the amount it names, or use Export → **Clear Lumora caches…**; it continues on its own. |
+| "Stalled" | No frame finished for a long time and nothing (encoder CPU, GPU, files) shows activity. Check the log for an encoder error; cancel and export again. A slow frame (AV2, Real-ESRGAN) is shown as "Waiting on …", not stalled. |
 
 ---
 
