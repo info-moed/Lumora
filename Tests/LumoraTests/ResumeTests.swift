@@ -162,6 +162,13 @@ final class ResumeTests: RecoveryTestCase {
         guard VMAFRunner.available else { throw XCTSkip("VMAF not available") }
         let p = try await Self.prepare(try Self.makeSource("resume-tq.mp4", seconds: 4))
         let target = await CampaignQualityTests.vmafOnly(90)
+        // One chunk at a time (in memory only, restored after), so "crash after the first chunk" is exact.
+        let savedProfile = MacProfile.current
+        var profile = savedProfile ?? MacProfile(machine: MacProfile.machineModel, chip: "test", os: MacProfile.osVersion,
+                                                 created: Date(), level: "test")
+        profile.concurrentChunks = 1
+        MacProfile.current = profile
+        defer { MacProfile.current = savedProfile }
         func tqJob(_ name: String) -> ExportJob {
             var j = job(p, codec: .av1, name: name)
             j.qualityTarget = target
@@ -189,6 +196,31 @@ final class ResumeTests: RecoveryTestCase {
         XCTAssertEqual(e.lastPieces.map(\.level), refLevels, "same encoder levels")
         XCTAssertEqual(try Self.frames(url), try Self.frames(reference), "identical frames")
         print("[resume] target quality: \(chunks) chunks, 1 reused, \(chunks - 1) searched again; frames identical")
+    }
+
+    /// Measurement, run on demand (LUMORA_RECOVERY_BENCH=1): what checkpointing costs on a 1280×720, 6-second
+    /// SVT-AV1 export, as one segment versus three 2-second segments (each flushed, validated and journaled, the
+    /// later ones starting with up to 16 preroll frames).
+    func testCheckpointOverheadMeasurement() async throws {
+        guard ProcessInfo.processInfo.environment["LUMORA_RECOVERY_BENCH"] == "1" else { throw XCTSkip("measurement: LUMORA_RECOVERY_BENCH=1") }
+        try TestHardware.requireGPU(); try Self.requireTool("SvtAv1EncApp")
+        let p = try await Self.prepare(try Self.makeSource("bench.mp4", width: 1280, height: 720, seconds: 6))
+        var results: [(segments: Int, seconds: Double, bytes: Int)] = []
+        for (n, frames) in [(1, 144), (3, 48), (1, 144), (3, 48)].enumerated() {
+            CheckpointPlanner.segmentFramesOverride = frames.1
+            let j = job(p, codec: .av1, name: "bench-\(n).mkv")
+            let t0 = Date()
+            let e = ExportEngine()
+            let url = try await e.run(j) { _, _ in }
+            let dt = Date().timeIntervalSince(t0)
+            let size = try XCTUnwrap(try url.resourceValues(forKeys: [.fileSizeKey]).fileSize)
+            results.append((e.session?.plan?.segments.count ?? 0, dt, size))
+            print(String(format: "[bench] %d segment(s): %.2f s, %d bytes", e.session?.plan?.segments.count ?? 0, dt, size))
+        }
+        let one = results.filter { $0.segments == 1 }, three = results.filter { $0.segments == 3 }
+        let t1 = one.map(\.seconds).min() ?? 0, t3 = three.map(\.seconds).min() ?? 0
+        print(String(format: "[bench] checkpoint overhead: %.2f s for 2 extra segments (%.1f%%), size %+.2f%%", t3 - t1,
+                     (t3 - t1) / max(0.001, t1) * 100, (Double(three[0].bytes) - Double(one[0].bytes)) / Double(one[0].bytes) * 100))
     }
 
     // MARK: Durability

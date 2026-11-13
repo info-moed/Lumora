@@ -9,6 +9,27 @@ Status tags used below:
 
 ---
 
+## [Unreleased]
+
+### Added — when a render fails
+- **Export logs:** one verbose log per export (settings, tool versions, every command line with paths as `~`, steps
+  and durations, frame counters, tool messages, system events, the full error chain), size-capped and pruned, listed in
+  Tools → Log → Export logs…, with a privacy-scrubbed *Copy diagnostic report*.
+- **Plain-language failures:** about twenty kinds of failure explained in Simple and Pro wording, with what it means
+  for your file and one or two actions; technical details one click away.
+- **Resume:** exports are checkpointed in segments (target quality: per chunk) and resume from where they stopped after
+  a failure, quit, crash or power loss, with the same frames as an uninterrupted export. Transient failures are retried;
+  a nearly full scratch drive pauses the export; the Mac stays awake while exporting.
+- **Damaged sources:** a quick check on open, a full check, decoding past damage without shifting the timeline, and
+  *Repair a copy* into a new file (the source is never modified). See [When a render fails](docs/render-failures.md).
+
+### Fixed
+- A short or empty decode no longer passes silently; the joined video must have exactly the planned frames.
+- GPU command-buffer errors, rejected hardware-encoder settings, and encoder exit signals are no longer ignored or
+  flattened into text.
+
+---
+
 ## [0.11.1] — 2026-11-11 · "Builds, runs, tested"
 
 The first version that compiles and runs. Earlier versions were complete source that had never been built.

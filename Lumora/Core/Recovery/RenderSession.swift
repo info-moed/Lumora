@@ -76,6 +76,7 @@ final class RenderSession: @unchecked Sendable {
 
     func run<T>(_ body: @escaping () async throws -> T) async throws -> T {
         MemoryPressureWatch.shared.start()
+        if ActiveExports.all.isEmpty { GPUFaults.reset() }     // an error from before this export isn't this export's
         ActiveExports.insert(exportID)
         startWatching()
         writeHeader()
@@ -180,6 +181,7 @@ final class RenderSession: @unchecked Sendable {
             j.keepProgress = options.keepProgressOnCancel
             journal = j
             try CheckpointStore.saveRecipe(ExportRecipe(job), in: d)
+            warnIfScratchLooksSmall(planInput)
         }
         if let p = journal.plan {
             log.line(.info, "plan", "\(p.frames) frames at \(rate.num)/\(rate.den) fps in \(p.segments.count) segment\(p.segments.count == 1 ? "" : "s"), \(p.workers) at a time, \(encode.threads) threads each; encoder \(encode.binary) \(encode.version)")
@@ -188,6 +190,19 @@ final class RenderSession: @unchecked Sendable {
         }
         try saveJournal()
         startHeartbeat()
+    }
+
+    /// Up-front: segments, the joined file and the finished file can need about 2.2 × the output plus a reserve.
+    /// A rough output estimate (the source size, or 0.1 bit per pixel when that is unknown) is enough for a warning;
+    /// the pause gate handles the rest while the export runs.
+    private func warnIfScratchLooksSmall(_ i: CheckpointPlanner.Input) {
+        let src = Int64((try? job.descriptor.url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        let guess = src > 0 ? src : Int64(Double(i.frames * i.pixels) * 0.1 / 8)
+        let needed = Int64(Double(guess) * 2.2) + DiskSpaceGuard.reserve
+        guard let v = SystemSnapshot.volume(CheckpointStore.root.deletingLastPathComponent()), v.free < needed else { return }
+        let f = { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }
+        let m = "This export may need about \(f(needed)) on “\(v.name)”; \(f(v.free)) is free. Lumora pauses if the drive gets too full."
+        Log.warning(.storage, m)            // also reaches this export's log
     }
 
     static func makePlan(_ i: CheckpointPlanner.Input, rate: (num: Int, den: Int), lessMemory: Bool) -> ExportJournal.Plan {

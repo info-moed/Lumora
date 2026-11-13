@@ -1017,6 +1017,7 @@ final class ExportEngine {
                         renderer.encodePackPlanar(cb, rgb: rgb, planes: planes, matrixKr: ctx.kr, matrixKb: ctx.kb)
                     }
                     await cb.commitAndWait()
+                    try GPUFaults.check()
                     _ = f.keep
                     current.append(planes)
                     if let refPlanes { currentRef.append(refPlanes) }
