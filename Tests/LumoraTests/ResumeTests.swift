@@ -349,10 +349,144 @@ final class ResumeTests: RecoveryTestCase {
         let e1 = ExportEngine()
         let err1 = await failure(e1, j, options: RecoveryOptions(resume: journal))
         XCTAssertTrue((err1 as? ResumeRefused)?.reason.contains("encoder changed") ?? false, "\(String(describing: err1))")
+        XCTAssertEqual(e1.lastFailure?.actions, [.startOver])
+        XCTAssertTrue(Self.checkpointFolders().isEmpty, "progress that can never be used is removed, so it isn't offered again")
+        XCTAssertTrue(ResumeCoordinator.scan().isEmpty)
+        FaultInjection.crashAfterSegments = 1
+        _ = await failure(ExportEngine(), j)
+        FaultInjection.crashAfterSegments = nil
         journal = try savedJournal()
         journal.renderVersion = CheckpointStore.renderVersion - 1
         let err2 = await failure(ExportEngine(), j, options: RecoveryOptions(resume: journal))
         XCTAssertTrue((err2 as? ResumeRefused)?.reason.contains("updated") ?? false, "\(String(describing: err2))")
+    }
+
+    /// A batch file whose saved progress can't be used any more (the encoder was updated) starts over by itself
+    /// instead of failing the same way on every batch run.
+    @MainActor
+    func testRefusedProgressStartsOverInsteadOfFailingAgain() async throws {
+        try TestHardware.requireGPU(); try Self.requireTool("SvtAv1EncApp")
+        let p = try await Self.prepare(try Self.makeSource("resume-src.mp4"))
+        CheckpointPlanner.segmentFramesOverride = 24
+        let j = job(p, codec: .av1, name: "refused-batch.mkv")
+        FaultInjection.crashAfterSegments = 1
+        _ = await failure(ExportEngine(), j)
+        FaultInjection.crashAfterSegments = nil
+        var journal = try savedJournal()
+        journal.encode?.version = "SVT-AV1 v0.0.1"            // "brew upgrade" since the export began
+        let model = AppModel()
+        let e = ExportEngine()
+        let url = try await model.runExport(e, j, options: RecoveryOptions(resume: journal), unattended: true) { _, _ in }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+        XCTAssertFalse(e.session?.resuming ?? true, "the second run is a fresh export")
+        XCTAssertEqual(try Self.frames(url).hashes.count, p.analysis.frameCount)
+        XCTAssertTrue(Self.checkpointFolders().isEmpty)
+    }
+
+    // MARK: Progress that must survive
+
+    func testCanceledResumeKeepsTheProgressSavedBefore() async throws {
+        try TestHardware.requireGPU(); try Self.requireTool("SvtAv1EncApp")
+        let p = try await Self.prepare(try Self.makeSource("resume-src.mp4"))
+        CheckpointPlanner.segmentFramesOverride = 24
+        let j = job(p, codec: .av1, name: "cancel-resumed.mkv")
+        FaultInjection.crashAfterSegments = 2
+        _ = await failure(ExportEngine(), j)
+        FaultInjection.crashAfterSegments = nil
+        var journal = try savedJournal()
+        XCTAssertEqual(journal.segments.count, 2)
+
+        // The same saved progress resumed twice at once (banner and sheet): the second doesn't start or touch it.
+        ActiveExports.insert(journal.exportID)
+        let dup = await failure(ExportEngine(), j, options: RecoveryOptions(resume: journal))
+        ActiveExports.remove(journal.exportID)
+        XCTAssertTrue(dup is AlreadyResuming, "\(String(describing: dup))")
+        XCTAssertEqual(Self.checkpointFolders().count, 1)
+
+        // A plain cancel of the resumed export (Stop, or another task replacing it): the saved part stays. The
+        // damaged-frame method it began with is kept even though the setting changed.
+        journal.damagedFrameMethod = "repeat"
+        setDefault("damagedFrameMethod", "recreate")
+        let task = RecoveryTests.Box<Task<URL, Error>>()
+        FaultInjection.handler = { point, _ in
+            if case .beforeSegment(3) = point { RenderSession.setStopIntent(.stop); task.value?.cancel() }
+        }
+        let e = ExportEngine()
+        let t = Task { try await e.run(j, options: RecoveryOptions(resume: journal)) { _, _ in } }
+        task.value = t
+        do { _ = try await t.value; XCTFail("canceled") } catch {}
+        FaultInjection.handler = nil
+        XCTAssertEqual(e.lastFailure?.failure.kind, .canceled)
+        XCTAssertEqual(e.session?.damagedFrameMethod, "repeat")
+        let kept = try savedJournal()
+        XCTAssertEqual(kept.state, .cancelledKept)
+        XCTAssertGreaterThanOrEqual(kept.segments.count, 2, "the progress saved before the crash is still there")
+        XCTAssertEqual(kept.damagedFrameMethod, "repeat")
+
+        // "Stop and discard" removes it.
+        FaultInjection.handler = { point, _ in
+            if case .beforeSegment(3) = point { RenderSession.setStopIntent(.discard); task.value?.cancel() }
+        }
+        let e2 = ExportEngine()
+        let t2 = Task { try await e2.run(j, options: RecoveryOptions(resume: kept)) { _, _ in } }
+        task.value = t2
+        do { _ = try await t2.value; XCTFail("canceled") } catch {}
+        FaultInjection.handler = nil
+        XCTAssertTrue(Self.checkpointFolders().isEmpty, "discarded when asked")
+    }
+
+    /// The journal can't be written right after the join (a nearly full scratch drive): the segments the journal on
+    /// disk still lists are kept, so a resume encodes nothing again.
+    func testJournalSaveFailingAtTheJoinKeepsTheSegments() async throws {
+        try TestHardware.requireGPU(); try Self.requireTool("SvtAv1EncApp")
+        let p = try await Self.prepare(try Self.makeSource("resume-src.mp4"))
+        CheckpointPlanner.segmentFramesOverride = 24
+        let j = job(p, codec: .av1, name: "join-journal.mkv")
+        FaultInjection.handler = { point, _ in
+            if case .join = point { FaultInjection.journalSavesFail = true }
+            if case .deliver = point { throw NSError(domain: NSPOSIXErrorDomain, code: Int(ENOSPC)) }
+        }
+        _ = await failure(ExportEngine(), j)
+        FaultInjection.handler = nil
+        FaultInjection.journalSavesFail = false
+        let journal = try savedJournal()
+        let dir = try XCTUnwrap(Self.checkpointFolders().first)
+        XCTAssertNil(journal.joinedFile)
+        XCTAssertEqual(journal.segments.count, journal.plan?.segments.count)
+        for s in journal.segments {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: dir.appendingPathComponent(s.file).path), "\(s.file) kept")
+        }
+        let e = ExportEngine()
+        _ = try await e.run(j, options: RecoveryOptions(resume: journal)) { _, _ in }
+        XCTAssertEqual(e.session?.encodedSegments ?? [-1], [], "nothing is encoded again")
+        XCTAssertEqual(try Self.frames(j.outputURL).hashes.count, p.analysis.frameCount)
+    }
+
+    /// Saved progress on the scratch drive used before (the scratch drive was changed) is still offered, can move to
+    /// the new drive, and is cleaned up from there.
+    func testSavedProgressOnAnEarlierScratchDriveIsFoundAndMoves() throws {
+        let oldScratch = scratch.deletingLastPathComponent().appendingPathComponent("old-scratch", isDirectory: true)
+        let d = oldScratch.appendingPathComponent("Checkpoints/moved", isDirectory: true)
+        try FileManager.default.createDirectory(at: d.appendingPathComponent("segments"), withIntermediateDirectories: true)
+        var j = ExportJournal(exportID: "moved", recipeHash: "h", renderVersion: CheckpointStore.renderVersion, source: nil,
+                              sourceName: "clip.mov", outputPath: out.appendingPathComponent("clip.mkv").path)
+        j.state = .failed
+        j.plan = .init(frames: 96, rateNum: 24, rateDen: 1, workers: 1, segments: [.init(index: 0, start: 0, count: 96, preroll: 0)])
+        j.failure = FailureExplainer.explain(RenderFailure(kind: .diskFull, stage: .encode, message: "No space left on device"))
+        try CheckpointStore.save(j, in: d)
+        try CheckpointStore.saveRecipe(ExportRecipe(Self.tinyJob()), in: d)
+        try Data(repeating: 1, count: 4096).write(to: d.appendingPathComponent("segments/s00000.a1.ivf"))
+        setDefault(CheckpointStore.historyKey, [oldScratch.appendingPathComponent("Checkpoints").path])
+
+        XCTAssertEqual(CheckpointStore.locate("moved")?.standardizedFileURL, d.standardizedFileURL)
+        XCTAssertEqual(ResumeCoordinator.scan().map(\.id), ["moved"], "still offered after the scratch drive changed")
+        let moved = try CheckpointStore.move("moved", toScratch: scratch)
+        XCTAssertEqual(moved.deletingLastPathComponent().standardizedFileURL, CheckpointStore.root.standardizedFileURL)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: d.path), "no longer on the old drive")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: moved.appendingPathComponent("segments/s00000.a1.ivf").path))
+        XCTAssertEqual(ResumeCoordinator.scan().map(\.id), ["moved"])
+        CheckpointStore.discard("moved")
+        XCTAssertNil(CheckpointStore.locate("moved"))
     }
 
     // MARK: Launch reasons

@@ -293,7 +293,186 @@ final class SourceIntegrityTests: RecoveryTestCase {
         let pts = try Self.ptsSeconds(r.output)
         for (n, t) in pts.enumerated() { XCTAssertEqual(t - pts[0], Double(n) / 24, accuracy: 0.002) }
         XCTAssertGreaterThan(try Self.audioDuration(r.output), 3.5, "audio present")
+        try assertRepairedCopyIsRight(r, good: good, label: "flipped H.264")
         print("[repair] flipped bytes: \(rebuilt.count) frames re-encoded, \(untouchedSame) untouched and identical; \(r.summary)")
+    }
+
+    // MARK: Damaged GOPs in the sources people actually have (verifier cases)
+
+    /// The good clip re-encoded with other encoders: 8-bit x265 (B-frames, closed GOPs) and, when this Mac has it,
+    /// Apple's 10-bit hardware HEVC encoder. Same 24-frame GOPs, same audio.
+    static func reencoded(_ good: URL, as name: String, _ video: [String]) throws -> URL {
+        let u = work.appendingPathComponent(name)
+        if !FileManager.default.fileExists(atPath: u.path) {
+            try ff(["-i", good.path, "-map", "0", "-c:a", "copy"] + video + [u.path])
+        }
+        return u
+    }
+
+    static var hasVideoToolboxHEVC: Bool {
+        ((try? run(try ffmpeg, ["-hide_banner", "-encoders"])) ?? "").contains("hevc_videotoolbox")
+    }
+
+    /// Overwrites `count` bytes at the start of video packet `index` (decode order), just after its NAL header: the
+    /// slice header is garbage, so the decoder reports it (damage in the middle of a slice often decodes silently).
+    /// `within` places the damage further into the packet instead (x264 starts its first packet with a text SEI).
+    static func damagedPacket(_ src: URL, as name: String, packet index: Int, count: Int = 400, within: Double? = nil) throws -> URL {
+        let text = try run(try ffprobe, ["-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pos,size", "-of", "compact", src.path])
+        let rows = text.split(separator: "\n").map { row in
+            Dictionary(uniqueKeysWithValues: row.split(separator: "|").dropFirst().compactMap { kv -> (String, Int)? in
+                let p = kv.split(separator: "=", maxSplits: 1)
+                return p.count == 2 ? (String(p[0]), Int(p[1]) ?? 0) : nil
+            })
+        }
+        let pos = try XCTUnwrap(rows[index]["pos"]), size = try XCTUnwrap(rows[index]["size"])
+        let u = try copy(src, as: name)
+        let h = try FileHandle(forUpdating: u)
+        let skip = within.map { Int(Double(size) * $0) } ?? 6
+        try h.seek(toOffset: UInt64(pos + skip))
+        try h.write(contentsOf: Data((0..<min(count, size - skip)).map { UInt8(truncatingIfNeeded: $0 &* 131 &+ 7) }))
+        try h.close()
+        return u
+    }
+
+    /// Per-frame luma PSNR of `a` against `b` (99 for identical frames).
+    static func psnr(_ a: URL, _ b: URL) throws -> [Double] {
+        let stats = work.appendingPathComponent("psnr-\(UUID().uuidString.prefix(6)).txt")
+        defer { try? FileManager.default.removeItem(at: stats) }
+        // Frame by frame, by position (the files' own timestamps can start at different offsets).
+        try ff(["-i", a.path, "-i", b.path, "-lavfi", "[0:v]settb=1/24,setpts=N[x];[1:v]settb=1/24,setpts=N[y];[x][y]psnr=stats_file=\(stats.path)", "-f", "null", "-"])
+        return try String(contentsOf: stats, encoding: .utf8).split(separator: "\n").map { line in
+            let y = line.split(separator: " ").first { $0.hasPrefix("psnr_y:") }.map { String($0.dropFirst(7)) } ?? "0"
+            return y == "inf" ? 99 : (Double(y) ?? 0)
+        }
+    }
+
+    /// Luma PSNR of frames `range` of `a` against one frame of `b`.
+    static func psnr(_ a: URL, frames range: Range<Int>, against b: URL, frame: Int) throws -> [Double] {
+        let stats = work.appendingPathComponent("psnr-\(UUID().uuidString.prefix(6)).txt")
+        defer { try? FileManager.default.removeItem(at: stats) }
+        let g = "[0:v]trim=start_frame=\(range.lowerBound):end_frame=\(range.upperBound),settb=1/24,setpts=N[x];"
+            + "[1:v]trim=start_frame=\(frame):end_frame=\(frame + 1),loop=loop=\(range.count - 1):size=1,settb=1/24,setpts=N[y];"
+            + "[x][y]psnr=stats_file=\(stats.path)"
+        try ff(["-i", a.path, "-i", b.path, "-lavfi", g, "-f", "null", "-"])
+        return try String(contentsOf: stats, encoding: .utf8).split(separator: "\n").map { line in
+            let y = line.split(separator: " ").first { $0.hasPrefix("psnr_y:") }.map { String($0.dropFirst(7)) } ?? "0"
+            return y == "inf" ? 99 : (Double(y) ?? 0)
+        }
+    }
+
+    /// A repaired copy is right only if: the exact frame count and timestamps, a clean decode, every frame outside the
+    /// re-encoded parts bit-identical to the undamaged file, every re-encoded frame that isn't listed as rebuilt close
+    /// to the undamaged one (no concealed garbage passed off as repaired), every listed rebuilt frame a repeat of
+    /// the last good one, and the audio kept.
+    func assertRepairedCopyIsRight(_ r: SourceRepair.Report, good: URL, frames total: Int = 96, label: String,
+                                   file: StaticString = #filePath, line: UInt = #line) throws {
+        XCTAssertEqual(r.framesAfter, total, "\(label): frame count", file: file, line: line)
+        XCTAssertEqual(r.decodeErrorsAfter, 0, "\(label): clean decode", file: file, line: line)
+        XCTAssertFalse(r.reencoded.isEmpty, "\(label): a part was re-encoded", file: file, line: line)
+        let a = try Self.frames(good).hashes, b = try Self.frames(r.output).hashes
+        XCTAssertEqual(b.count, total, file: file, line: line)
+        let reencoded = Set(r.reencoded.flatMap { Array($0) })
+        let rebuilt = Set(r.rebuiltFrames.flatMap { Array($0) } + r.heldFromNext.flatMap { Array($0) })
+        let changed = (0..<min(a.count, b.count)).filter { !reencoded.contains($0) && a[$0] != b[$0] }
+        XCTAssertTrue(changed.isEmpty, "\(label): untouched frames bit-identical; differ: \(changed.prefix(10))", file: file, line: line)
+        let pts = try Self.ptsSeconds(r.output)
+        let late = pts.enumerated().filter { abs($0.element - pts[0] - Double($0.offset) / 24) > 0.002 }.map(\.offset)
+        XCTAssertTrue(late.isEmpty, "\(label): every frame on time; off: \(late.prefix(10))", file: file, line: line)
+        let q = try Self.psnr(r.output, good)
+        let bad = reencoded.subtracting(rebuilt).sorted().filter { $0 < q.count && q[$0] < 35 }
+        XCTAssertTrue(bad.isEmpty, "\(label): re-encoded frames not listed as rebuilt look like the original; below 35 dB: \(bad.prefix(10).map { "\($0): \(Int(q[$0])) dB" })", file: file, line: line)
+        // Rebuilt frames are re-encoded copies of the good frame they repeat (close to it, not bit-identical).
+        for range in r.rebuiltFrames where range.lowerBound > 0 {
+            let held = try Self.psnr(r.output, frames: range, against: good, frame: range.lowerBound - 1)
+            XCTAssertGreaterThanOrEqual(held.count, range.count, file: file, line: line)
+            XCTAssertTrue(held.prefix(range.count).allSatisfy { $0 >= 38 }, "\(label): frames \(range) repeat frame \(range.lowerBound - 1): \(held.map { Int($0) })", file: file, line: line)
+        }
+        for range in r.heldFromNext {
+            let held = try Self.psnr(r.output, frames: range, against: good, frame: range.upperBound)
+            XCTAssertTrue(held.prefix(range.count).allSatisfy { $0 >= 38 }, "\(label): frames \(range) repeat frame \(range.upperBound): \(held.map { Int($0) })", file: file, line: line)
+        }
+        XCTAssertGreaterThan(try Self.audioDuration(r.output), 3.5, "\(label): audio kept", file: file, line: line)
+    }
+
+    func testRepairDamagedHEVCKeepsTheFramesAfterItIntact() async throws {
+        try Self.requireTool("ffmpeg")
+        let good = try Self.good()
+        let x265 = try Self.reencoded(good, as: "hevc8.mp4", ["-c:v", "libx265", "-pix_fmt", "yuv420p", "-tag:v", "hvc1",
+                                                              "-x265-params", "keyint=24:min-keyint=24:scenecut=0:open-gop=0:log-level=error"])
+        var cases: [(String, URL, URL)] = [("8-bit x265", x265, try Self.flipped(x265, as: "flipped-hevc8.mp4"))]
+        if Self.hasVideoToolboxHEVC {
+            let vt = try Self.reencoded(good, as: "vt10.mp4", ["-c:v", "hevc_videotoolbox", "-profile:v", "main10",
+                                                               "-pix_fmt", "p010le", "-g", "24", "-tag:v", "hvc1", "-q:v", "70"])
+            // The 45% overwrite lands in the middle of a slice of this file and decodes "fine" (nothing to find); a
+            // damaged slice header at frame 30 is what a full check reports.
+            cases.append(("10-bit VideoToolbox", vt, try Self.damagedPacket(vt, as: "damaged-vt10.mp4", packet: 30)))
+        }
+        for (label, clean, bad) in cases {
+            let sha = try SegmentValidator.sha256(bad)
+            let h = SourceIntegrity.fullScan(bad)
+            XCTAssertTrue(h.repairable, "\(label): \(h.problems.map(\.kind)) \(h.summary(bad.lastPathComponent))")
+            let r = try SourceRepair.repair(bad, health: h, to: out.appendingPathComponent("\(label) (repaired).mkv"))
+            try assertSourceUntouched(bad, sha)
+            try assertRepairedCopyIsRight(r, good: clean, label: label)
+            print("[repair] \(label): \(r.summary)")
+        }
+    }
+
+    func testRepairDamagedBFrameH264KeepsTimestamps() async throws {
+        try Self.requireTool("ffmpeg")
+        let good = try Self.good("mkv", bframes: true)
+        let bad = try Self.flipped(good, as: "repair-flipped-b.mkv")
+        let r = try SourceRepair.repair(bad, health: SourceIntegrity.fullScan(bad), to: out.appendingPathComponent("b (repaired).mkv"))
+        try assertRepairedCopyIsRight(r, good: good, label: "B-frame H.264")
+        let last = try XCTUnwrap(try Self.ptsSeconds(r.output).last)
+        XCTAssertEqual(last - (try Self.ptsSeconds(r.output).first ?? 0), 95.0 / 24, accuracy: 0.002, "no longer than the original")
+        print("[repair] B-frame H.264: \(r.summary)")
+    }
+
+    func testRepairOfADamagedFirstKeyframeRepeatsTheNextGoodFrame() async throws {
+        try Self.requireTool("ffmpeg")
+        let good = try Self.good()
+        let bad = try Self.damagedPacket(good, as: "damaged-start.mp4", packet: 0, within: 0.3)
+        let h = SourceIntegrity.fullScan(bad)
+        XCTAssertTrue(h.repairable, "\(h.problems.map(\.kind))")
+        let r = try SourceRepair.repair(bad, health: h, to: out.appendingPathComponent("start (repaired).mkv"))
+        XCTAssertEqual(r.heldFromNext, [0..<24], "nothing before the damage: the next good frame is repeated")
+        XCTAssertTrue(r.summary.contains("repeat the next good frame"), r.summary)
+        try assertRepairedCopyIsRight(r, good: good, label: "first keyframe")
+        print("[repair] first keyframe: \(r.summary)")
+    }
+
+    func testRepairNamesWhereALostFrameWas() async throws {
+        try Self.requireTool("ffmpeg")
+        let good = try Self.good("mkv")
+        let dropped = Self.work.appendingPathComponent("repair-dropped.mkv")
+        if !FileManager.default.fileExists(atPath: dropped.path) {
+            try Self.ff(["-i", good.path, "-map", "0", "-c", "copy", "-bsf:v", "noise=drop=eq(n\\,30)", dropped.path])
+        }
+        let h = SourceIntegrity.fullScan(dropped)
+        XCTAssertTrue(h.repairable, "\(h.problems.map(\.kind))")
+        let r = try SourceRepair.repair(dropped, health: h, to: out.appendingPathComponent("dropped (repaired).mkv"))
+        XCTAssertEqual(r.framesAfter, 96)
+        // Frame 30 (0:01.2) is the lost one; the frames after it in its GOP referred to it, so they are rebuilt too.
+        XCTAssertEqual(r.rebuiltFrames.first?.lowerBound, 30, "\(r.rebuiltFrames)")
+        XCTAssertEqual(r.rebuiltFrames.first?.upperBound, 48, "\(r.rebuiltFrames)")
+        XCTAssertTrue(r.summary.contains("0:01.2"), r.summary)
+        try assertRepairedCopyIsRight(r, good: good, label: "lost frame")
+        print("[repair] lost frame: \(r.summary)")
+    }
+
+    /// A joined copy that doesn't check out (here a part placed 0.25 s late) is never offered as repaired.
+    func testRepairThatDoesNotCheckOutIsNotSaved() async throws {
+        try Self.requireTool("ffmpeg")
+        let bad = try Self.flipped(try Self.good(), as: "repair-shifted.mp4")
+        FaultInjection.repairPartShift = 0.25
+        let dest = out.appendingPathComponent("shifted (repaired).mkv")
+        XCTAssertThrowsError(try SourceRepair.repair(bad, health: SourceIntegrity.fullScan(bad), to: dest)) { e in
+            let m = e.localizedDescription
+            XCTAssertTrue(m.contains("didn't come out right") && m.contains("instead of"), m)
+            XCTAssertTrue(m.contains("Your original is unchanged"), m)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dest.path), "no repaired copy is left behind")
     }
 
     func testMissingIndexIsRefusedHonestly() async throws {

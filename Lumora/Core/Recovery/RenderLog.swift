@@ -53,6 +53,17 @@ final class RenderLog: @unchecked Sendable {
         Self.openLock.lock(); Self.open[ObjectIdentifier(self)] = self; Self.openLock.unlock()
     }
 
+    /// A log that writes nothing: when neither the log folder nor the temporary folder can take a new file (a
+    /// completely full startup disk), the export still runs and its failure is still explained on screen.
+    init(unwritableFor exportID: String, outputName: String, folder: URL = RenderLog.folder) {
+        self.exportID = exportID
+        url = folder.appendingPathComponent("\(URL(fileURLWithPath: outputName).deletingPathExtension().lastPathComponent).log")
+        handle = nil
+    }
+
+    /// Whether lines reach a file.
+    var isWritable: Bool { lock.lock(); defer { lock.unlock() }; return handle != nil }
+
     /// Reopens an existing log (a resumed export keeps writing the same file).
     init(appendingTo url: URL, exportID: String) throws {
         self.url = url

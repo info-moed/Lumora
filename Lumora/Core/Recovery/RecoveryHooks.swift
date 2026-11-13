@@ -32,7 +32,11 @@ enum RecoveryHooks {
     /// three of them again from the good frames on either side with Lumora's interpolation (the same engines and
     /// checks as interpolated-file repair; a plain blend when no model is installed); "repeat" keeps the previous good
     /// frame. Longer runs always keep the previous frame (a frozen picture), as nothing trustworthy can be made up.
-    static var damagedFrameMethod: String { UserDefaults.standard.string(forKey: "damagedFrameMethod") ?? "recreate" }
+    /// The setting, for new exports. A running export uses the method it began with (`exportDamagedFrameMethod`,
+    /// kept in its journal), so a resumed file never mixes the two.
+    static var damagedFrameMethodSetting: String { UserDefaults.standard.string(forKey: "damagedFrameMethod") ?? "recreate" }
+    @TaskLocal static var exportDamagedFrameMethod: String?
+    static var damagedFrameMethod: String { exportDamagedFrameMethod ?? damagedFrameMethodSetting }
     static let maxRecreatedRun = 3
 
     /// The export's source with its damaged frames rebuilt (see `damagedFrameMethod`); unchanged when the source has

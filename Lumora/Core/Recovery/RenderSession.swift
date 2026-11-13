@@ -13,6 +13,12 @@ struct RecoveryOptions {
     var allowDifferentMac = false
 }
 
+/// The same saved progress is already being resumed in this Lumora.
+struct AlreadyResuming: LocalizedError {
+    var name: String
+    var errorDescription: String? { "“\(name)” is already being resumed." }
+}
+
 /// Saved progress that can't be used: the source, the settings, the encoder or Lumora itself changed.
 struct ResumeRefused: LocalizedError {
     var reason: String
@@ -59,15 +65,25 @@ final class RenderSession: @unchecked Sendable {
             log = l
         } else if let l = try? RenderLog(exportID: exportID, outputName: job.outputURL.lastPathComponent) {
             log = l
-        } else {
+        } else if let l = try? RenderLog(exportID: exportID, outputName: job.outputURL.lastPathComponent, folder: Self.fallbackLogFolder) {
             // The log folder can't be written (full disk): log into the temporary folder rather than not at all.
-            log = (try? RenderLog(exportID: exportID, outputName: job.outputURL.lastPathComponent,
-                                  folder: FileManager.default.temporaryDirectory.appendingPathComponent("Lumora-logs")))!
+            log = l
+        } else {
+            // Neither can take a new file (the startup disk is completely full): no log file, but the export still
+            // runs, and a failure is still explained on screen.
+            log = RenderLog(unwritableFor: exportID, outputName: job.outputURL.lastPathComponent)
+            Log.warning(.app, "The export log can't be written: the startup disk has no room for a new file")
         }
         journal = r ?? ExportJournal(exportID: exportID, recipeHash: ExportRecipe(job).hash(), renderVersion: CheckpointStore.renderVersion,
                                      source: nil, sourceName: job.descriptor.url.lastPathComponent, outputPath: job.outputURL.path)
-        journal.logFile = log.url.lastPathComponent
+        if log.isWritable { journal.logFile = log.url.lastPathComponent }
+        // Damaged source frames are rebuilt the way the export began, also when the setting changed before a resume.
+        damagedFrameMethod = r?.damagedFrameMethod ?? RecoveryHooks.damagedFrameMethodSetting
+        journal.damagedFrameMethod = damagedFrameMethod
     }
+
+    /// How this export rebuilds undecodable source frames ("recreate" or "repeat"), fixed when it began.
+    let damagedFrameMethod: String
 
     var logURL: URL { log.url }
     var checkpointFolder: URL? { dir }
@@ -77,6 +93,13 @@ final class RenderSession: @unchecked Sendable {
     // MARK: Run
 
     func run<T>(_ body: @escaping () async throws -> T) async throws -> T {
+        // The same saved progress resumed twice at once (the banner and the sheet): the second one doesn't start, and
+        // it must not touch the folder the first one is writing to.
+        if resuming, ActiveExports.contains(exportID) {
+            log.line(.warn, "resume", "This export is already being resumed; the second request was ignored")
+            log.close()
+            throw AlreadyResuming(name: job.outputURL.lastPathComponent)
+        }
         MemoryPressureWatch.shared.start()
         if ActiveExports.all.isEmpty { GPUFaults.reset() }     // an error from before this export isn't this export's
         ActiveExports.insert(exportID)
@@ -87,7 +110,9 @@ final class RenderSession: @unchecked Sendable {
             ActiveExports.remove(exportID)
         }
         do {
-            let result = try await RenderLog.$current.withValue(log) { try await body() }
+            let result = try await RenderLog.$current.withValue(log) {
+                try await RecoveryHooks.$exportDamagedFrameMethod.withValue(damagedFrameMethod) { try await body() }
+            }
             finishSuccessfully()
             return result
         } catch is FaultInjection.SimulatedCrash {
@@ -126,6 +151,10 @@ final class RenderSession: @unchecked Sendable {
         h.append("Interpolation: \(String(describing: j.interpolation.mode)); upscale \(String(describing: j.upscale))")
         if let t = j.qualityTarget { h.append("Quality target: VMAF \(t.vmaf) (\(t.pool.rawValue)), profile \(t.profile.name)") }
         h.append("Tools: " + ToolVersions.relevant(j).map { "\($0) \(ToolVersions.version($0))" }.joined(separator: "; "))
+        if job.analysis.damage.map({ !$0.isEmpty }) ?? false {
+            h.append("Damaged source frames: \(damagedFrameMethod == "repeat" ? "repeat the previous good frame" : "re-create from the neighboring frames")"
+                     + (resuming && damagedFrameMethod != RecoveryHooks.damagedFrameMethodSetting ? " (as when this export began; the current setting applies to new exports)" : ""))
+        }
         if resuming {
             h.append("Resuming: \(journal.segments.count) saved segments (\(journal.savedFrames) frames)\(journal.joinedFile != nil ? ", joined video saved" : "")\(journal.finalFile != nil ? ", finished video saved" : "")")
         }
@@ -143,7 +172,7 @@ final class RenderSession: @unchecked Sendable {
         var j = journal
         let src = job.descriptor.kind == .rawSequence ? nil : ExportJournal.SourceFingerprint.of(job.descriptor.url)
         if resuming {
-            let d = CheckpointStore.folder(exportID)
+            let d = CheckpointStore.locate(exportID) ?? CheckpointStore.folder(exportID)
             guard FileManager.default.fileExists(atPath: d.path) else { throw ResumeRefused(reason: "its saved progress was removed.") }
             dir = d
             if j.renderVersion != CheckpointStore.renderVersion { throw ResumeRefused(reason: "Lumora was updated and renders this export differently now.") }
@@ -174,7 +203,7 @@ final class RenderSession: @unchecked Sendable {
             journal = j
             revalidateSaved()
         } else {
-            CheckpointStore.prune(active: ActiveExports.all)
+            for root in CheckpointStore.knownRoots { CheckpointStore.prune(root: root, active: ActiveExports.all) }
             let d = try CheckpointStore.create(exportID)
             dir = d
             j.source = src
@@ -405,8 +434,20 @@ final class RenderSession: @unchecked Sendable {
         }
     }
 
-    /// "Stop and keep progress": set just before canceling an export from the app.
-    nonisolated(unsafe) static var keepOnNextCancel = false
+    /// What the Stop button asked for, set just before canceling an export from the app.
+    enum StopIntent { case keep, stop, discard }
+    nonisolated(unsafe) private static var stopIntent: StopIntent?
+    private static let intentLock = NSLock()
+    static func setStopIntent(_ i: StopIntent) { intentLock.withLock { stopIntent = i } }
+    private static func takeStopIntent() -> StopIntent? { intentLock.withLock { defer { stopIntent = nil }; return stopIntent } }
+    /// "Stop and keep progress" (kept for callers that only know keep / don't keep).
+    static var keepOnNextCancel: Bool {
+        get { intentLock.withLock { stopIntent == .keep } }
+        set { setStopIntent(newValue ? .keep : .stop) }
+    }
+
+    /// Where the log goes when the log folder can't be written (tests point it at a folder that can't be made).
+    nonisolated(unsafe) static var fallbackLogFolder = FileManager.default.temporaryDirectory.appendingPathComponent("Lumora-logs")
 
     /// How long a retry after an encoder killed under memory pressure waits for the pressure to ease (tests shorten it).
     nonisolated(unsafe) static var pressureWait: TimeInterval = 60
@@ -524,8 +565,17 @@ final class RenderSession: @unchecked Sendable {
         try? FileManager.default.removeItem(at: dest)
         guard (try? FileManager.default.moveItem(at: url, to: dest)) != nil else { return url }
         CheckpointStore.fullSync(dest)
+        try? FaultInjection.point(.join)
         let segs = journal.segments.map(\.file)
-        update { $0.joinedFile = dest.lastPathComponent; $0.state = .joined; $0.segments = [] }
+        lock.lock(); let before = journal; journal.joinedFile = dest.lastPathComponent; journal.state = .joined; journal.segments = []; lock.unlock()
+        do {
+            try saveJournal()
+        } catch {
+            // The journal on disk still lists the segments: keep them (and that journal) so a resume can use them.
+            lock.lock(); journal.joinedFile = before.joinedFile; journal.state = before.state; journal.segments = before.segments; lock.unlock()
+            log.warn("The journal couldn't be saved after the join (\(error.localizedDescription)); the segment files are kept", tag: "join")
+            return dest
+        }
         for f in segs { try? FileManager.default.removeItem(at: dir.appendingPathComponent(f)) }
         lock.lock(); segmentURLs = [:]; lock.unlock()
         log.info("Joined video saved; \(segs.count) segment files removed", tag: "join")
@@ -573,14 +623,14 @@ final class RenderSession: @unchecked Sendable {
         let size = (try? job.outputURL.resourceValues(forKeys: [.fileSizeKey]).fileSize).map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) } ?? "?"
         log.line(.result, "done", String(format: "finished in %.1f s → %@, %@", Date().timeIntervalSince(log.started), job.outputURL.path, size)
                  + (resuming ? " (resumed: \(reusedSegments.count) saved segments reused, \(encodedSegments.count) encoded)" : ""))
-        if let dir { try? FileManager.default.removeItem(at: dir) }
+        if let dir { try? FileManager.default.removeItem(at: dir); CheckpointStore.removeRootIfEmpty(dir.deletingLastPathComponent()) }
         CheckpointStore.removeRootIfEmpty()
         log.close()
         RenderLog.prune(keep: Self.resumableLogs())
     }
 
     static func resumableLogs() -> Set<String> {
-        Set(CheckpointStore.all().compactMap { $0.journal.logFile })
+        Set(CheckpointStore.knownRoots.flatMap { CheckpointStore.all(root: $0) }.compactMap { $0.journal.logFile })
     }
 
     func context(segment: ExportJournal.PlannedSegment? = nil) -> FailureContext {
@@ -601,9 +651,13 @@ final class RenderSession: @unchecked Sendable {
         var f = FailureClassifier.classify(error, context: c)
         if canceled { f.kind = .canceled }
         if let r = error as? ResumeRefused { f.kind = .unknown; f.message = r.localizedDescription }
-        let keepWanted = options.keepProgressOnCancel || (canceled && Self.keepOnNextCancel)
-        if canceled { Self.keepOnNextCancel = false }
-        let keep = canceled ? keepWanted && (savedFrames > 0 || journal.joinedFile != nil) : true
+        let intent = canceled ? Self.takeStopIntent() : nil
+        // A plain cancel discards a new export's progress; progress saved before (a resumed export) is only discarded
+        // when the person chose "Stop and discard". A refusal to resume discards progress that can never be used.
+        let refused = (error as? ResumeRefused).map { !$0.differentMac } ?? false
+        let keepWanted = options.keepProgressOnCancel || intent == .keep || (resuming && intent != .discard)
+        let hasProgress = savedFrames > 0 || journal.joinedFile != nil || journal.finalFile != nil
+        let keep = refused ? false : (canceled ? keepWanted && hasProgress : true)
         var facts = FailureExplainer.Facts()
         facts.progress = journal.progress
         facts.savedBytes = dir.map(CheckpointStore.size) ?? 0
@@ -630,6 +684,7 @@ final class RenderSession: @unchecked Sendable {
             if r.differentMac { report.actions.append(.resumeAnyway) }
         }
         if canceled && !keep { report.progress = 0 }
+        if refused { report.actions = [.startOver] }
         report.exportID = exportID
         report.logPath = log.url.path
         self.report = report
@@ -657,7 +712,8 @@ final class RenderSession: @unchecked Sendable {
             } else {
                 try? FileManager.default.removeItem(at: dir)
                 self.dir = nil
-                CheckpointStore.removeRootIfEmpty()
+                CheckpointStore.removeRootIfEmpty(dir.deletingLastPathComponent())
+                if refused { log.info("The saved progress can't be used and was removed; the export starts over", tag: "result") }
             }
         }
         log.close()

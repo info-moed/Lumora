@@ -48,7 +48,10 @@ final class FailureExplainerTests: XCTestCase {
             ("VT encoder malfunction", ns(NSOSStatusErrorDomain, -12912), .encode, .hardwareEncoderReset),
             ("encoder temporarily unavailable", ns(AVFoundationErrorDomain, -11840), .encode, .hardwareEncoderReset),
             ("unsupported output settings", ns(AVFoundationErrorDomain, -11861), .encode, .encoderRejectedSetting),
-            ("encoder not found", ns(AVFoundationErrorDomain, -11834), .encode, .toolMissing),
+            ("encoder not found", ns(AVFoundationErrorDomain, -11834), .encode, .hardwareUnsupported),
+            ("VT: no video encoder", ns(NSOSStatusErrorDomain, -12908), .encode, .hardwareUnsupported),
+            ("file too large for the drive", ns(NSCocoaErrorDomain, 512, ns(NSPOSIXErrorDomain, Int(EFBIG))), .deliver, .fileTooLarge),
+            ("name too long", ns(NSPOSIXErrorDomain, Int(ENAMETOOLONG)), .deliver, .nameRejected),
             ("GPU timeout", GPUFault(underlying: ns(MTLCommandBufferErrorDomain, Int(MTLCommandBufferError.timeout.rawValue))), .encode, .gpuError),
             ("GPU page fault", GPUFault(underlying: ns(MTLCommandBufferErrorDomain, Int(MTLCommandBufferError.pageFault.rawValue))), .encode, .gpuError),
             ("GPU out of memory", GPUFault(underlying: ns(MTLCommandBufferErrorDomain, Int(MTLCommandBufferError.outOfMemory.rawValue))), .encode, .outOfMemory),
@@ -80,6 +83,102 @@ final class FailureExplainerTests: XCTestCase {
         XCTAssertEqual(r.actions.first, .saveElsewhere)
     }
 
+    /// A delivery error Lumora doesn't know is not "the drive was disconnected" while the folder is still there.
+    func testUnknownDeliveryErrorsStayHonest() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("deliver-\(UUID().uuidString.prefix(6))")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let kept = URL(fileURLWithPath: "/tmp/Checkpoints/abc/final.mkv")
+        func deliver(_ e: Error, output: URL) -> FailureReport {
+            let c = FailureContext(stage: .deliver, fps: 24, scratch: FileManager.default.temporaryDirectory.appendingPathComponent("no-scratch"),
+                                   output: output, sourceName: "clip.mov")
+            var x = FailureExplainer.Facts()
+            x.finishedVideoKept = true
+            x.outputFolder = output.deletingLastPathComponent().lastPathComponent
+            return FailureExplainer.explain(FailureClassifier.classify(DeliveryFailure(underlying: e, kept: kept), context: c), facts: x)
+        }
+        let here = folder.appendingPathComponent("clip.mkv")
+        let bare = deliver(ns(NSCocoaErrorDomain, 512), output: here)
+        XCTAssertEqual(bare.failure.kind, .unknown, "a bare Cocoa 512 is not a disconnected drive")
+        XCTAssertEqual(bare.title, "Lumora doesn't recognize this error")
+        let big = deliver(ns(NSCocoaErrorDomain, 512, ns(NSPOSIXErrorDomain, Int(EFBIG))), output: here)
+        XCTAssertEqual(big.failure.kind, .fileTooLarge)
+        XCTAssertTrue(big.simple.contains("over 4 GB"), big.simple)
+        XCTAssertTrue(big.means.contains("Nothing has to be rendered again"), big.means)
+        XCTAssertEqual(big.actions.first, .saveElsewhere)
+        let name = deliver(ns(NSPOSIXErrorDomain, Int(EINVAL), path: here.path), output: here)
+        XCTAssertEqual(name.failure.kind, .nameRejected)
+        XCTAssertTrue(name.simple.contains("“clip.mkv”"), name.simple)
+        let gone = deliver(ns(NSCocoaErrorDomain, 512), output: URL(fileURLWithPath: "/Volumes/Unplugged-\(UUID().uuidString)/clip.mkv"))
+        XCTAssertEqual(gone.failure.kind, .outputDriveGone, "an unknown error with the output folder really gone")
+    }
+
+    /// A read-only scratch drive names the scratch drive and offers another one, not another output folder.
+    func testScratchPermissionNamesTheScratchFolder() {
+        let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("Lumora Scratch")
+        let c = FailureContext(stage: .encode, fps: 24, scratch: scratch, output: URL(fileURLWithPath: "/tmp/Movies/clip.mkv"), sourceName: "clip.mov")
+        var x = FailureExplainer.Facts()
+        x.outputFolder = "Movies"
+        x.scratchVolume = "Scratch SSD"
+        let seg = scratch.appendingPathComponent("Checkpoints/abc/segments/s00001.a1.ivf").path
+        for e in [ns(NSPOSIXErrorDomain, Int(EROFS), path: seg), ns(NSCocoaErrorDomain, 642, path: seg)] {
+            let r = FailureExplainer.explain(FailureClassifier.classify(e, context: c), facts: x)
+            XCTAssertEqual(r.failure.kind, .noPermission)
+            XCTAssertTrue(r.title.contains("scratch"), r.title)
+            XCTAssertFalse(r.simple.contains("Movies"), r.simple)
+            XCTAssertEqual(r.actions.first, .chooseScratch)
+            XCTAssertFalse(r.actions.contains(.saveElsewhere))
+        }
+        let blocked = FailureExplainer.explain(FailureClassifier.classify(ns(NSPOSIXErrorDomain, Int(EPERM), path: "/Volumes/Scratch SSD/Lumora Scratch/x"),
+                                                                          context: { var k = c; k.scratch = URL(fileURLWithPath: "/Volumes/Scratch SSD/Lumora Scratch"); return k }()), facts: x)
+        XCTAssertEqual(blocked.failure.kind, .privacyBlocked)
+        XCTAssertTrue(blocked.simple.contains("scratch folder"), blocked.simple)
+        XCTAssertEqual(blocked.actions, [.openPrivacySettings, .chooseScratch])
+        // The output folder still gets the output wording.
+        let out = FailureExplainer.explain(FailureClassifier.classify(ns(NSPOSIXErrorDomain, Int(EACCES), path: "/tmp/Movies/clip.mkv"),
+                                                                      context: { var k = c; k.stage = .deliver; return k }()), facts: x)
+        XCTAssertTrue(out.simple.contains("“Movies”"), out.simple)
+        XCTAssertEqual(out.actions.first, .saveElsewhere)
+    }
+
+    /// A built-in hardware encoder can't be installed: the advice is another codec or setting.
+    func testMissingHardwareEncoderIsNotAMissingTool() {
+        for e in [ns(AVFoundationErrorDomain, -11834), ns(NSOSStatusErrorDomain, -12908)] {
+            let r = explain(e)
+            XCTAssertEqual(r.failure.kind, .hardwareUnsupported)
+            XCTAssertEqual(r.actions.first, .chooseCodec)
+            XCTAssertFalse(r.actions.contains(.installTool))
+            XCTAssertFalse(r.simple.contains("helper tool"), r.simple)
+        }
+    }
+
+    /// Encoder errors that aren't about a setting aren't blamed on one; setting errors in the other formats are found.
+    func testOnlySettingErrorsAreCalledRejectedSettings() {
+        let notSettings: [(String, String)] = [
+            ("x265", "x265 [error]: failed to open output file </private/tmp/seg/s00001.hevc> for writing\n"),
+            ("x265", "x265 [error]: malloc of size 23592960 failed\n"),
+            ("SvtAv1EncApp", "Svt[error]: Instance 1: allocation of the picture buffers failed\n"),
+        ]
+        for (tool, stderr) in notSettings {
+            let r = explain(ToolFailure(tool: tool, args: [], exitStatus: 1, stderrTail: stderr))
+            XCTAssertEqual(r.failure.kind, .encoderFailed, stderr)
+            XCTAssertFalse(r.simple.contains("custom encoder option"), r.simple)
+        }
+        let settings: [(String, String, [String], String, String?)] = [
+            ("SvtAv1EncApp", "Error: EncoderMode must be in the range of [-1-13]\n", ["--preset", "99"], "--preset (EncoderMode)", "between -1 and 13"),
+            ("vvencapp", "Error parsing option \"preset\" with argument \"warp\".\n", ["--preset", "warp"], "--preset warp", nil),
+            ("x265", "x265 [error]: max consecutive bframe count must be 16 or smaller\nx265 [error]: x265_encoder_open() failed for Enc, \n",
+             ["--bframes", "99"], "max consecutive bframe count", "16 or smaller"),
+        ]
+        for (tool, stderr, args, setting, range) in settings {
+            let r = explain(ToolFailure(tool: tool, args: args, exitStatus: 1, stderrTail: stderr))
+            XCTAssertEqual(r.failure.kind, .encoderRejectedSetting, stderr)
+            XCTAssertEqual(r.failure.setting, setting, stderr)
+            XCTAssertEqual(r.failure.range, range, stderr)
+            XCTAssertEqual(r.actions.first, .resetSettings)
+        }
+    }
+
     // MARK: Tools: signals, settings, metadata
 
     func testCrashedEncoderNamesTheToolAndSignal() {
@@ -105,7 +204,7 @@ final class FailureExplainerTests: XCTestCase {
 
     func testRejectedSettingsAreNamedFromRealEncoderMessages() {
         let samples: [(String, String, [String], String, String?)] = [
-            ("SvtAv1EncApp", "Svt[error]: CRF must be [0 - 70]\n", ["--crf", "99"], "CRF", "between 0 and 70"),
+            ("SvtAv1EncApp", "Svt[error]: CRF must be [0 - 70]\n", ["--crf", "99"], "--crf (CRF)", "between 0 and 70"),
             ("SvtAv1EncApp", "Unprocessed tokens: --bogus-opt 3\n", ["--bogus-opt", "3"], "--bogus-opt", nil),
             ("aomenc", "Error: Tried to set control 25 = 99\nFailed to control codec: Invalid parameter\n", ["--cq-level=99"], "--cq-level=99", nil),
             ("aomenc", "Error: Unrecognized option --bogus=1\n", ["--bogus=1"], "--bogus", nil),
@@ -225,12 +324,55 @@ final class FailureExplainerTests: XCTestCase {
         XCTAssertTrue(text.contains("<source>") || text.contains("<output>"))
     }
 
+    /// An export that failed before saving anything has no resume offer: its report still hides the source and output
+    /// names (from the export log's header) and every personal folder name on the way to them.
+    func testDiagnosticReportWithoutSavedProgressHidesNamesAndFolders() throws {
+        let logs = FileManager.default.temporaryDirectory.appendingPathComponent("report-logs-\(UUID().uuidString.prefix(6))")
+        defer { try? FileManager.default.removeItem(at: logs) }
+        let l = try RenderLog(exportID: "upfront", outputName: "Ceremony Cam A – Natural – HDR10.mkv", folder: logs)
+        l.raw("Lumora export log\nExport ID: upfront\nSource: \(NSHomeDirectory())/Movies/Anna and Ben Wedding/Ceremony Cam A.mov (12 MB, h264)\n"
+              + "Output: /Volumes/Stick/Ceremony Cam A – Natural – HDR10.mkv")
+        l.error("ffmpeg -i \(NSHomeDirectory())/Movies/Anna and Ben Wedding/Ceremony Cam A.mov -c copy out.mkv", tag: "tool")
+        l.close()
+        var f = RenderFailure(kind: .outputDriveGone, stage: .deliver, message: "The folder “Stick” doesn't exist")
+        f.path = "/Volumes/Stick/Ceremony Cam A – Natural – HDR10.mkv"
+        var x = FailureExplainer.Facts()
+        x.sourceName = "Ceremony Cam A.mov"
+        var r = FailureExplainer.explain(f, facts: x)
+        r.logPath = l.url.path
+        let text = DiagnosticReport.make(r, logURL: l.url, journal: nil, names: DiagnosticScrub.Names())
+        for personal in ["Anna", "Ben Wedding", "Ceremony", "Stick", NSUserName()] {
+            XCTAssertFalse(text.contains(personal), "\(personal) in:\n\(text)")
+        }
+        XCTAssertTrue(text.contains("<source>"), text)
+        XCTAssertTrue(text.contains("<output>"), text)
+        XCTAssertTrue(text.contains("~/…/<source>"), text)
+    }
+
+    /// The app's own path (no resume offer at all) gives the same scrubbed text.
+    @MainActor
+    func testAppDiagnosticReportWithoutAnOffer() throws {
+        let logs = FileManager.default.temporaryDirectory.appendingPathComponent("report-logs-\(UUID().uuidString.prefix(6))")
+        defer { try? FileManager.default.removeItem(at: logs) }
+        let l = try RenderLog(exportID: "noffer", outputName: "Family Trip.mkv", folder: logs)
+        l.raw("Lumora export log\nSource: \(NSHomeDirectory())/Movies/Grandma 90th/Family Trip.mov (1 MB, h264)\nOutput: \(NSHomeDirectory())/Movies/Family Trip.mkv")
+        l.close()
+        var r = FailureExplainer.explain(RenderFailure(kind: .noPermission, stage: .deliver, message: "denied"))
+        r.exportID = "noffer"
+        r.logPath = l.url.path
+        let model = AppModel()
+        model.resumeOffers = []
+        let text = model.diagnosticReportText(r)
+        XCTAssertFalse(text.contains("Family Trip"), text)
+        XCTAssertFalse(text.contains("Grandma"), text)
+    }
+
     /// A drive named after the app (or a tool) hides only its path, not the words the report needs.
     func testDriveNamedLikeTheAppKeepsTheReportReadable() {
         let text = DiagnosticScrub.share("Lumora export log\nOutput: /Volumes/Lumora/Movies/x.mkv\nffmpeg failed on “Lumora”",
                                          names: .init(volumes: ["Lumora"]))
         XCTAssertTrue(text.contains("Lumora export log"), text)
-        XCTAssertTrue(text.contains("/Volumes/<drive>/Movies"), text)
+        XCTAssertTrue(text.contains("/Volumes/<drive>/…/x.mkv"), text)
         XCTAssertTrue(text.contains("“<drive>”"), text)
         XCTAssertTrue(text.contains("ffmpeg failed"), text)
         // A drive that is neither protected nor quoted is still hidden wherever its path appears.

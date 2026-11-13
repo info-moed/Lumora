@@ -56,6 +56,7 @@ struct FailureReport: Codable, Identifiable, Hashable {
     var finishedVideoKept = false
     var delivery: DeliveryFormat?
     var date = Date()
+    var sourceName: String?           // hidden in a shared report
 
     var progressText: String { "\(Int((progress * 100).rounded(.down)))%" }
     var dynamicMetadataName: String { delivery == .hdr10Plus ? "HDR10+" : "Dolby Vision" }
@@ -164,16 +165,29 @@ enum FailureExplainer {
             means = saved ? "\(p) is saved on it; reconnect it and resume." : "Reconnect it and try again, or choose another scratch drive."
             actions = [.resume, .chooseScratch]
             pro = "Scratch path missing during \(f.stage.rawValue)."
+        case .noPermission where f.onScratch == true:
+            // The scratch folder (work in progress), not the output folder: changing the output folder wouldn't help.
+            title = "Lumora can't write to its scratch folder"
+            simple = "The scratch drive “\(f.volume ?? x.scratchVolume ?? "scratch")”, where Lumora keeps work in progress, is read-only, or Lumora isn't allowed to write to it."
+            means = saved ? "\(savedLine) Your source file and output folder are fine." : "Nothing was rendered yet. Your source file and output folder are fine."
+            actions = [.chooseScratch, .showFolder]
+            pro = "Permission denied (\(f.code ?? "no code")) in the scratch folder at \(f.stage.rawValue)."
         case .noPermission:
             title = "Lumora isn't allowed to save there"
-            simple = "The folder “\(x.outputFolder ?? folderName(f.path) ?? "output")” is read-only, or you don't have permission to write to it."
+            simple = "The folder “\(folderName(f.path) ?? x.outputFolder ?? "output")” is read-only, or you don't have permission to write to it."
             means = x.finishedVideoKept ? "The finished video is safe; nothing needs to be rendered again."
                 : (x.upfront || x.progress < 0.005 ? "Nothing was rendered yet." : savedLine)
             actions = x.finishedVideoKept ? [.saveElsewhere, .showFolder] : [.saveElsewhere, .showFolder]
             pro = "Permission denied (\(f.code ?? "no code")) at \(f.stage.rawValue)."
+        case .privacyBlocked where f.onScratch == true:
+            title = "macOS is blocking access to the scratch folder"
+            simple = "Your Mac's privacy settings stop Lumora from writing to its scratch folder on “\(f.volume ?? x.scratchVolume ?? "the scratch drive")”, where it keeps work in progress."
+            means = "Nothing was lost. Your source file and output folder are fine."
+            actions = [.openPrivacySettings, .chooseScratch]
+            pro = "Operation not permitted (EPERM) in the scratch folder at \(f.stage.rawValue)."
         case .privacyBlocked:
             title = "macOS is blocking access to this folder"
-            simple = "Your Mac's privacy settings stop Lumora from saving into “\(x.outputFolder ?? folderName(f.path) ?? "this folder")”."
+            simple = "Your Mac's privacy settings stop Lumora from saving into “\(folderName(f.path) ?? x.outputFolder ?? "this folder")”."
             means = x.finishedVideoKept ? "The finished video is safe; nothing needs to be rendered again." : "Nothing was lost."
             actions = [.openPrivacySettings, .saveElsewhere]
             pro = "Operation not permitted (EPERM) at \(f.stage.rawValue)."
@@ -324,6 +338,27 @@ enum FailureExplainer {
             means = "Resuming re-checks every saved part and redoes only the bad ones."
             actions = [.resume, .copyReport]
             pro = "Frame-count guard at join."
+        case .fileTooLarge:
+            let vol = f.volume ?? x.outputFolder ?? "this drive"
+            title = "The drive can't hold a file this large"
+            simple = "“\(vol)” uses a format (such as FAT32) that can't store files over 4 GB, so the finished video couldn't be saved there."
+            means = x.finishedVideoKept ? "The finished video is safe in Lumora's scratch folder. Nothing has to be rendered again." : "\(savedLine) Your source file is fine."
+            actions = [.saveElsewhere, .copyReport]
+            pro = "File too large for the destination's file system (\(f.code ?? "no code")) at \(f.stage.rawValue)."
+        case .nameRejected:
+            let vol = f.volume ?? x.outputFolder ?? "this drive"
+            let name = f.path.map { ($0 as NSString).lastPathComponent } ?? "this file"
+            title = "The drive doesn't accept this file name"
+            simple = "“\(vol)” can't store a file named “\(name)”: the name is too long, or it uses characters that drive's format doesn't allow."
+            means = x.finishedVideoKept ? "The finished video is safe in Lumora's scratch folder. Nothing has to be rendered again." : "\(savedLine) Your source file is fine."
+            actions = [.saveElsewhere, .copyReport]
+            pro = "Invalid or too long file name for the destination (\(f.code ?? "no code")) at \(f.stage.rawValue)."
+        case .hardwareUnsupported:
+            title = "This Mac's video encoder can't make this format"
+            simple = "The video encoder built into this Mac doesn't support what these settings ask for (the codec, its profile, bit depth or color format). It isn't something that can be installed."
+            means = "Nothing was encoded with these settings, and your source file is fine."
+            actions = [.chooseCodec, .copyReport]
+            pro = "VideoToolbox has no encoder for this format (\(f.code ?? "no code"))."
         case .unknown:
             title = "Lumora doesn't recognize this error"
             simple = "The export stopped because of an error Lumora doesn't have an explanation for yet: “\(short(f.message))”."
@@ -337,6 +372,7 @@ enum FailureExplainer {
         r.finishedVideoKept = x.finishedVideoKept
         r.delivery = x.delivery
         r.technical = technical(f)
+        if !x.sourceName.isEmpty { r.sourceName = x.sourceName }
         return r
     }
 

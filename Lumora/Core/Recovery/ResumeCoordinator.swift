@@ -24,7 +24,12 @@ struct ResumeOffer: Identifiable, Hashable {
 /// At launch (and after a failure), finds exports that stopped and works out why, from the journal, its heartbeat,
 /// the boot session and crash reports.
 enum ResumeCoordinator {
-    static func scan(root: URL = CheckpointStore.root) -> [ResumeOffer] {
+    /// Every scratch folder Lumora has used (saved progress stays on the drive it was made on).
+    static func scan() -> [ResumeOffer] {
+        CheckpointStore.knownRoots.flatMap { scan(root: $0) }.sorted { $0.journal.updated > $1.journal.updated }
+    }
+
+    static func scan(root: URL) -> [ResumeOffer] {
         CheckpointStore.prune(root: root, active: ActiveExports.all)
         var offers: [ResumeOffer] = []
         for (dir, j0) in CheckpointStore.all(root: root) {

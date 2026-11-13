@@ -110,6 +110,7 @@ struct RenderFailure: Codable, Hashable {
         case canceled
         case sourceIndexMissing, sourceUnsupported, sourceTruncated, sourceDamaged, sourceChanged, sourceMoved
         case metadataToolFailed, frameCountMismatch, unknown
+        case fileTooLarge, nameRejected, hardwareUnsupported
 
         var isSource: Bool { [.sourceIndexMissing, .sourceUnsupported, .sourceTruncated, .sourceDamaged, .sourceChanged, .sourceMoved].contains(self) }
         var isInterruption: Bool { rawValue.hasPrefix("interrupted") }
@@ -133,6 +134,7 @@ struct RenderFailure: Codable, Hashable {
     var frames: String?           // "1200–1439"
     var seconds: Double?          // where in the video (source damage, GPU)
     var message: String           // the error's own message
+    var onScratch: Bool?          // the path involved is in Lumora's scratch folder, not the output folder
 }
 
 /// Everything known about the export when it failed, beyond the error itself.
@@ -162,7 +164,12 @@ enum FailureClassifier {
         if case LumoraError.canceled = error { f.kind = .canceled; return f }
         if let d = error as? DeliveryFailure {
             var inner = classify(d.underlying, context: { var x = c; x.stage = .deliver; return x }())
-            if inner.kind == .unknown || inner.kind == .scratchDriveGone { inner.kind = .outputDriveGone }
+            if inner.kind == .scratchDriveGone { inner.kind = .outputDriveGone }
+            // An error Lumora doesn't know stays unknown (honest), unless the output folder really is gone.
+            if inner.kind == .unknown, let out = c.output?.deletingLastPathComponent(), !FileManager.default.fileExists(atPath: out.path) {
+                inner.kind = .outputDriveGone
+            }
+            inner.onScratch = nil
             inner.stage = .deliver
             inner.chain = f.chain
             return inner
@@ -202,8 +209,11 @@ enum FailureClassifier {
                 if k == .encoderFailed && domain == NSPOSIXErrorDomain {
                     f.lastError = "it stopped taking frames before the end of its part"
                 }
-                if [.diskFull, .outputDriveGone, .scratchDriveGone, .noPermission, .privacyBlocked].contains(k) {
+                if [.diskFull, .outputDriveGone, .scratchDriveGone, .noPermission, .privacyBlocked, .fileTooLarge, .nameRejected].contains(k) {
                     f.volume = volumeName(for: path, stage: c.stage, context: c)
+                    if let p = path, let s = c.scratch?.standardizedFileURL.path, URL(fileURLWithPath: p).standardizedFileURL.path.hasPrefix(s + "/") {
+                        f.onScratch = true
+                    }
                     if f.kind == .diskFull || f.kind == .outputDriveGone {
                         // A full or vanished output drive at delivery vs the scratch drive during encoding.
                         if k == .outputDriveGone, c.stage != .deliver, let p = path, let s = c.scratch?.path, p.hasPrefix(s) {
@@ -322,6 +332,9 @@ enum FailureClassifier {
                 if atSource { return code == Int(EIO) ? .sourceDamaged : .sourceMoved }
                 return .outputDriveGone
             case ENOMEM: return .outOfMemory
+            case EFBIG: return .fileTooLarge                             // e.g. over 4 GB on a FAT32 drive
+            case ENAMETOOLONG, EILSEQ: return .nameRejected
+            case EINVAL: return stage == .deliver && path != nil ? .nameRejected : nil   // a name the drive's format refuses
             case EPIPE: return stage == .encode ? .encoderFailed : nil    // the encoder stopped reading: it quit
             default: return nil
             }
@@ -329,6 +342,7 @@ enum FailureClassifier {
             switch code {
             case 640: return .diskFull                                   // NSFileWriteOutOfSpaceError
             case 513, 642: return .noPermission                           // no permission, read-only volume
+            case 514: return .nameRejected                                // NSFileWriteInvalidFileNameError
             case 4, 260: return atSource ? .sourceMoved : .outputDriveGone
             default: return nil
             }
@@ -337,7 +351,7 @@ enum FailureClassifier {
             case -11807: return .diskFull
             case -11801: return .outOfMemory
             case -11821, -11855, -11849: return stage == .encode ? .sourceDamaged : .sourceDamaged
-            case -11834: return .toolMissing
+            case -11834: return .hardwareUnsupported                      // no encoder for this format on this Mac
             case -11833, -11828: return .sourceUnsupported
             case -11840: return .hardwareEncoderReset
             case -11861: return .encoderRejectedSetting
@@ -349,7 +363,7 @@ enum FailureClassifier {
             switch code {
             case -12912, -12903, -12915: return .hardwareEncoderReset
             case -12911, -12909, -12137: return .sourceDamaged
-            case -12908: return .toolMissing
+            case -12908: return .hardwareUnsupported                      // no video encoder for this format
             case -12904: return .outOfMemory
             case -12848: return .sourceIndexMissing
             case -12551: return .sourceTruncated
@@ -379,9 +393,10 @@ enum FailureClassifier {
             return (0..<m.numberOfRanges).map { i in Range(m.range(at: i), in: stderr).map { String(stderr[$0]) } ?? "" }
         }
         func range(in text: String) -> String? {
-            if let m = text.range(of: #"\[\s*-?\d+(\.\d+)?\s*-\s*-?\d+(\.\d+)?\s*\]"#, options: .regularExpression) {
-                let nums = text[m].dropFirst().dropLast().components(separatedBy: "-").map { $0.trimmingCharacters(in: .whitespaces) }
-                if nums.count == 2 { return "between \(nums[0]) and \(nums[1])" }
+            if let re = try? NSRegularExpression(pattern: #"\[\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)\s*\]"#),
+               let m = re.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+               let a = Range(m.range(at: 1), in: text), let b = Range(m.range(at: 2), in: text) {
+                return "between \(text[a]) and \(text[b])"
             }
             if let m = text.range(of: #"\(\s*-?\d+ to -?\d+\s*\)"#, options: .regularExpression) {
                 return "between " + text[m].dropFirst().dropLast().replacingOccurrences(of: " to ", with: " and ").trimmingCharacters(in: .whitespaces)
@@ -393,12 +408,24 @@ enum FailureClassifier {
         if let m = first(#"Unrecognized option\s+(\S+)"#) { return (m[1].components(separatedBy: "=")[0], nil) }
         if let m = first(#"unrecognized option [`'"](\S+?)['`"]"#) { return (m[1], nil) }
         if let m = first(#"Unknown option [`'"](\S+?)['`"]"#) { return ("--" + m[1].trimmingCharacters(in: CharacterSet(charactersIn: "-")), nil) }
-        // Values out of range.
-        if let m = first(#"Svt\[error\]:\s*(.+)"#) {
-            let msg = m[1]
-            let name = msg.components(separatedBy: " must ").first.map { $0.trimmingCharacters(in: .whitespaces) } ?? msg
-            return (name.count <= 40 ? name : msg, range(in: msg))
+        // Values out of range. Only messages about a setting count: an encoder that can't open its output or runs
+        // out of memory also prints "[error]" lines, and those are not a setting the person can change.
+        func aboutASetting(_ msg: String) -> Bool {
+            let l = msg.lowercased()
+            let setting = [" must ", "out of range", "range of", "invalid", "unrecognized", "not supported", "unsupported", "exceeds", "should be", "not allowed"]
+            let other = ["failed to open", "unable to open", "malloc", "memory", "allocat", "write", "read error", "encoder_open"]
+            return setting.contains { l.contains($0) } && !other.contains { l.contains($0) }
         }
+        /// SVT-AV1's internal names for options people set.
+        let svtNames = ["EncoderMode": "--preset", "CRF": "--crf", "QP": "--qp"]
+        func named(_ msg: String) -> String {
+            let name = msg.components(separatedBy: " must ").first.map { $0.trimmingCharacters(in: .whitespaces) } ?? msg
+            guard name.count <= 40 else { return msg }
+            return svtNames[name].map { "\($0) (\(name))" } ?? name
+        }
+        if let m = first(#"Svt\[error\]:\s*(?:Error:\s*)?(.+)"#), aboutASetting(m[1]) { return (named(m[1]), range(in: m[1])) }
+        if let m = first(#"(?m)^Error:\s*(.+ must .+)$"#), aboutASetting(m[1]) { return (named(m[1]), range(in: m[1])) }
+        if let m = first(#"Error parsing option "([^"]+)" with argument "([^"]*)""#) { return ("--\(m[1]) \(m[2])", nil) }
         if let m = first(#"Tried to set control (\d+) = (\S+)"#) {
             let value = m[2]
             let arg = args.first { $0.hasSuffix("=\(value)") && $0.hasPrefix("--") }
@@ -414,9 +441,11 @@ enum FailureClassifier {
             return (name.trimmingCharacters(in: .whitespaces), range(in: msg))
         }
         if stderr.contains("preset or tune unrecognized") { return ("preset or tune", nil) }
-        if let m = first(#"x265 \[error\]:\s*(.+)"#), !m[1].contains("x265_encoder_open") {
+        if let m = first(#"x265 \[error\]:\s*(.+)"#), aboutASetting(m[1]) {
             let msg = m[1]
-            return (msg.components(separatedBy: ":").first ?? msg, range(in: msg))
+            let name = (msg.components(separatedBy: " must ").first ?? msg).components(separatedBy: ":").first ?? msg
+            let must = msg.components(separatedBy: " must be ").dropFirst().first.map { $0.trimmingCharacters(in: CharacterSet(charactersIn: " .")) }
+            return (name.trimmingCharacters(in: .whitespaces), range(in: msg) ?? must.flatMap { $0.count <= 40 ? $0 : nil })
         }
         if stderr.contains("x265_encoder_open() failed") { return ("encoder settings", nil) }
         return nil

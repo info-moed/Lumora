@@ -44,7 +44,7 @@ struct ExportLogsView: View {
 
     private func copyReport(_ e: RenderLog.Entry) {
         let id = (RenderLog.tail(e.url, lines: 4000).first { $0.hasPrefix("Export ID: ") }).map { String($0.dropFirst(11)) }
-        let saved = id.flatMap { id in CheckpointStore.all().first { $0.journal.exportID == id } }
+        let saved = id.flatMap { id in CheckpointStore.knownRoots.flatMap { CheckpointStore.all(root: $0) }.first { $0.journal.exportID == id } }
         let report = saved?.journal.failure
             ?? FailureReport(failure: RenderFailure(kind: .unknown, stage: .finished, message: e.result), title: "Export log (\(e.result))",
                              simple: "This report was made from the export log.", means: "", actions: [], proLine: "")

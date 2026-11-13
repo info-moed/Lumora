@@ -53,7 +53,7 @@ struct SourceRepairSheet: View {
                         Text(p.explanation(name)).font(Theme.body).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                Text("In the repaired copy, frames that can't be decoded are rebuilt by repeating the previous good frame; every rebuilt frame is listed in the report. Your original file is never changed.")
+                Text("In the repaired copy, frames that can't be decoded, and the frames that depend on them, are rebuilt by repeating the last good frame; every rebuilt frame is listed in the report, and every other frame is checked to be unchanged. Your original file is never changed.")
                     .font(Theme.note).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Picker("When exporting this file as it is:", selection: $damagedFrameMethod) {
                     Text("Re-create damaged frames from the neighboring frames").tag("recreate")

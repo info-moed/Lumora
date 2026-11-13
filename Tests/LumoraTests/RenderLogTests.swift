@@ -110,6 +110,17 @@ final class RenderLogTests: RecoveryTestCase {
         XCTAssertTrue(lb.contains("second.mkv") && !lb.contains("first.mkv"), "the second log only has the second export")
     }
 
+    /// A completely full startup disk: no log file can be made anywhere, and the export still starts (no crash).
+    func testExportStartsWhenNoLogCanBeWritten() {
+        setDefault("renderLogFolder", "/dev/null/logs")
+        RenderSession.fallbackLogFolder = URL(fileURLWithPath: "/dev/null/tmp-logs")
+        let s = RenderSession(job: Self.tinyJob())
+        XCTAssertFalse(s.log.isWritable)
+        XCTAssertNil(s.journal.logFile, "the journal doesn't point at a log that doesn't exist")
+        s.log.info("written nowhere")
+        s.log.close()
+    }
+
     func testDiagnosticReportFromARealLog() async throws {
         let l = try RenderLog(exportID: "rep", outputName: "Holiday Natural.mkv", folder: logs)
         l.raw("Lumora export log\nSource: \(NSHomeDirectory())/Movies/Holiday.mov\nOutput: /Volumes/Family Drive/Holiday Natural.mkv")

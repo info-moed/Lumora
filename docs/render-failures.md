@@ -36,11 +36,15 @@ under *Technical details*.
 
 | What went wrong | What Lumora says | What you can do |
 |---|---|---|
-| A drive filled up | The drive ran out of space (and which drive: the scratch drive or your output drive) | Free some space and *Resume*, or choose another scratch drive. If only the final copy failed: *Save to another folder…* (nothing is rendered again) |
+| A drive filled up | The drive ran out of space (and which drive: the scratch drive or your output drive) | Free some space and *Resume*, or *Choose another scratch drive…* (the saved progress moves there and still resumes). If only the final copy failed: *Save to another folder…* (nothing is rendered again) |
 | The output drive was unplugged, or its folder was deleted | The output drive was disconnected | *Save again* once it's back, or *Save to another folder…*; the finished video is kept |
 | The folder is read-only | Lumora isn't allowed to save there | *Save to another folder…* |
-| macOS privacy settings block the folder | macOS is blocking access to this folder | *Open Privacy & Security settings* |
+| The scratch drive is read-only (an NTFS drive, for example) | Lumora can't write to its scratch folder | *Choose another scratch drive…* |
+| macOS privacy settings block the folder | macOS is blocking access to this folder (or to the scratch folder) | *Open Privacy & Security settings* |
+| The video is over 4 GB and the drive is FAT32 | The drive can't hold a file this large | *Save to another folder…* on a drive that can (nothing is rendered again) |
+| The drive doesn't accept the file name (too long, or characters exFAT refuses) | The drive doesn't accept this file name | *Save to another folder…* |
 | An encoder or helper tool isn't installed | A helper tool is missing (names it and what it's for) | *How to install*, or choose another codec |
+| This Mac's hardware encoder can't make the format (a profile its media engine lacks) | This Mac's video encoder can't make this format | Choose a different codec or setting |
 | An encoder crashed | The (encoder) crashed while encoding 0:41–1:12 | Lumora already retried that part once; *Resume* or copy the diagnostic report |
 | An encoder refused a setting | The encoder didn't accept a setting (names the option and its allowed range) | *Reset to recommended settings* |
 | An encoder stopped with an error | The (encoder) stopped with an error (quotes its last error line) | *Resume*, or copy the diagnostic report |
@@ -140,8 +144,12 @@ Saved progress lives in the scratch folder, under `Checkpoints`. It is removed w
 after 14 days, and the oldest is removed first when all of it would take more than a quarter of the scratch drive's
 free space. **Settings → Storage → Saved progress** shows how much space it uses and can discard it. Stopping an
 export normally discards its progress; Simple mode asks whether to **Stop and keep progress** (in Pro mode, Option-click
-*Stop*). Files in a batch resume their own saved progress automatically, and a file that fails is explained, marked in
-the queue and skipped, so the rest of the batch goes on.
+*Stop*). Progress saved before (a resumed export) is kept whenever it stops, unless you choose **Stop and discard**.
+Saved progress that can't be used any more is removed, and the export starts over by itself. Files in a batch resume
+their own saved progress automatically, and a file that fails is explained, marked in the queue and skipped, so the
+rest of the batch goes on. If you change the scratch drive, progress saved on the old one is still offered (and still
+cleaned up); *Choose another scratch drive…* after a full drive moves it to the new one. Damaged source frames are
+rebuilt the way the export began, even if that setting changed before you resume.
 
 **VVC (H.266):** the packager (GPAC 26.07) mis-times a VVenC stream joined from parts shorter than one VVenC group of
 pictures (32 frames) and drops pictures. Lumora's VVC segments are therefore always at least 64 frames long (in
@@ -171,9 +179,11 @@ the source's folder can't be written). **Your original file is never changed.**
 |---|---|
 | Cut short, or the container is damaged | Rebuilds the file structure without re-encoding and keeps every frame that is there; if what's left still has damaged pictures, re-encodes just those parts |
 | Broken timestamps | Rebuilds the timing from the order of the pictures, without re-encoding (measured: frames bit-identical to the undamaged file) |
-| Damaged frames | Re-encodes only the damaged groups of pictures at very high quality and copies everything else as is; pictures that can't be decoded are rebuilt by repeating the previous good one. Measured: 72 of 96 frames bit-identical, the 24 frames of the rebuilt part listed in the report, exact frame count and timestamps, clean decode |
+| Damaged frames | Re-encodes only the damaged groups of pictures at very high quality and copies everything else as is. A damaged picture, and every picture after it in its group (they refer to it, so they show its damage), is rebuilt by repeating the last good frame; the frames before it are kept. Every rebuilt frame is listed with its time. The finished copy is decoded again and is only saved if every untouched frame is bit-identical to the source and every timestamp is where it was; otherwise Lumora says so and you can export the original as it is. Measured on H.264 (with and without B-frames), 8-bit x265 and 10-bit Apple hardware HEVC: 72 of 96 frames bit-identical, the frames kept from before the damage at about 55 dB PSNR against the source, exact frame count and timestamps, clean decode |
 | The index is missing (a recording or copy was interrupted before the end) | Can't be repaired from this file alone; Lumora says so and writes nothing. Find the original on the camera card or another complete copy; a recovery tool that uses a working clip from the same camera as a pattern may be able to rescue it |
 
-The repair report says exactly what was done ("1 frame rebuilt at 0:01.9 (repeated from the previous frame). 24
-frames re-encoded at high quality (0:01.00–0:02.00). All other frames are untouched."). *Use the repaired copy* opens it
-and keeps the look you chose.
+The repair report says exactly what was done ("18 frames at 0:01.2–0:01.9 couldn't be decoded correctly and now
+repeat the last good frame before them. The part from 0:01.0 to 0:02.0 was re-encoded at high quality. All other frames
+are untouched (checked frame by frame)."). *Use the repaired copy* opens it and keeps the look you chose. When the
+joined copy doesn't check out (for example a source whose pictures refer across keyframes), Lumora says the copy didn't
+come out right and saves nothing.

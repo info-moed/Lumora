@@ -34,11 +34,25 @@ extension AppModel {
     }
 
     /// Runs one export with checkpointing; a failure comes back as a ReportedFailure with its explanation.
-    func runExport(_ engine: ExportEngine, _ job: ExportJob, options: RecoveryOptions? = nil,
+    /// Saved progress that can't be used any more (the encoder, Lumora or the source changed) is removed by the
+    /// session, and the export starts over right away, as the Export sheet promises; `unattended` (batches) also does
+    /// that when only the Mac changed, as nobody is there to choose "Resume anyway".
+    func runExport(_ engine: ExportEngine, _ job: ExportJob, options: RecoveryOptions? = nil, unattended: Bool = false,
                    status: @escaping (String, Double) -> Void) async throws -> URL {
         let o = options ?? recoveryOptions(for: job)
         do {
-            let url = try await engine.run(job, options: o, status: status)
+            let url: URL
+            do {
+                url = try await engine.run(job, options: o, status: status)
+            } catch let r as ResumeRefused where o.resume != nil && (!r.differentMac || unattended) {
+                if let id = o.resume?.exportID { CheckpointStore.discard(id); resumeOffers.removeAll { $0.id == id } }
+                Log.notice(.app, "\(job.outputURL.lastPathComponent): \(r.localizedDescription) Starting over.")
+                status("Starting over: \(r.reason)", 0)
+                var fresh = RecoveryOptions()
+                fresh.skipDynamicMetadata = o.skipDynamicMetadata
+                fresh.lessMemory = o.lessMemory
+                url = try await engine.run(job, options: fresh, status: status)
+            }
             refreshResumeOffers()
             return url
         } catch {
@@ -56,12 +70,13 @@ extension AppModel {
                 var o = RecoveryOptions()
                 if let offer = ResumeCoordinator.match(job, in: resumeOffers) { o.resume = offer.journal }   // batches resume by themselves
                 return o
-            }(), status: status)
+            }(), unattended: true, status: status)
         } catch is CancellationError {
             throw CancellationError()            // Stop ends the whole batch; it isn't this file failing
         } catch {
             let report = (error as? ReportedFailure)?.report
-                ?? FailureExplainer.explain(FailureClassifier.classify(error, context: FailureContext(sourceName: file.lastPathComponent)))
+                ?? FailureExplainer.explain(FailureClassifier.classify(error, context: FailureContext(sourceName: file.lastPathComponent)),
+                                            facts: { var x = FailureExplainer.Facts(); x.sourceName = file.lastPathComponent; return x }())
             BatchFailures.reports.append(report)
             QueueStore.markFailed(file, failure: report.title, exportID: report.exportID)
             Log.error(.app, "Batch: \(file.lastPathComponent): \(report.title). \(report.simple)")
@@ -73,7 +88,9 @@ extension AppModel {
     /// marked failed and skipped. Returns nil (skip this file) unless the batch was stopped.
     func batchSource<T>(_ file: URL, _ body: () async throws -> T) async throws -> T? {
         do { return try await body() } catch is CancellationError { throw CancellationError() } catch {
-            let report = FailureExplainer.explain(FailureClassifier.classify(error, context: FailureContext(stage: .decode, sourceName: file.lastPathComponent)))
+            var facts = FailureExplainer.Facts()
+            facts.sourceName = file.lastPathComponent
+            let report = FailureExplainer.explain(FailureClassifier.classify(error, context: FailureContext(stage: .decode, sourceName: file.lastPathComponent)), facts: facts)
             BatchFailures.reports.append(report)
             QueueStore.markFailed(file, failure: report.title, exportID: nil)
             Log.error(.app, "Batch: \(file.lastPathComponent): \(report.title). \(report.simple)")
@@ -130,8 +147,8 @@ extension AppModel {
             if p.runModal() == .OK, let u = p.url {
                 ScratchManager.shared.root = u.appendingPathComponent("Lumora Scratch")
                 try? FileManager.default.createDirectory(at: ScratchManager.shared.root, withIntermediateDirectories: true)
-                status = "Scratch drive changed; export again to use it"
                 renderFailure = nil
+                if let offer { moveSavedProgress(offer, to: ScratchManager.shared.root) } else { status = "Scratch drive changed; export again to use it" }
             }
         case .showFolder:
             if let path = report.failure.path ?? offer?.journal.outputPath {
@@ -158,11 +175,37 @@ extension AppModel {
         }
     }
 
-    func copyDiagnosticReport(_ report: FailureReport) {
+    /// Saved progress follows the scratch drive the person picked ("Choose another scratch drive…" after the old one
+    /// filled up): it moves there, keeps its resume offer, and stops taking room on the old drive.
+    func moveSavedProgress(_ offer: ResumeOffer, to scratch: URL) {
+        let id = offer.id
+        let t = TaskCenter.shared.begin("Moving saved progress to the new scratch drive", symbol: "externaldrive")
+        Task {
+            let result = await Task.detached { Result { try CheckpointStore.move(id, toScratch: scratch) } }.value
+            TaskCenter.shared.finish(t)
+            refreshResumeOffers()
+            switch result {
+            case .success:
+                status = "Scratch drive changed; the saved progress moved with it. Resume when you're ready."
+                Log.notice(.storage, "Saved progress \(id) moved to \(scratch.path.displayPath)")
+            case .failure(let e):
+                status = "Scratch drive changed. The saved progress stays on the old drive (\(e.localizedDescription)); it still resumes from there."
+                Log.warning(.storage, "Saved progress \(id) couldn't be moved: \(e.localizedDescription)")
+            }
+        }
+    }
+
+    /// The privacy-scrubbed report "Copy diagnostic report" puts on the clipboard. The source and output names are
+    /// hidden whether or not saved progress exists (from its recipe, else from the export log's header).
+    func diagnosticReportText(_ report: FailureReport) -> String {
         let offer = resumeOffers.first { $0.id == report.exportID }
         var names = DiagnosticScrub.Names()
         if let o = offer, let r = o.recipe { names = DiagnosticScrub.names(source: r.source.url, output: r.outputURL) }
-        let text = DiagnosticReport.make(report, logURL: report.logPath.map { URL(fileURLWithPath: $0) }, journal: offer?.journal, names: names)
+        return DiagnosticReport.make(report, logURL: report.logPath.map { URL(fileURLWithPath: $0) }, journal: offer?.journal, names: names)
+    }
+
+    func copyDiagnosticReport(_ report: FailureReport) {
+        let text = diagnosticReportText(report)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         status = "Diagnostic report copied (personal names and paths removed)"
@@ -171,6 +214,11 @@ extension AppModel {
     /// Continues saved progress: only the missing parts are encoded. `outputFolder` or `source` override where the
     /// result goes ("Save to another folder…") or where the source now is ("Locate the file…").
     func resume(_ offer: ResumeOffer, outputFolder: URL? = nil, source: URL? = nil, adjust: (inout RecoveryOptions) -> Void = { _ in }) {
+        if ActiveExports.contains(offer.id) {          // already resuming (the banner and the sheet both clicked)
+            renderFailure = nil
+            status = "“\(offer.journal.outputName)” is already being resumed"
+            return
+        }
         guard var job = offer.recipe?.job else {
             renderFailure = nil
             errorMessage = "The saved progress for “\(offer.journal.outputName)” can't be read any more. Export it again."
@@ -209,9 +257,11 @@ extension AppModel {
         }
     }
 
-    /// Stop the running export; `keep` saves the finished part so it can resume later.
-    func stopExport(keepProgress keep: Bool) {
-        RenderSession.keepOnNextCancel = keep
+    /// Stop the running export; `keep` saves the finished part so it can resume later. A plain stop discards a new
+    /// export's progress but keeps progress saved before (a resumed export); `discard` ("Stop and discard") removes
+    /// that too.
+    func stopExport(keepProgress keep: Bool, discard: Bool = false) {
+        RenderSession.setStopIntent(keep ? .keep : (discard ? .discard : .stop))
         cancel()
     }
 

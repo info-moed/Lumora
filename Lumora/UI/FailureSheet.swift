@@ -120,7 +120,7 @@ struct StopExportButton: View {
             .help(model.simpleMode ? "Stop the export" : "Stop the export (Option-click keeps the finished part so it can resume)")
             .confirmationDialog("Stop the export?", isPresented: $confirm) {
                 Button("Stop and keep progress") { model.stopExport(keepProgress: true) }
-                Button("Stop and discard", role: .destructive) { model.stopExport(keepProgress: false) }
+                Button("Stop and discard", role: .destructive) { model.stopExport(keepProgress: false, discard: true) }
                 Button("Keep exporting", role: .cancel) {}
             } message: {
                 Text("Keeping the progress lets you resume later without encoding the finished part again. It stays on the scratch drive until you resume or discard it.")

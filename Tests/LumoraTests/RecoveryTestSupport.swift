@@ -45,6 +45,7 @@ class RecoveryTestCase: XCTestCase {
         var args = savedArgs
         args["scratchRoot"] = scratch.path
         args["renderLogFolder"] = logs.path
+        args[CheckpointStore.historyKey] = [String]()        // never the scratch drives this Mac really used
         ud.removeVolatileDomain(forName: UserDefaults.argumentDomain)
         ud.setVolatileDomain(args, forName: UserDefaults.argumentDomain)
         XCTAssertEqual(ud.string(forKey: "scratchRoot"), scratch.path)

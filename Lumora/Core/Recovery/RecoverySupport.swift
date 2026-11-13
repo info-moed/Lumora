@@ -99,6 +99,13 @@ enum DiagnosticReport {
         }
         var n = names
         if let v = r.failure.volume { n.volumes.append(v) }
+        if let logURL, n.source.isEmpty || n.output.isEmpty {
+            let fromLog = DiagnosticScrub.names(fromLog: logURL)
+            if n.source.isEmpty { n.source = fromLog.source }
+            if n.output.isEmpty { n.output = fromLog.output }
+        }
+        if let p = r.failure.path { n.files += DiagnosticScrub.both(URL(fileURLWithPath: p)) }
+        if let s = r.sourceName, !s.isEmpty, n.source.isEmpty { n.source = DiagnosticScrub.both(URL(fileURLWithPath: s)) }
         return DiagnosticScrub.share(out.joined(separator: "\n"), names: n)
     }
 }

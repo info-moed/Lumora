@@ -128,6 +128,7 @@ struct ExportJournal: Codable, Identifiable {
     var osBuild = CheckpointStore.osBuild
     var lastPressure: SystemSnapshot.Pressure = .normal
     var keepProgress = false
+    var damagedFrameMethod: String?   // how damaged source frames are rebuilt, fixed when the export began
 
     var id: String { exportID }
     var savedFrames: Int { segments.reduce(0) { $0 + $1.frames } + pieces.reduce(0) { $0 + $1.count } }
@@ -164,6 +165,54 @@ enum CheckpointStore {
 
     static func folder(_ id: String, root: URL = CheckpointStore.root) -> URL { root.appendingPathComponent(id, isDirectory: true) }
 
+    // MARK: Scratch drives used before
+
+    /// The Checkpoints folders of scratch drives used before this one (the scratch drive was changed): still searched
+    /// for saved progress, and still pruned, so progress saved there neither disappears from the app nor stays on
+    /// that drive forever. Only folders that still exist count.
+    static var knownRoots: [URL] {
+        let current = root.standardizedFileURL
+        var out = [root]
+        for p in UserDefaults.standard.stringArray(forKey: historyKey) ?? [] {
+            let u = URL(fileURLWithPath: p, isDirectory: true).standardizedFileURL
+            if u != current, !out.contains(where: { $0.standardizedFileURL == u }), FileManager.default.fileExists(atPath: u.path) { out.append(u) }
+        }
+        return out
+    }
+    static let historyKey = "checkpointRootHistory"
+
+    /// Called when the scratch folder changes: its Checkpoints folder is remembered (at most 8).
+    static func rememberScratch(_ oldScratch: URL) {
+        let p = oldScratch.appendingPathComponent("Checkpoints", isDirectory: true).standardizedFileURL.path
+        var h = (UserDefaults.standard.stringArray(forKey: historyKey) ?? []).filter { $0 != p }
+        h.insert(p, at: 0)
+        UserDefaults.standard.set(Array(h.prefix(8)), forKey: historyKey)
+    }
+
+    /// Where an export's saved progress is, on the current scratch drive or one used before.
+    static func locate(_ id: String) -> URL? {
+        knownRoots.map { folder(id, root: $0) }.first { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
+    /// Moves saved progress to another scratch folder ("Choose another scratch drive…" after the old one filled up),
+    /// so it keeps resuming and stops taking room on the old drive. Refuses when the new drive is too small.
+    static func move(_ id: String, toScratch scratch: URL) throws -> URL {
+        guard let from = locate(id) else { throw CocoaError(.fileNoSuchFile) }
+        let newRoot = scratch.appendingPathComponent("Checkpoints", isDirectory: true)
+        let to = folder(id, root: newRoot)
+        if from.standardizedFileURL == to.standardizedFileURL { return to }
+        try FileManager.default.createDirectory(at: newRoot, withIntermediateDirectories: true)
+        let needed = size(from) + DiskSpaceGuard.reserve
+        func volume(_ u: URL) -> URL? { (try? u.resourceValues(forKeys: [.volumeURLKey]))?.volume?.standardizedFileURL }
+        if volume(from) != volume(newRoot), let free = SystemSnapshot.volume(newRoot)?.free, free < needed {
+            throw CocoaError(.fileWriteOutOfSpace, userInfo: [NSFilePathErrorKey: newRoot.path])
+        }
+        try? FileManager.default.removeItem(at: to)
+        try FileManager.default.moveItem(at: from, to: to)
+        removeRootIfEmpty(from.deletingLastPathComponent())
+        return to
+    }
+
     static func create(_ id: String) throws -> URL {
         let d = folder(id)
         for sub in ["", "segments", "prepass"] {
@@ -197,6 +246,7 @@ enum CheckpointStore {
         enc.dateEncodingStrategy = .iso8601
         let data = try enc.encode(j)
         let tmp = dir.appendingPathComponent("journal.json.tmp")
+        if FaultInjection.journalSavesFail { throw NSError(domain: NSPOSIXErrorDomain, code: Int(ENOSPC), userInfo: [NSFilePathErrorKey: tmp.path]) }
         try data.write(to: tmp)
         if FaultInjection.tearJournalTmp { return }          // simulated power loss mid-write: the .tmp stays torn
         fullSync(tmp)
@@ -257,9 +307,10 @@ enum CheckpointStore {
         return total
     }
 
-    static func discard(_ id: String, root: URL = CheckpointStore.root) {
-        try? FileManager.default.removeItem(at: folder(id, root: root))
-        removeRootIfEmpty(root)
+    static func discard(_ id: String, root: URL? = nil) {
+        guard let d = root.map({ folder(id, root: $0) }) ?? locate(id) else { return }
+        try? FileManager.default.removeItem(at: d)
+        removeRootIfEmpty(d.deletingLastPathComponent())
     }
 
     /// No saved progress left: no empty "Checkpoints" folder either (the scratch folder stays clean).
@@ -308,7 +359,7 @@ enum CheckpointStore {
             return ActiveExports.contains(j.exportID)
         }
         guard j.bootSession == SystemSnapshot.bootSessionUUID(), isProcessAlive(j.pid) else { return false }
-        if let hb = heartbeat(folder(j.exportID)), Date().timeIntervalSince(hb.time) > 120 { return false }
+        if let hb = heartbeat(locate(j.exportID) ?? folder(j.exportID)), Date().timeIntervalSince(hb.time) > 120 { return false }
         return true
     }
 }

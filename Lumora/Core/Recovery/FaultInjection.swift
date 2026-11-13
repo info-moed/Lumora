@@ -24,15 +24,19 @@ enum FaultInjection {
     nonisolated(unsafe) static var crashBetweenSegmentAndJournal: Int?           // segment index
     nonisolated(unsafe) static var crashAfterSegments: Int?                     // journaled segments before a crash
     nonisolated(unsafe) static var diagnosticReportsFolder: URL?
+    nonisolated(unsafe) static var journalSavesFail = false                     // every journal write: out of space
+    nonisolated(unsafe) static var repairPartShift: Double?                     // seconds added to a repaired part's place
     nonisolated(unsafe) private static var gpuCalls = 0
     private static let lock = NSLock()
 
     static func reset() {
         handler = nil; onEncoderStarted = nil; gpuError = nil; tearJournalTmp = false
         crashBetweenSegmentAndJournal = nil; crashAfterSegments = nil; diagnosticReportsFolder = nil; gpuCalls = 0
+        journalSavesFail = false; repairPartShift = nil
         SystemSnapshot.provider = nil; SystemSnapshot.bootSessionOverride = nil; MemoryPressureWatch.override = nil
         CheckpointPlanner.segmentFramesOverride = nil
         RenderSession.pressureWait = 60
+        RenderSession.fallbackLogFolder = FileManager.default.temporaryDirectory.appendingPathComponent("Lumora-logs")
         GPUFaults.reset()
         CheckpointStore.isProcessAlive = { pid in kill(pid, 0) == 0 || errno == EPERM }
     }
@@ -54,6 +58,8 @@ enum FaultInjection {
     static let crashBetweenSegmentAndJournal: Int? = nil
     static let crashAfterSegments: Int? = nil
     static let diagnosticReportsFolder: URL? = nil
+    static let journalSavesFail = false
+    static let repairPartShift: Double? = nil
     @inline(__always) static func point(_ p: Point, attempt: Int = 1) throws {}
     @inline(__always) static func encoderStarted(_ p: Process, segment: Int, attempt: Int) {}
     @inline(__always) static func gpu() throws {}

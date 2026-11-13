@@ -18,6 +18,7 @@ enum DiagnosticScrub {
         var source: [String] = []
         var output: [String] = []
         var volumes: [String] = []
+        var files: [String] = []          // other file names the report mentions (a failing path)
     }
 
     static func share(_ s: String, names: Names = Names()) -> String {
@@ -41,8 +42,13 @@ enum DiagnosticScrub {
         for d in drives.filter({ $0.count >= 3 && !protectedWords.contains($0.lowercased()) }).sorted(by: { $0.count > $1.count }) {
             t = t.replacingOccurrences(of: d, with: "<drive>")
         }
+        // Folders: only a path's last part is kept ("~/Movies/Anna and Ben Wedding/Cam A.mov" → "~/…/Cam A.mov"):
+        // personal folder names stay on this Mac. A part ends at "(" or "," (the log puts details there) and at " -"
+        // (the next option of a command line). ~/Library holds app folders, not personal ones, so it stays readable.
+        t = t.replacingOccurrences(of: #"(~(?!/Library/)|/Users/[^/\s]+|/Volumes/<drive>|/private/var/folders|/var/folders)/(?:(?:[^/\n(),“”"' ]| (?!-))+/)+"#,
+                                   with: "$1/…/", options: .regularExpression)
         // File names first (longest first, so "clip (repaired)" goes before "clip").
-        for (list, tag) in [(names.output, "<output>"), (names.source, "<source>")] {
+        for (list, tag) in [(names.output, "<output>"), (names.source, "<source>"), (names.files, "<file>")] {
             for n in Set(list.filter { $0.count >= 3 }).sorted(by: { $0.count > $1.count }) {
                 t = t.replacingOccurrences(of: n, with: tag)
             }
@@ -77,7 +83,27 @@ enum DiagnosticScrub {
 
     /// The names an export's shared report hides: the base names (with and without extension) of source and output.
     static func names(source: URL, output: URL) -> Names {
-        func both(_ u: URL) -> [String] { [u.lastPathComponent, u.deletingPathExtension().lastPathComponent] }
-        return Names(source: both(source), output: both(output))
+        Names(source: both(source), output: both(output))
+    }
+
+    static func both(_ u: URL) -> [String] { [u.lastPathComponent, u.deletingPathExtension().lastPathComponent] }
+
+    /// The source and output names from an export log's header ("Source: ~/… (12 MB, …)", "Output: …"), for a
+    /// report about an export that left no saved progress (it failed before rendering, or was discarded).
+    static func names(fromLog url: URL) -> Names {
+        var n = Names()
+        guard let h = try? FileHandle(forReadingFrom: url) else { return n }
+        defer { try? h.close() }
+        let head = String(decoding: (try? h.read(upToCount: 16 << 10)) ?? Data(), as: UTF8.self)
+        for line in head.split(separator: "\n").prefix(60) {
+            if line.hasPrefix("Source: ") {
+                var p = String(line.dropFirst(8))
+                if let r = p.range(of: " (", options: .backwards) { p = String(p[..<r.lowerBound]) }
+                n.source = both(URL(fileURLWithPath: p))
+            } else if line.hasPrefix("Output: ") {
+                n.output = both(URL(fileURLWithPath: String(line.dropFirst(8))))
+            }
+        }
+        return n
     }
 }
