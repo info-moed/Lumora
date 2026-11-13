@@ -110,7 +110,9 @@ enum SourceIntegrity {
             for t in [0, max(0, end / 2 - 0.5), max(0, end - 1.2)] where t + 1 <= (cut == nil ? end + 0.01 : end - 1) {
                 let errs = decodeErrors(url, from: t, seconds: 1)
                 if !errs.isEmpty {
-                    h.problems.append(SourceProblem(kind: .damaged, seconds: t, detail: "Damaged frames near \(FailureText.time(t, precise: true))"))
+                    // The quick check only knows which 1-second window failed; Full check… finds the exact frames.
+                    h.problems.append(SourceProblem(kind: .damaged, seconds: t,
+                                                    detail: "Damaged frames between \(FailureText.time(t, precise: true)) and \(FailureText.time(t + 1, precise: true))"))
                     break
                 }
             }
