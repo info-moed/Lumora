@@ -70,6 +70,9 @@ struct LumoraApp: App {
         Window("Log", id: "logs") {
             LogConsoleView().environment(LogStore.shared).preferredColorScheme(.dark)
         }
+        Window("Export logs", id: "exportLogs") {
+            ExportLogsView().preferredColorScheme(.dark)
+        }
         Settings {
             SettingsView().environment(model)
         }

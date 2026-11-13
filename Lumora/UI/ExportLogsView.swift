@@ -59,3 +59,9 @@ struct ExportLogsView: View {
         note = "Copied (personal names and paths removed)"
     }
 }
+
+/// "Export logs…" for the Log window.
+struct ExportLogsButton: View {
+    @Environment(\.openWindow) private var openWindow
+    var body: some View { Button("Export logs…") { openWindow(id: "exportLogs") } }
+}

@@ -66,6 +66,7 @@ struct SourcePanel: View {
         if let d = model.descriptor {
             InspectorSection(title: d.url.lastPathComponent) {
                 Text(d.summary).font(Theme.body).foregroundStyle(.secondary)
+                SourceHealthSection()
                 if let c = model.selectedColor {
                     HStack { Text("Read as").font(Theme.body); Spacer(); Text(c.name).font(Theme.body) }
                     if let n = c.note { Text(n).font(Theme.note).foregroundStyle(Theme.marginal) }

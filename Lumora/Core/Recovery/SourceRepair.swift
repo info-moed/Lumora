@@ -67,7 +67,26 @@ enum SourceRepair {
         let fps = probe.fps
         let before = countFrames(source)
         RenderLog.current?.info("Repairing \(name): \(health.problems.map(\.kind.rawValue).joined(separator: ", "))", tag: "repair")
-        if health.problems.contains(where: { $0.kind == .damaged }) || (health.damage.map { !$0.spans.isEmpty } ?? false) {
+        let damaged = health.problems.contains(where: { $0.kind == .damaged }) || (health.damage.map { !$0.spans.isEmpty } ?? false)
+        if health.problems.contains(where: { $0.kind == .truncated }) {
+            // Cut short: rebuild the file structure first (keeps every frame that is there); if what is there still
+            // has damaged pictures, re-encode only those parts of the rebuilt copy.
+            progress(0.1, "Rebuilding the file structure")
+            let remuxed = work.appendingPathComponent("remuxed.mkv")
+            var r = try remux(source, to: remuxed, fps: fps, framesBefore: before)
+            if r.decodeErrorsAfter > 0 {
+                progress(0.4, "Finding the damaged parts")
+                var d = try reencodeDamaged(remuxed, to: dest, fps: fps, work: work.appendingPathComponent("fix", isDirectory: true),
+                                            framesBefore: before, progress: progress)
+                d.methods = [.remux, .reencodeDamaged]
+                return d
+            }
+            try? FileManager.default.removeItem(at: dest)
+            try FileManager.default.moveItem(at: remuxed, to: dest)
+            r.output = dest
+            return r
+        }
+        if damaged {
             progress(0.05, "Finding the damaged parts")
             return try reencodeDamaged(source, to: dest, fps: fps, work: work, framesBefore: before, progress: progress)
         }
@@ -122,10 +141,11 @@ enum SourceRepair {
         let probe = SourceIntegrity.Probe.run(source)
         let (num, den) = rationalFrameRate(fps)
         // Split at keyframes (Matroska: MPEG-TS's Annex-B filter rejects corrupt packets).
+        try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
         let segDir = work.appendingPathComponent("gops", isDirectory: true)
         try FileManager.default.createDirectory(at: segDir, withIntermediateDirectories: true)
         try ToolLocator.run("ffmpeg", ["-y", "-v", "error", "-fflags", "+genpts", "-i", source.path, "-map", "0:v:0", "-c", "copy",
-                                       "-f", "segment", "-segment_format", "matroska", "-reset_timestamps", "1",
+                                       "-f", "segment", "-segment_format", "matroska", "-segment_time", "0.001", "-reset_timestamps", "1",
                                        "-break_non_keyframes", "0", segDir.appendingPathComponent("g%05d.mkv").path])
         let gops = ((try? FileManager.default.contentsOfDirectory(at: segDir, includingPropertiesForKeys: nil)) ?? [])
             .filter { $0.pathExtension == "mkv" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
@@ -183,13 +203,14 @@ enum SourceRepair {
     static func encoderArgs(codec: String, source: URL) -> [String] {
         switch codec {
         case "hevc":
-            return ["-c:v", "libx265", "-crf", "12", "-pix_fmt", "yuv420p10le", "-x265-params", "repeat-headers=1:log-level=error"]
+            return ["-c:v", "libx265", "-crf", "12", "-pix_fmt", "yuv420p10le", "-x265-params", "repeat-headers=1:bframes=0:log-level=error"]
         case "prores":
             return ["-c:v", "prores_ks", "-profile:v", "3"]
         case "av1":
             return ["-c:v", "libsvtav1", "-crf", "12"]
         default:
-            return ["-c:v", "libx264", "-crf", "10", "-preset", "medium", "-pix_fmt", "yuv420p", "-x264-params", "repeat-headers=1"]
+            // No B-frames: the rebuilt part's timestamps then join the copied parts exactly.
+            return ["-c:v", "libx264", "-crf", "10", "-preset", "medium", "-bf", "0", "-pix_fmt", "yuv420p", "-x264-params", "repeat-headers=1"]
         }
     }
 

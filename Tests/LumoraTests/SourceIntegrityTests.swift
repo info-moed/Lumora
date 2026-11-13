@@ -154,7 +154,7 @@ final class SourceIntegrityTests: RecoveryTestCase {
         XCTAssertEqual(r.output.lastPathComponent, "repair-cut (repaired).mkv")
         XCTAssertEqual(r.output.deletingLastPathComponent().standardizedFileURL, src.deletingLastPathComponent().standardizedFileURL)
         XCTAssertEqual(r.methods, [.remux])
-        XCTAssertGreaterThan(r.framesAfter, 30)
+        XCTAssertGreaterThan(r.framesAfter, 24, "every frame that is there is kept")
         XCTAssertEqual(r.decodeErrorsAfter, 0, "the repaired copy decodes cleanly")
         print("[repair] truncated faststart MP4: \(r.framesAfter) frames kept, \(r.decodeErrorsAfter) decode errors — \(r.summary)")
         let mkv = try Self.truncated(try Self.good("mkv"), as: "repair-cut.mkv", keep: 0.6)

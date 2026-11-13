@@ -104,7 +104,10 @@ enum SourceIntegrity {
         }
         // Three quick 1-second decodes (start, middle, end).
         if let d = probe.duration, d > 0, ToolLocator.isAvailable("ffmpeg"), !h.problems.contains(where: { $0.blocking }) {
-            for t in [0, max(0, d / 2 - 0.5), max(0, d - 1.2)] {
+            // A file that is cut short fails to decode at its end; that is the truncation, not extra damage.
+            let cut = h.problems.first { $0.kind == .truncated }?.seconds
+            let end = cut ?? d
+            for t in [0, max(0, end / 2 - 0.5), max(0, end - 1.2)] where t + 1 <= (cut == nil ? end + 0.01 : end - 1) {
                 let errs = decodeErrors(url, from: t, seconds: 1)
                 if !errs.isEmpty {
                     h.problems.append(SourceProblem(kind: .damaged, seconds: t, detail: "Damaged frames near \(FailureText.time(t, precise: true))"))
@@ -188,7 +191,7 @@ enum SourceIntegrity {
     }
 
     static func decodeErrors(_ url: URL, from t: Double, seconds: Double) -> [String] {
-        let text = (try? ToolLocator.runCapturingStderr("ffmpeg", ["-hide_banner", "-nostdin", "-v", "error", "-ss", String(format: "%.3f", t),
+        let text = (try? ToolLocator.runCapturingStderr("ffmpeg", ["-hide_banner", "-nostdin", "-v", "error", "-threads", "1", "-ss", String(format: "%.3f", t),
                                                                  "-i", url.path, "-t", String(format: "%.3f", seconds),
                                                                  "-map", "0:v:0", "-f", "null", "-"])) ?? ""
         return RenderLog.splitLines(text).filter(isDecoderError)
@@ -335,11 +338,16 @@ enum SourceIntegrity {
         /// start, middle and end of the file.
         func timestampJump(_ url: URL) -> Double? {
             guard let d = duration, d > 0 else { return nil }
-            for t in [0, max(0, d / 2 - 1.5), max(0, d - 3)] {
+            // Three 10-second windows (start, middle, end): packet headers only, so this stays fast on long files.
+            for t in Array(Set([0, max(0, d / 2 - 5), max(0, d - 10)])).sorted() {
                 guard let out = try? ToolLocator.run("ffprobe", ["-v", "quiet", "-select_streams", "v:0",
-                                                                "-read_intervals", String(format: "%.3f%%+3", t),
-                                                                "-show_entries", "packet=dts_time", "-of", "csv=p=0", url.path]) else { continue }
-                let times = String(decoding: out, as: UTF8.self).split(separator: "\n").compactMap { Double($0.trimmingCharacters(in: CharacterSet(charactersIn: ", "))) }
+                                                                "-read_intervals", String(format: "%.3f%%+10", t),
+                                                                "-show_entries", "packet=pts_time,dts_time", "-of", "csv=p=0", url.path]) else { continue }
+                // Decode times when the container has them (MP4); Matroska keeps only presentation times, which are
+                // in display order, so those are sorted first (a jump is still a gap; a step back can't be told).
+                let rows = String(decoding: out, as: UTF8.self).split(separator: "\n").map { $0.split(separator: ",", omittingEmptySubsequences: false).map { Double($0) } }
+                let dts = rows.compactMap { $0.count > 1 ? $0[1] : nil }
+                let times = dts.count >= max(2, rows.count - 1) ? dts : rows.compactMap { $0.first ?? nil }.sorted()
                 for (a, b) in zip(times, times.dropFirst()) where b < a - 1e-6 || b - a > 2.5 / max(1, fps) {
                     return a
                 }

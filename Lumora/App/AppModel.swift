@@ -1022,9 +1022,10 @@ final class AppModel {
                 job.filmTexture = filmTexture
                 EncodeMonitor.shared.forecast = nil       // no per-file forecast in batches; never show the previous one
                 let started = Date()
-                guard let encoded = await batchExport(job, file: file) { label, v in
+                let exported = await batchExport(job, file: file, status: { label, v in
                     Task { @MainActor in self.progress = (Double(n) + v) / Double(files.count) }
-                } else { continue }              // explained and marked failed; the batch goes on
+                })
+                guard let encoded = exported else { continue }     // explained and marked failed; the batch goes on
                 // Package each file with its own name, tracks and metadata (your other packaging choices apply to all).
                 var opts = packaging
                 let guess = Naming.guess(from: file.deletingPathExtension().lastPathComponent)
@@ -1195,7 +1196,7 @@ final class AppModel {
 
     // MARK: Task plumbing
 
-    private func run(_ label: String, _ body: @escaping () async throws -> Void) {
+    func run(_ label: String, _ body: @escaping () async throws -> Void) {
         task?.cancel()
         status = label
         progress = 0

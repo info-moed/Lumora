@@ -112,6 +112,7 @@ struct LogConsoleView: View {
                 Toggle("Follow", isOn: $follow)
                 Spacer()
                 Button("Open log folder") { NSWorkspace.shared.open(Log.logFolder) }
+                ExportLogsButton()
                 Button("Export…") {
                     let p = NSSavePanel()
                     p.nameFieldStringValue = "Lumora log.txt"
@@ -390,6 +391,7 @@ struct StorageSettings: View {
                 Text("Pick your fastest Thunderbolt 4/5 or internal SSD. Sources on slow drives are read once, in order; nothing is written back to them.")
                     .font(Theme.note).foregroundStyle(.secondary)
             }
+            Section("Saved progress") { SavedProgressRow() }
             Section("Slow source drives") {
                 Toggle("Copy files to the scratch SSD when the drive is too slow to stream them", isOn: $app.autoStage)
                 Text("Otherwise Lumora streams with read-ahead and builds a small preview proxy on the SSD for smooth scrubbing.")

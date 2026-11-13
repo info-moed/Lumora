@@ -128,6 +128,7 @@ private struct SimplePanel: View {
                     if let p = model.progress { ProgressView(value: p) }
                 }
             }
+            SourceHealthSection()
             if model.analysis != nil { DisplayTargetSection(); PackageSection() }
             if !model.hotspots.isEmpty {
                 InspectorSection(title: "Busiest moments", trailing: "where smoothing is hardest") {

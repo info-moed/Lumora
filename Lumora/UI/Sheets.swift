@@ -11,6 +11,7 @@ struct ExportSheet: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Export").font(.title2.bold())
             Form {
+                ResumeOfferRow()
                 Picker("HDR format", selection: $model.delivery) {
                     ForEach(DeliveryFormat.allCases) { Text($0.displayName).tag($0) }
                 }
