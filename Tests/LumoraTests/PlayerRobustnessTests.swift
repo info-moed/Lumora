@@ -183,8 +183,9 @@ final class PlayerRobustnessTests: XCTestCase {
         e.open(info: info, choice: choice)
         try waitFor("first frame") { e.frameForDisplay(targetHost: 0) != nil }
         e.seek(toFrame: info.estimatedFrameCount - 1)
+        // The search shows frame 23 first; the count becomes exact when that run reaches its end of stream.
         try waitFor("landing on the real end (shown \(e.currentFrame?.index ?? -1), count \(e.frameCount))") {
-            _ = e.frameForDisplay(targetHost: 0); return e.currentFrame?.index == 23
+            _ = e.frameForDisplay(targetHost: 0); return e.currentFrame?.index == 23 && e.frameCount == 24
         }
         XCTAssertEqual(e.frameCount, 24)
         XCTAssertEqual(PlayerFixtures.decodeIndex(try XCTUnwrap(e.currentFrame)), 23)

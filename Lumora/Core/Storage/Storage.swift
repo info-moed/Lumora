@@ -108,7 +108,10 @@ final class ScratchManager {
     static let shared = ScratchManager()
 
     var root: URL {
-        didSet { Prefs.store.set(root.path, forKey: "scratchRoot"); refresh() }
+        didSet {
+            if oldValue.standardizedFileURL != root.standardizedFileURL { CheckpointStore.rememberScratch(oldValue) }
+            Prefs.store.set(root.path, forKey: "scratchRoot"); refresh()
+        }
     }
     private(set) var volume: VolumeInfo?
 

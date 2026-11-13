@@ -130,6 +130,13 @@ final class AppModel {
     var status = "Open a video, a RAW sequence folder, or a camera RAW file."
     var progress: Double?
     var errorMessage: String?
+    // Render recovery (logic in AppModel+Recovery.swift)
+    var renderFailure: FailureReport?
+    var resumeOffers: [ResumeOffer] = []
+    var resumeSavedProgress = true
+    var sourceHealth: SourceHealth?
+    var showRepair = false
+    var carriedGrade: (look: Look, params: GradeParams)?
     var showExport = false
     var showAdvisor = false
     var showReport = false
@@ -186,7 +193,9 @@ final class AppModel {
             previewTime = d.durationSeconds / 2
             await loadPreview()
             try await analyzeNow()
+            applyCarriedGrade()
             refreshDisplay()
+            await checkSourceHealth(d)
         }
     }
 
@@ -976,10 +985,10 @@ final class AppModel {
             for (n, file) in files.enumerated() {
                 await PauseGate.shared.wait()
                 status = "Batch \(n + 1)/\(files.count): \(file.lastPathComponent)"
-                var (d, colors) = try await SourceInspector.inspect(file)
+                guard var (d, colors) = try await batchSource(file, { try await SourceInspector.inspect(file) }) else { continue }
                 if removeBlackBars { d.crop = (try? await CropDetector.detect(d)) ?? UniformBuilder.fullFrame }
                 guard let color = colors.first else { continue }
-                let a = try await SceneAnalyzer.analyze(d, color: color, chip: chip) { _ in }
+                guard let a = try await batchSource(file, { try await SceneAnalyzer.analyze(d, color: color, chip: chip) { _ in } }) else { continue }
                 let r = (color.transfer == .pq || color.transfer == .hlg)
                     ? HDRReportCard.make(title: file.lastPathComponent, descriptor: d, color: color, analysis: a) : nil
                 let profileTask = TaskCenter.shared.begin("Content test: \(file.lastPathComponent)", symbol: "sparkle.magnifyingglass")
@@ -1016,9 +1025,10 @@ final class AppModel {
                 job.filmTexture = filmTexture
                 EncodeMonitor.shared.forecast = nil       // no per-file forecast in batches; never show the previous one
                 let started = Date()
-                let encoded = try await ExportEngine().run(job) { label, v in
+                let exported = try await batchExport(job, file: file, status: { label, v in
                     Task { @MainActor in self.progress = (Double(n) + v) / Double(files.count) }
-                }
+                })
+                guard let encoded = exported else { continue }     // explained and marked failed; the batch goes on
                 // Package each file with its own name, tracks and metadata (your other packaging choices apply to all).
                 var opts = packaging
                 let guess = Naming.guess(from: file.deletingPathExtension().lastPathComponent)
@@ -1048,8 +1058,9 @@ final class AppModel {
                 QueueStore.markDone(file, output: packaged.video)
             }
           }
-            status = "Batch finished: \(files.count) files"
-            Notifier.send("Lumora batch finished", "\(files.count) files processed")
+            let failed = batchFailureNote()      // read once: it hands the last failure to the sheet and clears the list
+            status = "Batch finished: \(files.count) files" + failed
+            Notifier.send("Lumora batch finished", "\(files.count) files processed" + failed)
         }
     }
 
@@ -1128,7 +1139,7 @@ final class AppModel {
                 EncodeMonitor.shared.forecast = forecast
                 let started = Date()
                 let engine = ExportEngine()
-                let url = try await engine.run(job) { label, value in
+                let url = try await runExport(engine, job) { label, value in
                     Task { @MainActor in self.status = "\(p.look.displayName): \(label)"; self.progress = value }
                 }
                 qcEvents = engine.qcEvents
@@ -1211,7 +1222,7 @@ final class AppModel {
 
     // MARK: Task plumbing
 
-    private func run(_ label: String, priority: TaskPriority? = nil, _ body: @escaping () async throws -> Void) {
+    func run(_ label: String, priority: TaskPriority? = nil, _ body: @escaping () async throws -> Void) {
         task?.cancel()
         status = label
         progress = 0
@@ -1219,6 +1230,11 @@ final class AppModel {
         task = Task(priority: priority) {
             do { try await body() } catch is CancellationError {
                 status = "Canceled"
+                refreshResumeOffers()
+            } catch let f as ReportedFailure {       // an export failure: the plain-language sheet, not the alert
+                renderFailure = f.report
+                status = f.report.title
+                refreshResumeOffers()
             } catch {
                 errorMessage = error.localizedDescription
                 Log.error(.app, "\(label): \(error.localizedDescription)")

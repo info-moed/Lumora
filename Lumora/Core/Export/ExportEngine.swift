@@ -38,6 +38,9 @@ final class ExportEngine {
     let probe = RenderProbe()
     let chip = ChipProfile.current
     private(set) var qcEvents: [QCEvent] = []
+    /// The last run's session: its log, journal and, after a failure, the plain-language report.
+    private(set) var session: RenderSession?
+    var lastFailure: FailureReport? { session?.report }
 
     private struct Context {
         var job: ExportJob
@@ -53,7 +56,7 @@ final class ExportEngine {
     }
 
     /// How grain is handled for this export (all modes keep scoring fair).
-    struct GrainPlan {
+    struct GrainPlan: Codable {
         var cleanInput = false        // Lumora removes grain before the encoder (measured table re-adds it)
         var cleanReference = false    // metrics compare against the de-grained master
         var strip = false             // decode without synthetic grain when scoring
@@ -512,25 +515,46 @@ final class ExportEngine {
         return (frames, reference.isEmpty ? nil : reference)
     }
 
-    func run(_ job: ExportJob, status: @escaping (String, Double) -> Void) async throws -> URL {
+    func run(_ job: ExportJob, options: RecoveryOptions = RecoveryOptions(), status: @escaping (String, Double) -> Void) async throws -> URL {
+        let session = RenderSession(job: job, options: options)
+        self.session = session
+        return try await session.run { try await self.render(job, session: session, status: status) }
+    }
+
+    private func render(_ job: ExportJob, session: RenderSession, status: @escaping (String, Double) -> Void) async throws -> URL {
         if let problem = Self.validate(job) { throw LumoraError.unsupported(problem) }
         try Self.checkOutputFolder(job.outputURL)
         var ctx = try baseContext(job)
         let monitored = probe.begin(job, frames: ctx.plan.count, rate: ctx.rate); defer { monitored.end() }
         let d = job.descriptor
         let plan = ctx.plan
+        let workers = chip.segments(for: job.codec, frameCount: plan.count)
+        try session.beginCheckpointing(planInput: RecoveryHooks.planInput(job, plan: plan, width: ctx.width, height: ctx.height, workers: workers),
+                                       rate: ctx.rate, encode: RecoveryHooks.fingerprint(job, threads: chip.threadsPerSegment(segments: workers)))
+        if let finished = session.savedFinal {    // "Save again": the finished video only has to be moved into place
+            try session.deliver(finished) { try Self.clearOutput(job); try FileManager.default.moveItem(at: $0, to: job.outputURL) }
+            return job.outputURL
+        }
         if let c = job.encodeChoice { Log.notice(.encode, "Encoder settings: \(c.rungLabel) + \(c.optionIDs.joined(separator: ", ")) → \(c.extraArgs.joined(separator: " "))") }
         let grainTmp = try ScratchManager.jobDirectory("grain")
         defer { try? FileManager.default.removeItem(at: grainTmp) }
+        let grainCtx = ctx
         monitored.preparing(.grain)
-        ctx.grain = try await planGrain(ctx, workDir: grainTmp)
+        ctx.grain = try await session.stage(.grain) {
+            try await RecoveryHooks.grain(session, job) { try await self.planGrain(grainCtx, workDir: session.prepassFolder ?? grainTmp) }
+        }
 
         if job.target.isHDR {
             status("Measuring HDR light levels", 0)
             monitored.preparing(.lightLevels)
-            let levels = try await SceneAnalyzer.measureLightLevels(d, color: job.preset.color, preset: job.preset,
-                                                                    analysis: job.analysis, target: job.target,
-                                                                    sourcePeakNits: job.sourcePeakNits) { status("Measuring HDR light levels", $0); monitored.preparingProgress($0) }
+            let levels = try await session.stage(.levels) {
+                if let saved = session.savedLevels { return saved }
+                let l = try await SceneAnalyzer.measureLightLevels(d, color: job.preset.color, preset: job.preset,
+                                                                   analysis: job.analysis, target: job.target,
+                                                                   sourcePeakNits: job.sourcePeakNits) { status("Measuring HDR light levels", $0); monitored.preparingProgress($0) }
+                session.saveLevels(l)
+                return l
+            }
             ctx.levels = levels
             ctx.meta = HDRMetadata.Static(peakNits: job.target.effectivePeak, maxCLL: levels.maxCLL, maxFALL: levels.maxFALL)
         }
@@ -542,60 +566,67 @@ final class ExportEngine {
 
         if let t = job.qualityTarget, ![.prores422HQ, .prores4444XQ, .av2].contains(job.codec) {
             Log.notice(.encode, "Encoding to VMAF \(t.vmaf) (\(t.pool.rawValue)) for \(job.contentKind.displayName)")
+            session.setStage(.encode)
             let pieces = try await runTargetQuality(ctx, tmp: tmp, status: status)
             monitored.searchFinished()
             status("Finishing file", 1)
-            var result = try addContainerHDR10Metadata(ctx, file: try await join(ctx, segments: pieces, tmp: tmp), tmp: tmp)
-            if Self.needsMetadataPass(job.delivery) { result = try injectDynamicMetadata(ctx, file: result, tmp: tmp) }
+            try session.checkSourceBeforeJoin()
+            session.setStage(.join)
+            let joined = try await join(ctx, segments: pieces, tmp: tmp)
+            try session.checkFrameCount(joined, expected: ctx.plan.count)
+            session.setStage(.hdr10Container)
+            var result = try addContainerHDR10Metadata(ctx, file: joined, tmp: tmp)
+            if Self.needsMetadataPass(job.delivery) && !session.options.skipDynamicMetadata {
+                session.setStage(.metadata)
+                result = try injectDynamicMetadata(ctx, file: result, tmp: tmp)
+            }
             try Task.checkCancellation()          // never move a canceled export into place
-            try Self.clearOutput(job)
-            try FileManager.default.moveItem(at: result, to: job.outputURL)
+            try session.deliver(result) { try Self.clearOutput(job); try FileManager.default.moveItem(at: $0, to: job.outputURL) }
             ExportManifest(output: job.outputURL.path, source: job.descriptor.url.path, codec: job.codec, rateNum: ctx.rate.num,
                            rateDen: ctx.rate.den, frames: ctx.plan.count, delivery: job.delivery,
                            chunks: lastPieces.map { .init(start: $0.start, count: $0.count, level: $0.level) }, created: Date(),
                            peakNits: job.target.kind == .sdr ? nil : job.target.effectivePeak).save()
             return job.outputURL
         }
-        let ranges = segmentRanges(ctx, count: chip.segments(for: job.codec, frameCount: plan.count))
         let progress = SegmentProgress(total: plan.count) { status($0, $1) }
-        let label = "Encoding \(job.codec.displayName) · \(ranges.count) parallel segment\(ranges.count == 1 ? "" : "s")"
-        let threads = chip.threadsPerSegment(segments: ranges.count)
+        let label = "Encoding \(job.codec.displayName) · \(workers) parallel segment\(workers == 1 ? "" : "s")"
+        let threads = chip.threadsPerSegment(segments: workers)
         let frozen = ctx   // immutable copy for the concurrent segment tasks
 
-        let segmentFiles: [URL] = try await withThrowingTaskGroup(of: (Int, URL, [QCEvent]).self) { group in
-            for (n, range) in ranges.enumerated() {
-                group.addTask {
-                    if job.codec.isHardware {
-                        let url = tmp.appendingPathComponent("seg\(n).mov")
-                        let ev = try await self.encodeVideoToolbox(frozen, range: range, to: url) { progress.tick(label) }
-                        return (n, url, ev)
-                    } else {
-                        let ext = self.encoderSpec(job)!.ext
-                        let url = tmp.appendingPathComponent("seg\(n).\(ext)")
-                        let ev = try await self.encodeCLI(frozen, range: range, to: url, tmp: tmp, index: n,
-                                                          threads: threads) { progress.tick(label) }
-                        return (n, url, ev)
-                    }
+        // Every export is encoded in checkpointed segments (CheckpointPlanner): a failure or crash loses at most the
+        // segments being encoded at that moment, and a resumed export encodes only what is missing.
+        var joined: URL
+        if let saved = session.savedJoined {
+            joined = try RecoveryHooks.link(saved, into: tmp)
+        } else {
+            let ext = job.codec.isHardware ? "mov" : (self.encoderSpec(job)?.ext ?? "bin")
+            let (segmentFiles, events) = try await session.runSegments(ext: ext, encode: { seg, url, attempt, tick in
+                if job.codec.isHardware {
+                    return try await self.encodeVideoToolbox(frozen, range: seg.range, to: url, preroll: seg.preroll,
+                                                             segment: seg.index, attempt: attempt, tick: tick)
+                } else {
+                    return try await self.encodeCLI(frozen, range: seg.range, to: url, tmp: tmp, index: seg.index, threads: threads,
+                                                    preroll: seg.preroll, attempt: attempt, tick: tick)
                 }
-            }
-            var out: [(Int, URL)] = []
-            for try await (n, url, events) in group {
-                out.append((n, url))
-                qcEvents += events
-            }
-            return out.sorted { $0.0 < $1.0 }.map(\.1)
+            }, tick: { progress.tick(label) })
+            qcEvents += events
+            try Task.checkCancellation()
+            status("Finishing file", 1)
+            try session.checkSourceBeforeJoin()
+            session.setStage(.join)
+            let file = try await join(ctx, segments: segmentFiles, tmp: tmp)
+            try session.checkFrameCount(file, expected: plan.count)
+            joined = try RecoveryHooks.link(session.checkpointJoined(file), into: tmp)
         }
-
-        try Task.checkCancellation()
-        status("Finishing file", 1)
-        var result = try addContainerHDR10Metadata(ctx, file: try await join(ctx, segments: segmentFiles, tmp: tmp), tmp: tmp)
-        if Self.needsMetadataPass(job.delivery) {
+        session.setStage(.hdr10Container)
+        var result = try addContainerHDR10Metadata(ctx, file: joined, tmp: tmp)
+        if Self.needsMetadataPass(job.delivery) && !session.options.skipDynamicMetadata {
+            session.setStage(.metadata)
             status("Adding \(job.delivery.displayName) metadata", 1)
             result = try injectDynamicMetadata(ctx, file: result, tmp: tmp)
         }
         try Task.checkCancellation()              // never move a canceled export into place
-        try Self.clearOutput(job)
-        try FileManager.default.moveItem(at: result, to: job.outputURL)
+        try session.deliver(result) { try Self.clearOutput(job); try FileManager.default.moveItem(at: $0, to: job.outputURL) }
         // No chunk map (repair needs a target-quality export), but the rate and peak let the player show raw
         // streams such as AV2 .obu, which carry neither, at the right speed and brightness.
         ExportManifest(output: job.outputURL.path, source: job.descriptor.url.path, codec: job.codec, rateNum: ctx.rate.num,
@@ -650,11 +681,13 @@ final class ExportEngine {
     private func startProducer(_ ctx: Context, range: Range<Int>, depth: Int) async throws
         -> (BoundedChannel<Prepared>, Task<[QCEvent], Error>) {
         let job = ctx.job
-        var source = try await job.descriptor.makeFrameSource(highPrecision: job.highPrecision)
+        var source = ConcealingFrameSource.wrap(try await job.descriptor.makeFrameSource(highPrecision: job.highPrecision),
+                                                descriptor: job.descriptor)
         if let repairPlan = job.externalRepair {
             source = PatchedFrameSource(base: source, plan: repairPlan,
                                         proxyUniforms: UniformBuilder.analysis(source: job.preset.color, gridW: 1, gridH: 1))
         }
+        source = RecoveryHooks.rebuildingDamagedFrames(source, job)
         source = probe.meteredSource(source, lane: range)
         let analysis = job.analysis
         let stream = try FrameStream(source: source, plan: ctx.plan[range], settings: job.interpolation,
@@ -728,14 +761,18 @@ final class ExportEngine {
 
     /// Three concurrent stages: producer (decode/interpolate/upscale) -> grader (GPU, never blocks a thread)
     /// -> writer (media engine). Each hands frames to the next through a bounded channel.
-    private func encodeVideoToolbox(_ ctx: Context, range: Range<Int>, to url: URL,
+    private func encodeVideoToolbox(_ ctx: Context, range: Range<Int>, to url: URL, preroll: Int = 0, segment: Int = 0, attempt: Int = 1,
                                     tick: @escaping () -> Void) async throws -> [QCEvent] {
         let job = ctx.job
         let metal = MetalContext.shared
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+        // The movie's edit list and duration count in this clock too (default 1/600 s, rounded down). Segments are
+        // joined end to end by that duration, so a rounded one shifts every later frame (23.976, 29.97, 8x of them).
+        writer.movieTimeScale = CMTimeScale(ctx.rate.num)
         var settings = videoSettings(ctx, includeCompression: true)
         if !writer.canApply(outputSettings: settings, forMediaType: .video) {
             settings = videoSettings(ctx, includeCompression: false)   // never crash on an unsupported key
+            RecoveryHooks.settingsDropped(ctx.job)
         }
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
         input.expectsMediaDataInRealTime = false
@@ -756,10 +793,11 @@ final class ExportEngine {
             kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any]()
         ])
         writer.add(input)
-        guard writer.startWriting() else { throw LumoraError.unsupported(writer.error?.localizedDescription ?? "writer") }
+        guard writer.startWriting() else { throw writer.error ?? LumoraError.unsupported("writer") }
         writer.startSession(atSourceTime: .zero)
 
-        let (prepared, producer) = try await startProducer(ctx, range: range, depth: MacProfile.current?.pipelineDepth ?? 4)
+        let (prepared, producer) = try await startProducer(ctx, range: (range.lowerBound - preroll)..<range.upperBound,
+                                                           depth: MacProfile.current?.pipelineDepth ?? 4)
         let encoded = BoundedChannel<(CVPixelBuffer, CMTime)>(capacity: 3)
         let renderer = GradeRenderer()
         let rgbFormat: MTLPixelFormat = job.highPrecision ? .rgba32Float : .rgba16Float
@@ -768,7 +806,19 @@ final class ExportEngine {
         let grader = Task {
             do {
                 var i = 0
+                var skip = preroll        // frames rendered only so the grade's temporal state matches an unbroken run
                 while let f = try await prepared.receive() {
+                    if skip > 0 {
+                        skip -= 1
+                        let cb = metal.queue.makeCommandBuffer()!
+                        renderer.encodeGrade(cb, source: f.texture, destination: rgb,
+                                             uniforms: uniforms(ctx, sourceIndex: f.sourceIndex, outputIndex: f.outputIndex, crop: f.crop),
+                                             temporalKey: job.analysis.sceneIndex(for: f.sourceIndex))
+                        await cb.commitAndWait()
+                        _ = f.keep
+                        try GPUFaults.check()
+                        continue
+                    }
                     guard let pool = adaptor.pixelBufferPool else { throw LumoraError.unsupported("No pixel buffer pool") }
                     var out: CVPixelBuffer?
                     CVPixelBufferPoolCreatePixelBuffer(nil, pool, &out)
@@ -783,6 +833,7 @@ final class ExportEngine {
                     probe.graded(cb, rgb: rgb, outputIndex: f.outputIndex, lane: range.lowerBound)
                     await cb.commitAndWait()                 // suspends; no thread is blocked
                     _ = (keep, f.keep)
+                    try GPUFaults.check()
                     await encoded.send((pb, CMTime(value: CMTimeValue(i) * CMTimeValue(ctx.rate.den),
                                                    timescale: CMTimeScale(ctx.rate.num))))
                     i += 1
@@ -798,8 +849,9 @@ final class ExportEngine {
                 try Task.checkCancellation()
                 let (pb, time) = item
                 while !input.isReadyForMoreMediaData { try await Task.sleep(nanoseconds: 1_000_000) }
+                try FaultInjection.point(.writerAppend(segment: segment, frame: Int(time.value / CMTimeValue(max(1, ctx.rate.den)))), attempt: attempt)
                 guard adaptor.append(pb, withPresentationTime: time) else {
-                    throw LumoraError.unsupported(writer.error?.localizedDescription ?? "append failed")
+                    throw writer.error ?? LumoraError.unsupported("append failed")
                 }
                 tick()
             }
@@ -817,7 +869,7 @@ final class ExportEngine {
         let events = try await producer.value
         input.markAsFinished()
         await writer.finishWriting()
-        if writer.status != .completed { throw LumoraError.unsupported(writer.error?.localizedDescription ?? "write failed") }
+        if writer.status != .completed { throw writer.error ?? LumoraError.unsupported("write failed") }
         return events
     }
 
@@ -887,6 +939,7 @@ final class ExportEngine {
         }
         process.arguments = arguments
         Log.debug(.tools, "\(spec.binary) \(process.arguments!.joined(separator: " "))")
+        RenderLog.current?.command(spec.binary, arguments, tag: tag)
         let log = tmp.appendingPathComponent("enc-\(tag).log")
         FileManager.default.createFile(atPath: log.path, contents: nil)
         process.standardError = try FileHandle(forWritingTo: log)
@@ -942,7 +995,8 @@ final class ExportEngine {
         let concurrent = MacProfile.current?.concurrentChunks ?? max(1, min(3, chip.cpuCores / 6))
         let budget = Double(ProcessInfo.processInfo.physicalMemory) * (MacProfile.current?.ramFraction ?? 0.30) / Double(concurrent + 1)
         let maxFrames = max(fps, min(Int(budget / perFrame), fps * 10))
-        let chunks = chunkRanges(ctx, maxFrames: maxFrames, minFrames: fps * 3 / 2)
+        let computedChunks = chunkRanges(ctx, maxFrames: maxFrames, minFrames: fps * 3 / 2)
+        let chunks = session?.targetChunks(computedChunks) ?? computedChunks     // saved with the export, reused on resume
         let threads = max(2, chip.cpuCores / concurrent)
         Log.notice(.quality, "Target VMAF \(target.vmaf) (\(target.pool.rawValue)): \(chunks.count) chunks ≤ \(maxFrames) frames, \(concurrent) at a time, \(threads) threads each. RAM per chunk ≈ \(ByteCountFormatter.string(fromByteCount: Int64(perFrame * Double(maxFrames)), countStyle: .memory))")
         await MainActor.run { EncodeMonitor.shared.reset(target: target, chunks: chunks, totalFrames: ctx.plan.count) }
@@ -983,6 +1037,7 @@ final class ExportEngine {
                     }
                     probe.graded(cb, rgb: rgb, outputIndex: f.outputIndex, lane: 0)
                     await cb.commitAndWait()
+                    try GPUFaults.check()
                     _ = f.keep
                     current.append(planes)
                     if let refPlanes { currentRef.append(refPlanes) }
@@ -1017,17 +1072,23 @@ final class ExportEngine {
             var running = 0
             while let chunk = try await channel.receive() {
                 try Task.checkCancellation()
+                if let saved = self.session?.savedPieces(chunk: chunk.id) {     // finished before an interruption
+                    pieces += saved
+                    await MainActor.run { EncodeMonitor.shared.update(chunk.id) { $0.state = .done } }
+                    continue
+                }
                 if running >= LoadGovernor.shared.limit(concurrent), let done = try await group.next() { pieces += done; running -= 1 }
                 let scene = job.analysis.scenes[safe: job.analysis.sceneIndex(for: ctx.plan[chunk.start].a)]
                     ?? SceneStats(start: 0, end: 0, keyStops: -1.2, p005: -6, p50: -1, p995: 3, skinFraction: 0, avgChroma: 0)
                 let r = chunk.start..<(chunk.start + chunk.frames.count)
                 let share = Double(ctx.plan[r].filter { $0.kind != .original }.count) / Double(max(1, r.count))
                 group.addTask {
-                    try await tq.encode(frames: chunk.frames, chunkID: chunk.id, start: chunk.start, sceneStats: scene,
+                    let done = try await tq.encode(frames: chunk.frames, chunkID: chunk.id, start: chunk.start, sceneStats: scene,
                                         interpolatedShare: share, kind: job.contentKind, encodeOne: encodeOne,
                                         target: target, rate: ctx.rate, workDir: tmp, threads: threads, codec: job.codec,
                                         hdr: job.target.isHDR, hlg: job.target.kind == .hlg, referenceFrames: chunk.reference,
                                         stripSyntheticGrain: ctx.grain.strip)
+                    return try self.session?.chunkDone(chunk.id, done) ?? done
                 }
                 running += 1
             }
@@ -1148,6 +1209,7 @@ final class ExportEngine {
 
     private func encodeChunkVT(_ ctx: Context, frames: [PlanarFrame], quality: Double, to url: URL) async throws {
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+        writer.movieTimeScale = CMTimeScale(ctx.rate.num)   // exact chunk durations, as in encodeVideoToolbox
         var settings = videoSettings(ctx, includeCompression: true)
         if var comp = settings[AVVideoCompressionPropertiesKey] as? [String: Any] {
             comp[kVTCompressionPropertyKey_Quality as String] = quality
@@ -1180,16 +1242,28 @@ final class ExportEngine {
     }
 
     private func encodeCLI(_ ctx: Context, range: Range<Int>, to url: URL, tmp: URL, index: Int, threads: Int,
-                           tick: @escaping () -> Void) async throws -> [QCEvent] {
+                           preroll: Int = 0, attempt: Int = 1, tick: @escaping () -> Void) async throws -> [QCEvent] {
         let job = ctx.job
         guard let spec = encoderSpec(job) else {
             throw LumoraError.unsupported("No encoder configured for \(job.codec.displayName)")
         }
         let metal = MetalContext.shared
-        let (process, handle, log) = try await startCLIEncoder(ctx, spec: spec, out: url, tmp: tmp, tag: "seg\(index)",
+        let (process, handle, log) = try await startCLIEncoder(ctx, spec: spec, out: url, tmp: tmp, tag: "seg\(index).a\(attempt)",
                                                                threads: threads, quality: spec.qualityValue(job.quality))
+        FaultInjection.encoderStarted(process, segment: index, attempt: attempt)
 
-        let (prepared, producer) = try await startProducer(ctx, range: range, depth: MacProfile.current?.pipelineDepth ?? 4)
+        let started: (BoundedChannel<Prepared>, Task<[QCEvent], Error>)
+        do {
+            started = try await startProducer(ctx, range: (range.lowerBound - preroll)..<range.upperBound,
+                                              depth: MacProfile.current?.pipelineDepth ?? 4)
+        } catch {
+            // The source can't be read (moved, deleted, damaged): stop the encoder that is waiting for frames.
+            try? handle.close()
+            if process.isRunning { process.terminate() }
+            await process.exited()
+            throw error
+        }
+        let (prepared, producer) = started
         // Planar frames are recycled: the grader may run up to `slots - 2` frames ahead of the writer.
         let slots = 6
         let frames = (0..<slots).map { _ in PlanarFrame(device: metal.device, width: ctx.width, height: ctx.height,
@@ -1203,8 +1277,20 @@ final class ExportEngine {
         let grader = Task {
             do {
                 var i = 0
+                var skip = preroll        // frames rendered only so the grade's temporal state matches an unbroken run
                 let rgbClean = ctx.grain.cleanInput ? metal.makeTexture(width: ctx.width, height: ctx.height, format: rgbFormat) : nil
                 while let f = try await prepared.receive() {
+                    if skip > 0 {
+                        skip -= 1
+                        let cb = metal.queue.makeCommandBuffer()!
+                        renderer.encodeGrade(cb, source: f.texture, destination: rgb,
+                                             uniforms: uniforms(ctx, sourceIndex: f.sourceIndex, outputIndex: f.outputIndex, crop: f.crop),
+                                             temporalKey: job.analysis.sceneIndex(for: f.sourceIndex))
+                        await cb.commitAndWait()
+                        _ = f.keep
+                        try GPUFaults.check()
+                        continue
+                    }
                     let planes = frames[i % slots]
                     let cb = metal.queue.makeCommandBuffer()!
                     renderer.encodeGrade(cb, source: f.texture, destination: rgb,
@@ -1215,6 +1301,7 @@ final class ExportEngine {
                     probe.graded(cb, rgb: rgb, outputIndex: f.outputIndex, lane: range.lowerBound)
                     await cb.commitAndWait()
                     _ = f.keep
+                    try GPUFaults.check()
                     await packed.send(planes)
                     i += 1
                 }
@@ -1229,9 +1316,12 @@ final class ExportEngine {
         return try await withTaskCancellationHandler {
             do {
                 // Writer stage: the encoder process (CPU cores) consumes frames while the GPU grades the next ones.
+                var written = 0
                 while let planes = try await packed.receive() {
                     try Task.checkCancellation()
+                    try FaultInjection.point(.afterFrameWritten(segment: index, frame: written), attempt: attempt)
                     try planes.write(to: handle)
+                    written += 1
                     tick()
                 }
             } catch {
@@ -1244,7 +1334,8 @@ final class ExportEngine {
                 if process.isRunning { process.terminate() }
                 await process.exited()
                 if Task.isCancelled { throw CancellationError() }
-                if exitedByItself { throw Self.encoderFailure(spec.binary, log: log) }   // quit before taking every frame
+                if exitedByItself { throw Self.encoderFailure(spec.binary, log: log, process: process) }   // quit before taking every frame
+                RecoveryHooks.encoderLog(spec.binary, log: log, tag: "seg \(index)", failed: true)
                 throw error
             }
             _ = await grader.value
@@ -1252,7 +1343,10 @@ final class ExportEngine {
             try handle.close()
             await process.exited()
             try Task.checkCancellation()
-            guard process.terminationStatus == 0 else { throw Self.encoderFailure(spec.binary, log: log) }
+            guard process.terminationStatus == 0 && process.terminationReason == .exit else {
+                throw Self.encoderFailure(spec.binary, log: log, process: process)
+            }
+            RecoveryHooks.encoderLog(spec.binary, log: log, tag: "seg \(index)", failed: false)
             // An encoder that "succeeds" without writing pictures (e.g. aomenc two-pass on a pipe) must not pass.
             let written = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
             guard written > 64 || range.isEmpty else {
@@ -1280,9 +1374,14 @@ final class ExportEngine {
         Log.info(.encode, "AV2 stream: \(s.temporalUnits) temporal units, \(s.sequenceHeaders) sequence header(s), CICP \(c.primaries)/\(c.transfer)/\(c.matrix) (description \(c.descriptionIDC))")
     }
 
-    private static func encoderFailure(_ binary: String, log: URL) -> LumoraError {
-        let tail = (try? String(contentsOf: log, encoding: .utf8))?.suffix(1500) ?? ""
-        return LumoraError.toolFailed(binary, String(tail))
+    /// The encoder's own account of why it stopped (its log), with the exit status or signal.
+    private static func encoderFailure(_ binary: String, log: URL, process: Process? = nil) -> Error {
+        RecoveryHooks.encoderLog(binary, log: log, tag: "encoder", failed: true)
+        guard let process else {
+            let tail = (try? String(contentsOf: log, encoding: .utf8))?.suffix(1500) ?? ""
+            return LumoraError.toolFailed(binary, String(tail))
+        }
+        return ToolFailure.from(binary, process: process, log: log, args: process.arguments ?? [])
     }
 
     // MARK: - Join segments, carry audio + subtitles

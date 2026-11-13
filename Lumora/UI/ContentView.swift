@@ -47,6 +47,7 @@ struct ContentView: View {
                 }
                 .help("Pauses rendering and encoding without losing work")
             }
+            ToolbarItem { StopExportButton() }
             ToolbarItem {
                 Button { openWindow(id: "airplay") } label: { Label("TV preview", systemImage: "airplayvideo") }
                     .disabled(model.descriptor == nil)
@@ -108,6 +109,10 @@ struct ContentView: View {
         .sheet(isPresented: $model.showExport) { ExportSheet() }
         .sheet(isPresented: $model.showAdvisor) { AdvisorSheet() }
         .sheet(isPresented: $model.showReport) { ReportCardSheet() }
+        .sheet(item: $model.renderFailure) { FailureSheet(report: $0) }         // export failures, in plain words
+        .sheet(isPresented: $model.showRepair) { SourceRepairSheet() }
+        .overlay(alignment: .top) { ResumeBanner().padding(.top, 8).padding(.horizontal, 60) }
+        .task { model.refreshResumeOffers() }
         .alert("Something went wrong", isPresented: Binding(get: { model.errorMessage != nil },
                                                             set: { if !$0 { model.errorMessage = nil } })) {
             Button("Show log") { openWindow(id: "logs"); model.errorMessage = nil }

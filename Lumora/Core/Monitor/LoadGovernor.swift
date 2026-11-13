@@ -130,6 +130,13 @@ final class LoadGovernor: @unchecked Sendable {
         recomputePacing()
     }
 
+    /// The last render ended: the overload warning and its 15-second clock belonged to it. `observe` clears them
+    /// otherwise, and it runs only while something renders, so without this the warning outlived the export.
+    func renderingEnded() {
+        lock.lock(); overloadSince = nil; state.overload = nil; lock.unlock()
+        recomputePacing()
+    }
+
     var overloadSuspected: Bool { lock.lock(); defer { lock.unlock() }; return overloadSince != nil || state.overload != nil }
 
     var swapGrowthMBPerMin: Double { lock.lock(); defer { lock.unlock() }; return swapGrowthLocked() }

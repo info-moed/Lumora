@@ -71,6 +71,8 @@ final class AV2ExportTests: XCTestCase {
 
     /// Decodes an AV2 stream to Y4M with avmdec (film grain applied unless skipped).
     static func decode(_ obu: URL, avmdec: String, skipGrain: Bool = false) throws -> Y4M {
+        // The class tearDown removes `work`, and PlayerCodecRoundTripTests calls this after this class has finished.
+        try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
         let out = work.appendingPathComponent(obu.deletingPathExtension().lastPathComponent + (skipGrain ? "-nograin" : "") + ".y4m")
         try EndToEndTests.sh(avmdec, (skipGrain ? ["--skip-film-grain"] : []) + [obu.path, "-o", out.path])
         defer { try? FileManager.default.removeItem(at: out) }

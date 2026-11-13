@@ -66,6 +66,18 @@ final class LoadGovernorTests: XCTestCase {
         XCTAssertNil(g.current.overload)
     }
 
+    /// The warning belongs to the render it was raised for: once the last render ends it goes, and the next export
+    /// starts its own 15-second clock (only `observe` cleared it before, and that runs only while rendering).
+    func testOverloadEndsWithTheLastRender() {
+        for t in 0...16 { g.observe(sample(t: Double(t), busy: 13.8, others: 8), rendering: true) }
+        XCTAssertNotNil(g.current.overload)
+        g.renderingEnded()
+        XCTAssertNil(g.current.overload)
+        XCTAssertFalse(g.overloadSuspected)
+        g.observe(sample(t: 100, busy: 13.8, others: 8), rendering: true)
+        XCTAssertNil(g.current.overload, "a new render needs its own 15 seconds of overload")
+    }
+
     func testLowerPriorityPacesAndIsRevocable() {
         g.choose(.lowerPriority)
         XCTAssertEqual(g.current.pacing, 0.5, accuracy: 1e-9)

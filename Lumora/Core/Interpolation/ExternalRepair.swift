@@ -8,9 +8,13 @@ struct ExternalRepairPlan: Codable, Hashable {
     var originalFps: Double
     var interpolatedFps: Double
     var offsetSeconds: Double
+    /// Damaged-source mode (render recovery): the flagged frames are the undecodable ones and every other frame is a
+    /// good neighbor to rebuild them from.
+    var damagedFrames: Bool? = nil
 
     /// True when frame `j` of the interpolated file coincides with a frame of the original.
     func isOriginal(_ j: Int) -> Bool {
+        if damagedFrames == true { return !flagged.contains(j) }
         let posA = (Double(j) / interpolatedFps - offsetSeconds) * originalFps
         return abs(posA - posA.rounded()) < 0.02
     }

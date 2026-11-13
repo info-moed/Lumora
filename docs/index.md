@@ -68,6 +68,7 @@ Requires an Apple silicon Mac with **macOS 27** or later (and Xcode 27 to build)
 | Comfortable in Terminal | [Building from source](building.md) and [Command line](command-line.md) |
 | Going to change the code | [Architecture](architecture.md) |
 | Stuck | [Troubleshooting](troubleshooting.md) |
+| An export failed or stopped | [When a render fails](render-failures.md): what the messages mean, the export logs, resuming, repairing damaged files |
 
 ---
 

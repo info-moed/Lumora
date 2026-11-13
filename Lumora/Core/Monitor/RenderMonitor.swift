@@ -60,6 +60,7 @@ final class RenderMonitor {
         runs.removeAll { $0 === run }
         lastSummary = summary
         if runs.isEmpty {
+            LoadGovernor.shared.renderingEnded()
             ResponsivenessProbe.shared.setRendering(false)
             // A short idle reading after each render: the baseline the next export's responsiveness is compared with.
             ResponsivenessProbe.shared.hold(seconds: 20)

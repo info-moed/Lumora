@@ -12,6 +12,7 @@ struct ExportSheet: View {
             Text("Export").font(.title2.bold())
             RenderStatusBanner()
             Form {
+                ResumeOfferRow()
                 Picker("HDR format", selection: $model.delivery) {
                     ForEach(DeliveryFormat.allCases) { Text($0.displayName).tag($0) }
                 }

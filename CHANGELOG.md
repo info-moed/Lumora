@@ -29,6 +29,27 @@ Status tags used below:
   thermal back-off (helpers in the background band while the Mac is hot), GPU pacing when the display's GPU work is
   delayed, timed by a GPU command that really runs on the GPU.
 - **Per-export summary** (average load, bottleneck, time per stage, UI responsiveness) in the log and report.
+### Added — when a render fails
+- **Export logs:** one verbose log per export (settings, tool versions, every command line with paths as `~`, steps
+  and durations, frame counters, tool messages, system events, the full error chain), size-capped and pruned, listed in
+  Tools → Log → Export logs…, with a privacy-scrubbed *Copy diagnostic report*.
+- **Plain-language failures:** about twenty kinds of failure explained in Simple and Pro wording, with what it means
+  for your file and one or two actions; technical details one click away.
+- **Resume:** exports are checkpointed in segments (target quality: per chunk) and resume from where they stopped after
+  a failure, quit, crash or power loss, with the same frames as an uninterrupted export. Transient failures are retried;
+  a nearly full scratch drive pauses the export; the Mac stays awake while exporting.
+- **Damaged sources:** a quick check on open, a full check, decoding past damage without shifting the timeline, and
+  *Repair a copy* into a new file (the source is never modified). Exports re-create up to three missing frames in a row
+  from their neighbors with Lumora's interpolation, or repeat the previous good frame. See [When a render fails](docs/render-failures.md).
+
+### Fixed
+- A short or empty decode no longer passes silently; the joined video must have exactly the planned frames.
+- GPU command-buffer errors, rejected hardware-encoder settings, and encoder exit signals are no longer ignored or
+  flattened into text.
+- Hardware (ProRes, HEVC) exports in checkpointed segments keep exact frame times at 23.976, 29.97, 59.94 and
+  interpolated rates: each segment's movie timescale now matches its frame clock instead of 1/600 s, which shifted
+  every later segment. Progress saved by the older build is not resumed.
+- The "Your Mac is overloaded" warning ends with the export it was raised for instead of staying up afterwards.
 
 ---
 

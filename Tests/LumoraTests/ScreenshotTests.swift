@@ -240,4 +240,33 @@ final class ScreenshotTests: XCTestCase {
         }
         try await shoot("25-render-monitor", dark(LiveRenderPanel().environment(RenderMonitor.shared), model), size: CGSize(width: 1100, height: 860))
     }
+
+    /// The failure explanation (Simple mode) and the resume offer, for docs/render-failures.md. Synthetic reports, so
+    /// no footage is needed and nothing personal can appear.
+    func testRecoveryScreens() async throws {
+        var f = RenderFailure(kind: .diskFull, stage: .encode, volume: "Scratch SSD", message: "No space left on device")
+        f.segment = 41
+        f.frames = "9840–10079"
+        f.code = "NSCocoaErrorDomain 512 ← NSPOSIXErrorDomain 28"
+        var x = FailureExplainer.Facts()
+        x.progress = 0.63
+        x.sourceName = "Aurora.mp4"
+        x.neededBytes = 9 << 30
+        x.freeBytes = 800 << 20
+        var r = FailureExplainer.explain(f, facts: x)
+        r.logPath = "~/Library/Logs/Lumora/Exports/2026-11-12 16-41-07 Aurora – Natural – HDR10.log"
+        let card = FailureCard(report: r, simple: true, showDetails: .constant(false), onAction: { _ in }, onClose: {})
+        try await shoot("30-failure-explained", card.preferredColorScheme(.dark).tint(Theme.signal).background(Theme.surround),
+                        size: CGSize(width: 580, height: 300))
+
+        var j = ExportJournal(exportID: "docs", recipeHash: "", renderVersion: CheckpointStore.renderVersion, source: nil,
+                              sourceName: "Aurora.mp4", outputPath: "/Movies/Aurora – Natural – HDR10.mkv")
+        j.plan = .init(frames: 1000, rateNum: 24, rateDen: 1, workers: 2, segments: [])
+        j.segments = [.init(index: 0, file: "", frames: 630, bytes: 0, sha256: "", packets: 630, validatedAt: Date(), attempt: 1)]
+        let crash = FailureExplainer.explain(RenderFailure(kind: .interruptedCrash, stage: .encode, message: ""), facts: x)
+        let offer = ResumeOffer(journal: j, folder: URL(fileURLWithPath: "/tmp"), report: crash, bytes: 0)
+        let banner = VStack { ResumeBannerContent(offer: offer, simple: false) }.padding(16)
+        try await shoot("31-resume-offer", banner.preferredColorScheme(.dark).tint(Theme.signal).background(Theme.surround),
+                        size: CGSize(width: 1000, height: 120))
+    }
 }

@@ -23,12 +23,14 @@ enum ToolLocator {
         let p = Process()
         p.executableURL = exe
         p.arguments = FFHarden.args(name, args)
+        RenderLog.current?.command(name, args, tag: "tool")
         let err = Pipe()
         p.standardOutput = FileHandle.nullDevice
         p.standardError = err
         let exited = p.exitSignal()
         try p.run()
         let data = err.fileHandleForReading.readDataToEndOfFile()
+        try? err.fileHandleForReading.close()     // now, not whenever an autorelease pool drains (file descriptors add up)
         exited.wait()
         return String(decoding: data, as: UTF8.self)
     }
@@ -37,10 +39,13 @@ enum ToolLocator {
     @discardableResult
     static func run(_ name: String, _ args: [String], in directory: URL? = nil) throws -> Data {
         guard let exe = url(for: name) else { throw LumoraError.missingTool(name) }
+        try FaultInjection.point(.metadataStep(name))
         let p = Process()
         p.executableURL = exe
         p.arguments = FFHarden.args(name, args)
         if let directory { p.currentDirectoryURL = directory }
+        let started = Date()
+        RenderLog.current?.command(name, args, tag: "tool")
         let out = Pipe(), err = Pipe()
         p.standardOutput = out
         p.standardError = err
@@ -55,9 +60,17 @@ enum ToolLocator {
         }
         let data = out.fileHandleForReading.readDataToEndOfFile()
         errDone.wait()
+        try? out.fileHandleForReading.close(); try? err.fileHandleForReading.close()
         exited.wait()
-        guard p.terminationStatus == 0 else {
-            throw LumoraError.toolFailed(name, String(decoding: errData.suffix(2000), as: UTF8.self))
+        let errText = String(decoding: errData.suffix(2000), as: UTF8.self)
+        if let log = RenderLog.current, p.terminationStatus != 0 || p.terminationReason != .exit || !errText.isEmpty {
+            log.line(p.terminationStatus == 0 ? .info : .error, "tool", String(format: "%@ %@ after %.2f s", name,
+                     p.terminationReason == .uncaughtSignal ? "killed by \(ToolFailure.signalName(p.terminationStatus))" : "exited \(p.terminationStatus)",
+                     Date().timeIntervalSince(started)))
+            log.stderrTail(errText, lines: p.terminationStatus == 0 ? 12 : 200, tag: name)
+        }
+        guard p.terminationStatus == 0 && p.terminationReason == .exit else {
+            throw ToolFailure.from(name, process: p, stderr: errText, args: args)
         }
         return data
     }

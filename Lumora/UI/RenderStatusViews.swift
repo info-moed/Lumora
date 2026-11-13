@@ -101,7 +101,7 @@ struct LoadBanner: View {
                    detail: "No work is lost.") {
                 Button("Resume") { monitor.resumeNormal() }
             }
-        } else if let o = monitor.overload {
+        } else if monitor.isRendering, let o = monitor.overload {   // only a running export can act on it
             banner(icon: "gauge.with.dots.needle.100percent", color: Theme.marginal, title: "Your Mac is overloaded",
                    detail: o.reasons.joined(separator: ". ") + ". " + appsLine(o)) {
                 Button("Pause") { monitor.pauseForOthers() }
