@@ -33,6 +33,7 @@ struct AnalysisResult: Codable {
     var avgChroma: Float
     var globalHistogram: [UInt32]
     var motion: [Float] = []         // per-frame change from the previous frame (0…1), from the analysis thumbnails
+    var damage: DamageMap? = nil      // frames that couldn't be decoded correctly (found while analyzing)
 
     func sceneMotion(_ i: Int) -> Float {
         guard let s = scenes[safe: i], !motion.isEmpty else { return 0 }
@@ -62,7 +63,7 @@ enum SceneAnalyzer {
     static func analyze(_ d: SourceDescriptor, color: SourceColor, chip: ChipProfile = .current,
                         proxy: ProxyWriter? = nil, readAhead: ReadAheadAdvisor? = nil,
                         progress: @escaping (Double) -> Void) async throws -> AnalysisResult {
-        let src = try await d.makeFrameSource()
+        let src = ConcealingFrameSource.wrap(try await d.makeFrameSource(), descriptor: d)   // reads on past damage
         try src.start(at: 0, count: nil)
         let renderer = GradeRenderer()
         let gw = chip.analysisWidth
@@ -166,7 +167,8 @@ enum SceneAnalyzer {
                               globalP995: Histogram.percentileStop(all, 0.995),
                               skinFraction: skin.reduce(0, +) / Float(skin.count),
                               avgChroma: chroma.reduce(0, +) / Float(chroma.count), globalHistogram: all,
-                              motion: motionPerFrame.enumerated().map { cuts.contains($0.offset) ? 0 : $0.element })
+                              motion: motionPerFrame.enumerated().map { cuts.contains($0.offset) ? 0 : $0.element },
+                              damage: (src as? ConcealingFrameSource).flatMap { $0.damage.isEmpty ? nil : $0.damage })
     }
 
     // MARK: Graded light levels (HDR10 / HDR10+ / Dolby Vision metadata)
@@ -183,7 +185,7 @@ enum SceneAnalyzer {
     static func measureLightLevels(_ d: SourceDescriptor, color: SourceColor, preset: PresetCandidate,
                                    analysis: AnalysisResult, target: OutputTarget, sourcePeakNits: Float,
                                    progress: @escaping (Double) -> Void) async throws -> LightLevels {
-        let src = try await d.makeFrameSource()
+        let src = ConcealingFrameSource.wrap(try await d.makeFrameSource(), descriptor: d)   // reads on past damage
         try src.start(at: 0, count: nil)
         let renderer = GradeRenderer()
         var maxes: [Float] = [], avgs: [Float] = []

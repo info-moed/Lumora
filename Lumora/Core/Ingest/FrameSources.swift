@@ -87,14 +87,16 @@ final class AVFoundationFrameSource: FrameSource {
         let o = AVAssetReaderTrackOutput(track: track, outputSettings: settings)
         o.alwaysCopiesSampleData = false
         r.add(o)
-        guard r.startReading() else { throw LumoraError.decodeFailed(r.error?.localizedDescription ?? "reader") }
+        guard r.startReading() else {
+            throw r.error.map { SourceReadError(underlying: $0 as NSError, seconds: Double(frame) / fps) } ?? LumoraError.decodeFailed("reader")
+        }
         reader = r
         output = o
     }
 
     func nextFrame() throws -> DecodedFrame? {
         guard let output, let sample = output.copyNextSampleBuffer() else {
-            if let err = reader?.error { throw LumoraError.decodeFailed(err.localizedDescription) }
+            if let err = reader?.error { throw SourceReadError(underlying: err as NSError, seconds: nil) }   // keeps domain and code
             return nil
         }
         guard let pb = CMSampleBufferGetImageBuffer(sample),
@@ -175,6 +177,7 @@ final class FFmpegFrameSource: FrameSource {
     private let scanFilter: String?
     private let colorFilter: String
     private let ctx = MetalContext.shared
+    let decoderMessages = DecoderMessages()
 
     init(descriptor d: SourceDescriptor) throws {
         url = d.url
@@ -215,7 +218,7 @@ final class FFmpegFrameSource: FrameSource {
         p.arguments = FFHarden.args("ffmpeg", args)
         let pipe = Pipe()
         p.standardOutput = pipe
-        p.standardError = FileHandle.nullDevice
+        p.standardError = decoderMessages.attach(log: RenderLog.current, label: url.lastPathComponent)   // decode errors reach the export log
         try p.run()
         process = p
         handle = pipe.fileHandleForReading

@@ -59,7 +59,10 @@ extension MTLCommandBuffer {
     /// Commits and suspends (without blocking a thread) until the GPU has finished this buffer.
     func commitAndWait() async {
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-            addCompletedHandler { _ in cont.resume() }
+            addCompletedHandler { cb in
+                if let e = cb.error { GPUFaults.record(e) }
+                cont.resume()
+            }
             commit()
         }
     }

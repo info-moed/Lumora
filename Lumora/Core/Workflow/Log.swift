@@ -75,6 +75,7 @@ enum Log {
         case .error: l.error("\(message, privacy: .public)")
         }
         let entry = LogEntry(date: Date(), level: level, category: category, message: message)
+        if level > .debug { RenderLog.current?.line(level >= .error ? .error : (level == .warning ? .warn : .info), category.rawValue, message) }
         fileQueue.async {
             let line = "\(ISO8601DateFormatter().string(from: entry.date)) [\(level.label)] \(category.rawValue): \(message)\n"
             try? fileHandle?.write(contentsOf: Data(line.utf8))

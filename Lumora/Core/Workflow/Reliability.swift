@@ -30,6 +30,7 @@ actor PauseGate {
     func reason() -> String? {
         let r = RunRules.current
         if userPaused { return "Paused" }
+        if let r = DiskSpaceGuard.pauseReason() { return r }
         if r.pauseOnBattery, PowerState.onBattery { return "Paused: on battery" }
         if r.pauseWhenHot, ProcessInfo.processInfo.thermalState == .critical { return "Paused: Mac is very hot" }
         if r.onlyBetween, !Self.inWindow(r) { return "Waiting for \(r.startHour):00" }
@@ -87,7 +88,10 @@ enum Notifier {
 /// The batch queue survives quitting and crashes: unfinished files are picked up again next launch, and files
 /// whose finished output already exists and checks out are skipped.
 struct QueueStore {
-    struct Item: Codable, Hashable { var source: String; var output: String?; var done: Bool; var folder: String? = nil }
+    struct Item: Codable, Hashable {
+        var source: String; var output: String?; var done: Bool; var folder: String? = nil
+        var failure: String? = nil; var exportID: String? = nil      // why it failed, and its saved progress
+    }
     private static var url: URL {
         let d = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Lumora")
         try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
@@ -98,6 +102,11 @@ struct QueueStore {
     static func markDone(_ source: URL, output: URL) {
         var q = load()
         if let i = q.firstIndex(where: { $0.source == source.path }) { q[i].done = true; q[i].output = output.path }
+        save(q)
+    }
+    static func markFailed(_ source: URL, failure: String, exportID: String?) {
+        var q = load()
+        if let i = q.firstIndex(where: { $0.source == source.path }) { q[i].failure = failure; q[i].exportID = exportID }
         save(q)
     }
     static func enqueue(_ files: [URL], folder: URL) {
