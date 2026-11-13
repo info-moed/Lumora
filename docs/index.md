@@ -63,6 +63,7 @@ Requires an Apple silicon Mac with **macOS 27** or later (and Xcode 27 to build)
 | New to Macs, Terminal or HDR | [Getting started](getting-started.md), then [HDR and video basics](hdr-basics.md) |
 | Ready to use the app well | [User guide](user-guide.md) |
 | Curious how every feature works | [Feature reference](features.md) |
+| Watching AV2, H.266 or any HDR file | [Player](player.md) |
 | Choosing encoder settings | [Encoding settings](encoding/index.md): every option of every encoder, with recommendations |
 | Comfortable in Terminal | [Building from source](building.md) and [Command line](command-line.md) |
 | Going to change the code | [Architecture](architecture.md) |
