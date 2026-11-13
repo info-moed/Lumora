@@ -66,7 +66,8 @@ enum ToolLocator {
     /// file can't hang the caller (ffprobe on a crafted file can loop for a very long time). Throws
     /// `LumoraError.toolFailed` with "timed out" in that case. Output is capped at `maxOutput` bytes.
     @discardableResult
-    static func run(_ name: String, _ args: [String], timeout: TimeInterval, maxOutput: Int = 64 << 20) throws -> Data {
+    static func run(_ name: String, _ args: [String], timeout: TimeInterval, maxOutput: Int = 64 << 20,
+                    acceptFailure: Bool = false) throws -> Data {
         guard let exe = url(for: name) else { throw LumoraError.missingTool(name) }
         let p = Process()
         p.executableURL = exe
@@ -82,7 +83,8 @@ enum ToolLocator {
         let group = DispatchGroup()
         for (fd, isOut) in [(out.fileHandleForReading.fileDescriptor, true), (err.fileHandleForReading.fileDescriptor, false)] {
             group.enter()
-            DispatchQueue.global(qos: .utility).async {
+            // The caller waits on these readers, so they run at its priority (no priority inversion).
+            DispatchQueue.global(qos: .userInitiated).async {
                 var buf = [UInt8](repeating: 0, count: 65536)
                 while true {
                     let n = buf.withUnsafeMutableBytes { Darwin.read(fd, $0.baseAddress, $0.count) }
@@ -104,7 +106,7 @@ enum ToolLocator {
         }
         _ = group.wait(timeout: .now() + 5)
         lock.lock(); defer { lock.unlock() }
-        guard p.terminationStatus == 0 else {
+        guard p.terminationStatus == 0 || (acceptFailure && !outData.isEmpty) else {
             throw LumoraError.toolFailed(name, String(decoding: errData.suffix(2000), as: UTF8.self))
         }
         return outData

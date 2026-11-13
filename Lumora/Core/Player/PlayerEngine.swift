@@ -48,12 +48,14 @@ final class DecodeWorker: @unchecked Sendable {
 
     /// Restarts decoding at `frame`. Safe from the main thread: it never blocks.
     func restart(at frame: Int) {
+        // Interrupt under the lock: the worker reads pendingStart under it before starting, so the interrupt always
+        // hits the run being replaced, never the new one.
         cond.lock()
         pendingStart = frame
+        backend.interrupt()
         cond.signal()
         cond.unlock()
         queue.flush()
-        backend.interrupt()
     }
 
     /// Swaps in a new backend (pre-decode cache), starting at `frame`.
@@ -62,21 +64,24 @@ final class DecodeWorker: @unchecked Sendable {
         let old = backend
         backend = b
         pendingStart = frame
+        old.interrupt()
         cond.signal()
         cond.unlock()
         queue.flush()
-        old.interrupt()
-        DispatchQueue.global(qos: .utility).async { old.stop() }
+        // The decode thread may still be inside old.next(); it stops the old backend itself once it returns.
+        retired.append(old)
     }
 
     func shutdown() {
         cond.lock()
         quit = true
+        backend.interrupt()
         cond.signal()
         cond.unlock()
         queue.close()
-        backend.interrupt()
     }
+
+    private var retired: [PlayerVideoBackend] = []
 
     /// Decoded frames per second of decoder time, over the last measurement window.
     func takeSpeed() -> Double? {
@@ -95,7 +100,10 @@ final class DecodeWorker: @unchecked Sendable {
             if let s = pendingStart {
                 pendingStart = nil
                 let b = backend
+                let old = retired
+                retired = []
                 cond.unlock()
+                old.forEach { $0.stop() }
                 do {
                     try b.start(atFrame: s)
                     cond.lock(); running = pendingStart == nil; lastIndex = s - 1; cond.unlock()
@@ -131,6 +139,8 @@ final class DecodeWorker: @unchecked Sendable {
                 if !interrupted { onEvent?(.failed(error)) }
             }
         }
+        cond.lock(); let old = retired; retired = []; cond.unlock()
+        old.forEach { $0.stop() }
         backend.stop()
     }
 }
@@ -185,7 +195,6 @@ final class PlayerEngine {
     @ObservationIgnored private var hostClock = HostClock()
     @ObservationIgnored private var awaiting: Int?
     @ObservationIgnored private var endOfStream: Int?
-    @ObservationIgnored private var starvedSince: CFTimeInterval?
     @ObservationIgnored private var lastStatsUpdate: CFTimeInterval = 0
     @ObservationIgnored private var reverseTimer: Timer?
     @ObservationIgnored private var messageTimer: Timer?
@@ -203,8 +212,13 @@ final class PlayerEngine {
     /// Forces the pre-decode cache on (tests), or off.
     @ObservationIgnored var preDecodeOverride: Bool?
     @ObservationIgnored var fpsOverride: (Int, Int)?
+    /// Tests substitute a backend (e.g. a deliberately slow one).
+    @ObservationIgnored var backendFactory: ((MediaInfo, DecoderChoice, Int) throws -> PlayerVideoBackend)?
 
     init() {}
+
+    var audioOutputForTests: AudioOutput? { audio }
+    var queueDepthForTests: Int? { queue?.count }
 
     // MARK: Opening
 
@@ -233,6 +247,13 @@ final class PlayerEngine {
         }
     }
 
+    /// Opens an already-probed file with a given decoder (tests).
+    func open(info: MediaInfo, choice: DecoderChoice) {
+        stop()
+        openGeneration += 1
+        start(info: info, choice: choice, caps: capabilities ?? DecoderCapabilities.current)
+    }
+
     /// Blocks until opening finished (tests).
     func waitUntilOpened(timeout: TimeInterval = 30) -> Bool {
         let deadline = Date(timeIntervalSinceNow: timeout)
@@ -259,6 +280,8 @@ final class PlayerEngine {
             let wantsCache = preDecodeOverride ?? (choice.backend == .avm)
             if wantsCache, let cached = try makeCacheBackend(info: info, choice: choice, capacity: capacity) {
                 backend = cached
+            } else if let make = backendFactory {
+                backend = try make(info, choice, capacity + 6)
             } else {
                 backend = try PlayerBackends.make(info: info, choice: choice, settings: settings, poolCapacity: capacity + 6)
                 if choice.backend == .avm {
@@ -617,18 +640,16 @@ final class PlayerEngine {
         if let f {
             stats.dropped += dropped
             present(f)
-            starvedSince = nil
-        } else {
-            let behind = t - (currentFrame?.pts ?? 0)
-            if let end = endOfStream, queue.count == 0, currentIndex >= end, behind > 1 / fps {
-                handleEnd()
-            } else if behind > 1.5 / fps {
-                stats.late += 1
-                if starvedSince == nil { starvedSince = now }
-                if let s = starvedSince, now - s > 0.5, endOfStream == nil {
-                    enterBuffering(preDecoding ? cacheReason() : "Decoding is slower than real time (\(String(format: "%.2f", stats.realTimeFactor))×): buffering ahead.")
-                }
-            }
+        }
+        let behind = t - (currentFrame?.pts ?? 0)
+        if f == nil, let end = endOfStream, queue.count == 0, currentIndex >= end, behind > 1 / fps {
+            handleEnd()
+        } else if f == nil, behind > 1.5 / fps {
+            stats.late += 1
+        }
+        // More than half a second behind the clock: the decoder can't keep up. Stop and buffer instead of stuttering.
+        if behind > max(0.5, 3 / fps), endOfStream == nil || queue.count > 0 {
+            enterBuffering(preDecoding ? cacheReason() : "Decoding is slower than real time (\(String(format: "%.2f", stats.realTimeFactor))×): buffering ahead.")
         }
         return currentFrame
     }
@@ -645,7 +666,6 @@ final class PlayerEngine {
     // MARK: Buffering
 
     private func enterBuffering(_ reason: String) {
-        starvedSince = nil
         audio?.stop()
         audioActive = false
         hostClock.set(media: currentFrame?.pts ?? currentTime, host: CACurrentMediaTime(), rate: 0)

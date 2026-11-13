@@ -122,31 +122,35 @@ enum MediaProbe {
         if units > 0 { info.frameCount = units }
         if raps.first != 0 { raps.insert(0, at: 0) }
 
-        // Geometry and bit depth from the decoder itself: one frame as Y4M, and one as raw samples for the sample size.
+        // Geometry, bit depth and sample size from the decoder itself.
         guard caps.hasAVMDec else {
             // Without avmdec only the color OBU is known; the selector reports the missing tool.
             info.video.width = 1920; info.video.height = 1080
             info.av2 = AV2Details(temporalUnits: units, randomAccessPoints: raps, sampleBytes: 2)
             return info
         }
-        let y4m = try ChildProcess(tool: "avmdec", args: ["--limit=1", "-o", "-", url.path], qos: .userInitiated)
-        let head = y4m.readAll(limit: 256 << 20)
-        _ = y4m.waitForExit(timeout: 30)
-        y4m.terminate()
-        guard let nl = head.firstIndex(of: 0x0A), head.starts(with: Data("YUV4MPEG2".utf8)) else {
+        // One frame as Y4M gives the geometry and bit depth, and the frame's size gives the sample size (avmdec writes
+        // raw frames with the same samples). Its --limit counts hidden frames too, so read and stop it instead.
+        let y4m = try ChildProcess(tool: "avmdec", args: ["-o", "-", url.path], qos: .userInitiated)
+        let first = y4m.readAll(limit: 4096)
+        guard let nl = first.firstIndex(of: 0x0A), first.starts(with: Data("YUV4MPEG2".utf8)) else {
+            y4m.terminate()
             throw PlayerError.decoderFailed("avmdec", y4m.stderrTail.isEmpty ? "it couldn't decode the first frame." : y4m.stderrTail)
         }
-        let header = String(decoding: head[..<nl], as: UTF8.self)
-        guard let y = parseY4MHeader(header) else { throw PlayerError.damaged("avmdec wrote an unreadable frame header.") }
+        let header = String(decoding: first[..<nl], as: UTF8.self)
+        guard let y = parseY4MHeader(header) else { y4m.terminate(); throw PlayerError.damaged("avmdec wrote an unreadable frame header.") }
+        guard (16...16384).contains(y.width), (16...16384).contains(y.height) else { y4m.terminate(); throw PlayerError.tooLarge(y.width, y.height) }
         info.video.width = y.width; info.video.height = y.height
         info.video.bitDepth = y.bits; info.video.chroma = y.chroma
-        guard (16...16384).contains(y.width), (16...16384).contains(y.height) else { throw PlayerError.tooLarge(y.width, y.height) }
-        // Sample size of avmdec's --rawvideo output (what the player reads): measure one frame of it.
         let samples = y.width * y.height + 2 * planeSamples(y.width, y.height, y.chroma)
-        let raw = try ChildProcess(tool: "avmdec", args: ["--rawvideo", "--limit=1", "-o", "-", url.path], qos: .userInitiated)
-        let rawBytes = raw.readAll(limit: samples * 2 + 1).count
-        raw.terminate()
-        let sampleBytes = rawBytes >= samples * 2 ? 2 : 1
+        // Header, "FRAME\n", then the samples: one frame at 16 bits is enough to tell.
+        let wanted = (nl + 1) + 6 + samples * 2
+        var data = first
+        if data.count < wanted { data.append(y4m.readAll(limit: wanted - data.count)) }
+        y4m.terminate()
+        let payload = data.count - (nl + 1) - 6
+        let marker = data.count > nl + 7 + samples ? data[(nl + 7 + samples)...].prefix(6) : Data()
+        let sampleBytes = marker == Data("FRAME\n".utf8) || payload < samples * 2 ? 1 : 2
         info.av2 = AV2Details(temporalUnits: units, randomAccessPoints: raps, sampleBytes: sampleBytes)
         if !info.frameRateKnown, kind != .obu, let r = y.rate, r.0 > 0, r.1 > 0 {
             let f = Double(r.0) / Double(r.1)
@@ -203,7 +207,7 @@ enum MediaProbe {
     static func blocking<T>(timeout: TimeInterval, _ op: @escaping @Sendable () async throws -> T) -> T? {
         let box = BlockingBox<T>()
         let sem = DispatchSemaphore(value: 0)
-        let task = Task.detached { box.value = try? await op(); sem.signal() }
+        let task = Task.detached(priority: .high) { box.value = try? await op(); sem.signal() }
         if sem.wait(timeout: .now() + timeout) == .timedOut { task.cancel(); return nil }
         return box.value
     }
@@ -301,8 +305,9 @@ enum MediaProbe {
     static func probeFFprobe(_ url: URL, into info: inout MediaInfo) throws {
         let json: Data
         do {
+            // A damaged tail makes ffprobe exit with an error after it has described the streams: use what it read.
             json = try ToolLocator.run("ffprobe", ["-v", "error", "-print_format", "json", "-show_streams", "-show_format",
-                                                   "-show_frames", "-read_intervals", "%+#1", url.path], timeout: probeTimeout)
+                                                   "-show_frames", "-read_intervals", "%+#1", url.path], timeout: probeTimeout, acceptFailure: true)
         } catch LumoraError.toolFailed(_, let msg) {
             throw PlayerError.damaged(msg.contains("timed out") ? "reading it took too long (\(msg))." : firstLine(msg))
         }
@@ -390,6 +395,9 @@ enum MediaProbe {
 
         // Timing.
         let ext = info.url.pathExtension.lowercased()
+        if let st = Double(s["start_time"] as? String ?? "") ?? Double(format["start_time"] as? String ?? ""), st.isFinite, abs(st) < 86_400 {
+            info.startTime = st
+        }
         if !info.avfDecodable || info.fps <= 0 {
             let rate = parseRate(s["avg_frame_rate"] as? String) ?? parseRate(s["r_frame_rate"] as? String)
             if let r = rate {

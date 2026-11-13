@@ -56,12 +56,18 @@ struct PlayerCommands: Commands {
 /// A Player window: the picture, auto-hiding controls, the buffering banner and the info overlay.
 struct PlayerWindow: View {
     @Binding var url: URL?
-    @State private var engine = PlayerEngine()
+    @State private var engine: PlayerEngine
     @State private var controlsVisible = true
     @State private var lastActivity = Date()
     @State private var dropTargeted = false
     @Environment(\.openWindow) private var openWindow
     @FocusState private var focused: Bool
+
+    @MainActor
+    init(url: Binding<URL?>, engine: PlayerEngine? = nil) {
+        _url = url
+        _engine = State(initialValue: engine ?? PlayerEngine())
+    }
 
     var body: some View {
         ZStack {
@@ -323,35 +329,13 @@ struct InfoOverlay: View {
     let engine: PlayerEngine
 
     var body: some View {
-        let info = engine.info!
-        let v = info.video
-        let c = v.color
         VStack(alignment: .leading, spacing: 3) {
-            row("File", info.url.path.displayPath)
-            row("Codec", v.codec.description + (v.profile.map { " (\($0))" } ?? "") + " · \(info.container)")
-            if let ch = engine.choice {
-                row("Decoder", "\(ch.tool) · \(ch.hardware ? "hardware" : "software")")
-                row("", ch.reason)
+            ForEach(Array(Self.rows(engine).enumerated()), id: \.offset) { _, r in
+                HStack(alignment: .top, spacing: 8) {
+                    Text(r.0).foregroundStyle(Theme.inkSecondary).frame(width: 96, alignment: .leading)
+                    Text(r.1).fixedSize(horizontal: false, vertical: true)
+                }
             }
-            if let note = engine.decoderNote { row("", note) }
-            row("Picture", "\(v.width)×\(v.height)" + (v.sarNum != v.sarDen ? " (SAR \(v.sarNum):\(v.sarDen))" : "")
-                + " · \(MediaProbe.formatRate(info.fps)) fps\(info.frameRateKnown ? "" : " (assumed)") · \(v.bitDepth)-bit \(v.chroma)")
-            row("Chroma siting", c.chromaLocation.description + tag(c.chromaLocationTagged))
-            row("Transfer", (engine.interpret == .auto ? c.transferName : "\(engine.interpret.label) (override)") + tag(c.transferTagged))
-            row("Primaries", c.primariesName + tag(c.primariesTagged))
-            row("Matrix", c.matrixName + tag(c.matrixTagged))
-            row("Range", (c.fullRange ? "full" : "limited") + tag(c.rangeTagged))
-            row("HDR metadata", hdrText(info))
-            if let t = engine.toneMap {
-                row("Tone mapping", t.mapping)
-                row("", "content \(Int(t.sourcePeak)) nits (\(t.peakSource)) · display \(Int(t.displayPeak)) nits = headroom × \(Int(t.referenceWhite))")
-            }
-            ForEach(info.notes, id: \.self) { row("Note", $0) }
-            let s = engine.stats
-            row("Frames", "shown \(s.shown) · dropped \(s.dropped) · late \(s.late)")
-            row("Decode", s.decodeFPS > 0 ? String(format: "%.1f fps (%.2f× real time)", s.decodeFPS, s.realTimeFactor) : "measuring…")
-            row("Queue", "\(s.queueDepth) / \(s.queueCapacity) frames" + (s.cacheBytes > 0 ? " · cache \(ByteCountFormatter.string(fromByteCount: s.cacheBytes, countStyle: .file))" : ""))
-            row("Audio", info.audio.isEmpty ? "none (silent)" : (engine.audioActive ? "clock source · " : "") + info.audio[min(engine.audioTrack, info.audio.count - 1)].label)
         }
         .font(.system(size: 11).monospacedDigit())
         .foregroundStyle(Theme.ink)
@@ -361,9 +345,44 @@ struct InfoOverlay: View {
         .textSelection(.enabled)
     }
 
-    private func tag(_ tagged: Bool) -> String { tagged ? "" : " (guessed)" }
+    /// The overlay's rows (label, value), also what the UI tests check.
+    @MainActor
+    static func rows(_ engine: PlayerEngine) -> [(String, String)] {
+        guard let info = engine.info else { return [] }
+        let v = info.video
+        let c = v.color
+        func tag(_ tagged: Bool) -> String { tagged ? "" : " (guessed)" }
+        var r: [(String, String)] = []
+        r.append(("File", info.url.lastPathComponent))
+        r.append(("Codec", v.codec.description + (v.profile.map { " (\($0))" } ?? "") + " · \(info.container)"))
+        if let ch = engine.choice {
+            r.append(("Decoder", "\(ch.tool) · \(ch.hardware ? "hardware" : "software")"))
+            r.append(("", ch.reason))
+        }
+        if let note = engine.decoderNote { r.append(("", note)) }
+        r.append(("Picture", "\(v.width)×\(v.height)" + (v.sarNum != v.sarDen ? " (SAR \(v.sarNum):\(v.sarDen))" : "")
+            + " · \(MediaProbe.formatRate(info.fps)) fps\(info.frameRateKnown ? "" : " (assumed)") · \(v.bitDepth)-bit \(v.chroma)"))
+        r.append(("Chroma siting", c.chromaLocation.description + tag(c.chromaLocationTagged)))
+        r.append(("Transfer", (engine.interpret == .auto ? c.transferName : "\(engine.interpret.label) (override)") + tag(c.transferTagged)))
+        r.append(("Primaries", c.primariesName + tag(c.primariesTagged)))
+        r.append(("Matrix", c.matrixName + tag(c.matrixTagged)))
+        r.append(("Range", (c.fullRange ? "full" : "limited") + tag(c.rangeTagged)))
+        r.append(("HDR metadata", hdrText(engine, info)))
+        if let t = engine.toneMap {
+            r.append(("Tone mapping", t.mapping))
+            r.append(("", "content \(Int(t.sourcePeak)) nits (\(t.peakSource)) · display \(Int(t.displayPeak)) nits = headroom × \(Int(t.referenceWhite))"))
+        }
+        for n in info.notes { r.append(("Note", n)) }
+        let s = engine.stats
+        r.append(("Frames", "shown \(s.shown) · dropped \(s.dropped) · late \(s.late)"))
+        r.append(("Decode", s.decodeFPS > 0 ? String(format: "%.1f fps (%.2f× real time)", s.decodeFPS, s.realTimeFactor) : "measuring…"))
+        r.append(("Queue", "\(s.queueDepth) / \(s.queueCapacity) frames" + (s.cacheBytes > 0 ? " · cache \(ByteCountFormatter.string(fromByteCount: s.cacheBytes, countStyle: .file))" : "")))
+        r.append(("Audio", info.audio.isEmpty ? "none (silent)" : (engine.audioActive ? "clock source · " : "") + info.audio[min(engine.audioTrack, info.audio.count - 1)].label))
+        return r
+    }
 
-    private func hdrText(_ info: MediaInfo) -> String {
+    @MainActor
+    private static func hdrText(_ engine: PlayerEngine, _ info: MediaInfo) -> String {
         let h = info.video.hdr
         var parts: [String] = []
         if let m = h?.mdcvMaxNits { parts.append("MDCV \(Int(m))" + (h?.mdcvMinNits.map { String(format: "/%.4f", $0) } ?? "") + " nits") }
@@ -375,13 +394,6 @@ struct InfoOverlay: View {
             return "none, assuming \(Int(engine.settings.assumedPeak)) nits"
         }
         return parts.joined(separator: " · ")
-    }
-
-    private func row(_ k: String, _ v: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Text(k).foregroundStyle(Theme.inkSecondary).frame(width: 96, alignment: .leading)
-            Text(v).fixedSize(horizontal: false, vertical: true)
-        }
     }
 }
 

@@ -113,20 +113,30 @@ final class FFmpegPipeBackend: PlayerVideoBackend, @unchecked Sendable {
         lock.lock()
         let seekable = choice.seekModel == .random
         let src = input, rate = inputRate
-        let tableTime = frameTable.flatMap { $0.timed && target < $0.pts.count ? $0.pts[target] : nil }
+        let table = frameTable.flatMap { $0.timed ? $0 : nil }
         lock.unlock()
+        var outputSeek: [String] = []
         if seekable && target > 0 {
-            // Accurate input seek: FFmpeg decodes from the key frame before T and drops everything earlier, so the
-            // first frame out is exactly `target` (T sits half a frame before it).
-            let t = (tableTime ?? Double(target) / rate) - 0.5 / rate
-            args += ["-ss", String(format: "%.6f", max(0, t))]
+            // Two-stage seek, exact even with open GOPs (leading pictures before an intra frame, as VVenC and x265 write
+            // them): a coarse input seek to at least one key frame before the target, then -copyts and an output -ss
+            // that drops every frame shown before the target. The first frame out is exactly `target`.
+            let t = info.startTime + (table.flatMap { target < $0.pts.count ? $0.pts[target] : nil } ?? Double(target) / rate)
+            var coarse = t - 3
+            if let table {
+                let keys = table.keyFrames.filter { $0 <= target }
+                if keys.count >= 2 { coarse = info.startTime + table.pts[keys[keys.count - 2]] - 0.5 / rate }
+                else { coarse = 0 }
+            }
+            if coarse > 0 { args += ["-ss", String(format: "%.6f", coarse)] }
+            args += ["-copyts"]
+            outputSeek = ["-ss", String(format: "%.6f", max(0, t - min(0.25 / rate, 0.002)))]
             discard = 0
             nextIndex = target
         } else {
             discard = target
             nextIndex = 0
         }
-        args += ["-i", src.path, "-map", "0:v:0", "-an", "-sn", "-dn", "-fps_mode", "passthrough",
+        args += ["-i", src.path] + outputSeek + ["-map", "0:v:0", "-an", "-sn", "-dn", "-fps_mode", "passthrough",
                  "-f", "rawvideo", "-pix_fmt", choice.pixelFormat ?? "yuv420p", "-"]
         let c = try ChildProcess(tool: "ffmpeg", args: args, qos: .userInitiated)
         lock.lock()
@@ -264,7 +274,7 @@ final class AVMBackend: PlayerVideoBackend, @unchecked Sendable {
         if k > 0 { args.append("--random-access-point-index=\(k)") }
         if skipFilmGrain { args.append("--skip-film-grain") }
         discard = max(0, i) - rapFrame
-        if let limit { args.append("--limit=\(limit + discard)") }
+        // No --limit: avmdec counts decoded frames there, hidden ones included. `limit` is enforced on shown frames.
         args.append(info.url.path)
         nextIndex = rapFrame
         emitted = 0

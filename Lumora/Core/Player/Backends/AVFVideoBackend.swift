@@ -12,6 +12,10 @@ final class AVFVideoBackend: PlayerVideoBackend, @unchecked Sendable {
     private let track: AVAssetTrack
     private let trackStart: Double
     private let lock = NSLock()
+    /// Held while a sample is read: cancelReading() during copyNextSampleBuffer() on another thread crashes
+    /// inside CoreMedia, so cancellation waits for the read in progress.
+    private let readLock = NSLock()
+    private var interrupted = false
     private var reader: AVAssetReader?
     private var output: AVAssetReaderTrackOutput?
     private var target = 0
@@ -85,15 +89,20 @@ final class AVFVideoBackend: PlayerVideoBackend, @unchecked Sendable {
     }
 
     func start(atFrame i: Int) throws {
+        readLock.lock()
         lock.lock()
         reader?.cancelReading()
         reader = nil
         output = nil
+        interrupted = false
         lock.unlock()
+        readLock.unlock()
         let fps = info.fps
         target = max(0, i)
         let r = try AVAssetReader(asset: asset)
-        let start = trackStart + max(0, (Double(target) - 0.5) / fps)
+        // AVAssetReader starts with the sample whose display interval holds the start time and trims its timestamp to
+        // it, so start a hair after frame `target` begins: frame target − 1 then lies wholly before the range.
+        let start = trackStart + (target > 0 ? (Double(target) + 0.01) / fps : 0)
         r.timeRange = CMTimeRange(start: CMTime(seconds: start, preferredTimescale: 600_000), duration: .positiveInfinity)
         var settings: [String: Any] = [
             kCVPixelBufferPixelFormatTypeKey as String: pixelFormat,
@@ -120,9 +129,12 @@ final class AVFVideoBackend: PlayerVideoBackend, @unchecked Sendable {
 
     func next() throws -> PlayerFrame? {
         while true {
-            lock.lock(); let o = output, r = reader; lock.unlock()
-            guard let o, let r else { return nil }
-            guard let sample = o.copyNextSampleBuffer() else {
+            lock.lock(); let o = output, r = reader, stop = interrupted; lock.unlock()
+            guard let o, let r, !stop else { return nil }
+            readLock.lock()
+            let next = r.status == .reading ? o.copyNextSampleBuffer() : nil
+            readLock.unlock()
+            guard let sample = next else {
                 if r.status == .failed, let e = r.error { throw PlayerError.decoderFailed("AVFoundation", e.localizedDescription) }
                 return nil
             }
@@ -134,16 +146,19 @@ final class AVFVideoBackend: PlayerVideoBackend, @unchecked Sendable {
         }
     }
 
+    /// Never blocks: the decode thread sees the flag after the frame it is reading (a few milliseconds).
     func interrupt() {
-        lock.lock(); let r = reader; lock.unlock()
-        r?.cancelReading()
+        lock.lock(); interrupted = true; lock.unlock()
     }
 
     func stop() {
+        lock.lock(); interrupted = true; lock.unlock()
+        readLock.lock()
         lock.lock()
         reader?.cancelReading()
         reader = nil
         output = nil
         lock.unlock()
+        readLock.unlock()
     }
 }

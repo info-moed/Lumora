@@ -51,6 +51,9 @@ final class AVFAudioSource: PlayerAudioSource {
     private var pending: [Float] = []
     private var pendingAt = 0
     private var trim: Int
+    /// Reads and cancellation never overlap (cancelReading during copyNextSampleBuffer crashes in CoreMedia).
+    private let lock = NSLock()
+    private var stopped = false
 
     init(url: URL, track: Int, at seconds: Double) throws {
         let asset = AVURLAsset(url: url)
@@ -72,10 +75,13 @@ final class AVFAudioSource: PlayerAudioSource {
     private var first = true
 
     func read(into: UnsafeMutablePointer<Float>, frames: Int) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
         var done = 0
-        while done < frames {
+        while done < frames && !stopped {
             if pendingAt >= pending.count {
-                guard let sb = output.copyNextSampleBuffer(), let block = CMSampleBufferGetDataBuffer(sb) else { break }
+                guard reader.status == .reading, let sb = output.copyNextSampleBuffer(),
+                      let block = CMSampleBufferGetDataBuffer(sb) else { break }
                 if first {
                     // The reader starts at the packet holding T; drop the samples before T so audio lands exactly.
                     first = false
@@ -99,8 +105,12 @@ final class AVFAudioSource: PlayerAudioSource {
         return done
     }
 
-    func stop() { reader.cancelReading() }
-    deinit { reader.cancelReading() }
+    func stop() {
+        lock.lock()
+        if !stopped { stopped = true; reader.cancelReading() }
+        lock.unlock()
+    }
+    deinit { stop() }
 }
 
 /// Plays one audio source through AVAudioEngine and is the playback clock while it plays.

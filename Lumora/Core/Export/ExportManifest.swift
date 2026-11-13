@@ -33,6 +33,10 @@ struct ExportManifest: Codable {
             .sorted { $0.created > $1.created }
     }
 
+    static func remove(for output: URL) {
+        try? FileManager.default.removeItem(at: folder.appendingPathComponent(key(output.path) + ".json"))
+    }
+
     static func load(for output: URL) -> ExportManifest? {
         try? JSONDecoder().decode(ExportManifest.self, from: Data(contentsOf: folder.appendingPathComponent(key(output.path) + ".json")))
     }

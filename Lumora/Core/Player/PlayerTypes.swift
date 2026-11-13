@@ -325,6 +325,8 @@ struct MediaInfo: Equatable {
     var fileSize: Int64 = 0
     /// The peak Lumora graded this file to, from its export record (AV2 can't carry mastering metadata).
     var manifestPeakNits: Double?
+    /// The container's first video timestamp (FFmpeg's start_time), for exact seeks with -copyts.
+    var startTime: Double = 0
 
     var fps: Double { Double(rateNum) / Double(max(1, rateDen)) }
     var estimatedFrameCount: Int { frameCount ?? safeFrameCount(seconds: duration, fps: fps) }

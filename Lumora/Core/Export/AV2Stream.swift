@@ -81,7 +81,7 @@ enum AV2Stream {
         }
     }
 
-    /// An IVF file (DKIF) holding AV2: every IVF frame is one temporal unit. Returns the summary plus the IVF
+    /// An IVF file (DKIF) holding AV2: each IVF frame holds one or more temporal units. Returns the summary plus the IVF
     /// header's frame rate (timebase and the first two frame timestamps), or nil when it isn't IVF.
     static func ivfSummary(of url: URL) throws -> (Summary, rate: (Int, Int)?)? {
         let data = try Data(contentsOf: url, options: .mappedIfSafe)
@@ -101,15 +101,22 @@ enum AV2Stream {
                     throw LumoraError.decodeFailed("Damaged IVF file (bad frame size at byte \(i)).")
                 }
                 if pts.count < 2 { pts.append(u64(i + 4)) }
-                s.units.append(TemporalUnit(offset: i, isRandomAccessPoint: false))
                 let payload = UnsafeBufferPointer(rebasing: b[(i + 12)..<(i + 12 + size)])
-                try walk(payload, base: i + 12, into: &s, newUnitOnDelimiter: false)
+                // avmenc may pack several temporal units into one IVF frame; each starts with a temporal delimiter.
+                // A frame that doesn't start with one is a unit of its own.
+                if let (_, n) = leb128(payload, at: 0), n < payload.count, Int((payload[n] >> 2) & 0x1F) != temporalDelimiter {
+                    s.units.append(TemporalUnit(offset: i, isRandomAccessPoint: false))
+                }
+                try walk(payload, base: i + 12, into: &s, newUnitOnDelimiter: true)
                 i += 12 + size
             }
             guard s.sequenceHeaders > 0 else { throw LumoraError.decodeFailed("Not an AV2 stream (no sequence header).") }
             var rate: (Int, Int)?
-            let step = pts.count == 2 ? max(1, pts[1] - pts[0]) : 1
-            if tbDen > 0, tbNum > 0 { rate = (tbDen, Int(Int64(tbNum) * step)) }
+            // avmenc's timebase is 1 / frame rate. A finer clock (1/1000, 1/90000) counts ticks per frame instead.
+            if tbDen > 0, tbNum > 0 {
+                if tbDen / tbNum <= 300 { rate = (tbDen, tbNum) }
+                else { rate = (tbDen, Int(Int64(tbNum) * (pts.count == 2 ? max(1, pts[1] - pts[0]) : 1))) }
+            }
             return (s, rate)
         }
     }
