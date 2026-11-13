@@ -125,6 +125,8 @@ $DEPS
 EOF
   if have avmenc; then say "${G}avmenc${N}          optional  (source)     -            -            AV2 export (built from source; rebuild with scripts/install-encoders.sh)"
   else say "${D}avmenc          optional  -            -            -            AV2 export (built from source by scripts/install-encoders.sh)${N}"; fi
+  if have ssimulacra2_rs; then say "${G}ssimulacra2_rs${N}  optional  $(printf '%-12s' "$(ssimulacra2_rs --version 2>/dev/null | awk '{print $2}')") -            -            SSIMULACRA 2 metric (built from source; rebuild with scripts/install-ssimulacra2.sh)"
+  else say "${D}ssimulacra2_rs  optional  -            -            -            SSIMULACRA 2 metric (built from source by scripts/install-ssimulacra2.sh)${N}"; fi
   local venv="$HOME/Library/Application Support/Lumora/ModelLab/venv"
   if [ -x "$venv/bin/python" ]; then
     say ""; say "${B}Model Lab Python environment${N}  ${D}$venv${N}"
@@ -151,10 +153,18 @@ cmd_install() {
   done <<EOF
 $DEPS
 EOF
-  [ -z "$want" ] && { ok "Nothing to install."; return 0; }
-  say "Installing:$want"
-  # shellcheck disable=SC2086
-  brew install $want
+  if [ -n "$want" ]; then
+    say "Installing:$want"
+    # shellcheck disable=SC2086
+    brew install $want
+  fi
+  # SSIMULACRA 2's video tool isn't in Homebrew: build it (needs Rust from Homebrew).
+  if [ "${1:-}" = "--all" ] && ! have ssimulacra2_rs; then
+    have cargo || brew install rust
+    bash "$ROOT/scripts/install-ssimulacra2.sh"
+  elif [ -z "$want" ]; then
+    ok "Nothing to install."
+  fi
 }
 
 # Every flag in encoders.json must still be listed in the installed encoder's own help text.

@@ -23,4 +23,10 @@ if ! command -v avmenc >/dev/null || [ "${AVM_REBUILD:-0}" = 1 ]; then
   cp "$AVM_DIR/build/avmenc" "$AVM_DIR/build/avmdec" "$HOME/.local/bin/"
   "$HOME/.local/bin/avmenc" --help 2>&1 | tail -3 | grep -i "AV2 Encoder" || true
 fi
+
+# SSIMULACRA 2 (quality metric): its video tool builds from source with Rust; see the script for why not `cargo install`.
+if ! command -v ssimulacra2_rs >/dev/null && ! [ -x "$HOME/.local/bin/ssimulacra2_rs" ]; then
+  command -v cargo >/dev/null || brew install rust
+  bash "$(dirname "$0")/install-ssimulacra2.sh"
+fi
 echo "Done. Formula names can change; if one failed, search 'brew search <name>'."

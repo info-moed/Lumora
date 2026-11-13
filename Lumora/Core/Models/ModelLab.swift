@@ -169,19 +169,50 @@ final class ModelLab {
         }
     }
 
+    /// ColorVideoVDP release Model Lab installs (verified 2026-11-12 with Python 3.9 and PyTorch 2.8). Update deliberately.
+    nonisolated static let cvvdpVersion = "0.5.7"
+    /// cvvdp's runtime dependencies, installed as prebuilt wheels. cvvdp also declares "ffmpeg>=1.4", an unrelated
+    /// source-only PyPI package whose top-level `ffmpeg` module would replace ffmpeg-python's (the one pycvvdp
+    /// imports). It has no wheel, so cvvdp itself is installed without its declared dependencies and these instead.
+    nonisolated static let cvvdpDependencies = ["numpy>=1.17.3", "scipy>=1.10.0", "ffmpeg-python>=0.2.0", "torch>=1.13.1",
+                                                "torchvision>=0.9.2", "imageio>=2.19.5", "matplotlib>=3.8.0",
+                                                "huggingface_hub>=0.33.4", "einops>=0.8.1", "PyEXR>=0.3.10"]
+    nonisolated static var metricsMarker: URL { lab.appendingPathComponent(".metrics-installed") }
+
     /// Installs ColorVideoVDP (and with it PU21 metrics) into the same Python environment, on this Mac.
+    /// Wheels only, a pinned cvvdp, and a real import + model construction before the metrics are marked ready.
     func installMetrics() async throws {
         if !environmentReady { try await prepareEnvironment() }
         let task = TaskCenter.shared.begin("Installing perceptual quality metrics", symbol: "eye")
         do {
-            try await shell(Self.lab.appendingPathComponent("venv/bin/pip").path, ["install", "--upgrade", "--only-binary=:all:", "cvvdp"])
-            FileManager.default.createFile(atPath: Self.lab.appendingPathComponent(".metrics-installed").path, contents: Data())
-            Log.notice(.quality, "ColorVideoVDP installed")
+            let pip = Self.lab.appendingPathComponent("venv/bin/pip").path
+            try? FileManager.default.removeItem(at: Self.metricsMarker)
+            // No --upgrade: packages Model Lab already installed (PyTorch, NumPy) stay at the versions it converts with.
+            try await shell(pip, ["install", "--only-binary=:all:"] + Self.cvvdpDependencies)
+            try await shell(pip, ["install", "--only-binary=:all:", "--no-deps", "cvvdp==\(Self.cvvdpVersion)"])
+            // Both display models Lumora uses must load (SDR 4K and HDR PQ), or the metric isn't usable.
+            try await shell(Self.lab.appendingPathComponent("venv/bin/python").path, ["-I", "-c",
+                "import pycvvdp; [pycvvdp.cvvdp(display_name=d, device='cpu') for d in ('standard_4k', 'standard_hdr_pq')]"],
+                environment: Self.pythonEnvironment)
+            try Data("cvvdp \(Self.cvvdpVersion)\n".utf8).write(to: Self.metricsMarker)
+            Log.notice(.quality, "ColorVideoVDP \(Self.cvvdpVersion) installed")
             TaskCenter.shared.finish(task)
         } catch {
             TaskCenter.shared.finish(task, error: error)
             throw error
         }
+    }
+
+    /// Environment for the Model Lab Python tools: a private cache folder for Matplotlib/Hugging Face (nothing
+    /// written to the user's dotfiles), no network calls from the Hugging Face client, and MPS fallback for PyTorch.
+    nonisolated static var pythonEnvironment: [String: String] {
+        let cache = lab.appendingPathComponent("cache", isDirectory: true)
+        try? FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+        return ["HOME": NSHomeDirectory(), "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+                "TMPDIR": FileManager.default.temporaryDirectory.path,
+                "MPLCONFIGDIR": cache.appendingPathComponent("matplotlib").path,
+                "HF_HOME": cache.appendingPathComponent("huggingface").path, "HF_HUB_OFFLINE": "1",
+                "PYTORCH_ENABLE_MPS_FALLBACK": "1"]
     }
 
     /// Converts one release into two Core ML models: image output and HDR flow output (true 10/12-bit).
@@ -276,12 +307,13 @@ final class ModelLab {
 
     // MARK: Helpers
 
-    private func shell(_ exe: String, _ args: [String]) async throws {
+    private func shell(_ exe: String, _ args: [String], environment: [String: String]? = nil) async throws {
         Log.info(.tools, "\(exe) \(args.joined(separator: " "))")
         try await Task.detached {
             let p = Process()
             p.executableURL = URL(fileURLWithPath: exe)
             p.arguments = args
+            if let environment { p.environment = environment }
             let out = Pipe()
             p.standardOutput = out
             p.standardError = out

@@ -48,17 +48,21 @@ enum QualityMetric: String, CaseIterable, Codable, Identifiable {
 
     var higherIsBetter: Bool { !(self == .cambi || self == .ciede) }
     var hdrAware: Bool { [.cvvdp, .puPsnr, .avqt, .cambi].contains(self) }
-    /// Seconds per 1080p-equivalent frame on a modern Mac, roughly; used by the planner.
+    /// Seconds per 1080p-equivalent frame scored, used by the planner. Measured 2026-11-12 on an M3 Max
+    /// (ColorVideoVDP on the GPU through MPS; each check also pays about 5 s to start Python and PyTorch).
     var costPerFrame: Double {
         switch self {
-        case .cvvdp: return 0.12
+        case .cvvdp: return 0.25
         case .ssimulacra2: return 0.05
+        case .puPsnr: return 0.03
         case .avqt: return 0.004
-        case .xpsnr, .puPsnr: return 0.006
+        case .xpsnr: return 0.006
         default: return 0.004   // libvmaf features share one pass
         }
     }
-    var slow: Bool { self == .cvvdp || self == .ssimulacra2 }
+    /// Measured only on the encode a chunk's search accepted, not on every search trial. PU21-PSNR runs in the same
+    /// Python process as ColorVideoVDP, so it costs a process start per trial if it isn't.
+    var slow: Bool { self == .cvvdp || self == .ssimulacra2 || self == .puPsnr }
 
     /// Which tool provides it.
     var source: String {
@@ -66,7 +70,7 @@ enum QualityMetric: String, CaseIterable, Codable, Identifiable {
         case .vmaf, .vmafNeg, .cambi, .msssim, .psnrHvs, .ciede: return "libvmaf (brew install libvmaf)"
         case .xpsnr: return "FFmpeg 7+ (xpsnr filter)"
         case .cvvdp, .puPsnr: return "ColorVideoVDP (Model Lab → Install quality metrics)"
-        case .ssimulacra2: return "ssimulacra2_rs (cargo install ssimulacra2_rs)"
+        case .ssimulacra2: return "ssimulacra2_rs (scripts/install-ssimulacra2.sh)"
         case .avqt: return "AVQT from developer.apple.com"
         }
     }
@@ -215,6 +219,8 @@ enum MetricSuite {
         var workDir: URL
         /// AV1 grain synthesis: decode without applying the synthetic grain (scored against a de-grained master).
         var stripSyntheticGrain = false
+        /// HDR delivered as HLG rather than PQ (ColorVideoVDP then models an HLG display).
+        var hlg = false
         var decoderArgs: [String] { stripSyntheticGrain ? ["-export_side_data", "film_grain"] : [] }
     }
 
@@ -327,10 +333,16 @@ enum MetricSuite {
         dec.standardError = FileHandle.nullDevice
         let tool = Process()
         tool.executableURL = ToolLocator.url(for: "ssimulacra2_rs")
-        tool.arguments = ["video", ref, dist, "--frame-threads", "\(max(1, ctx.threads / 2))"]
-        let out = Pipe()
+        // --verbose prints one "Frame N: score" line per frame. Lumora's SDR is BT.709; without these flags the tool
+        // guesses the matrix and primaries from the frame size (BT.601 below 720p).
+        var args = ["video", ref, dist, "--verbose", "--frame-threads", "\(max(1, min(8, ctx.threads / 2)))"]
+        for side in ["src", "dst"] { args += ["--\(side)-matrix", "bt709", "--\(side)-primaries", "bt709", "--\(side)-transfer", "bt1886"] }
+        if ctx.fast { args += ["--increment", "2"] }
+        tool.arguments = args
+        let out = Pipe(), err = Pipe()
         tool.standardOutput = out
-        tool.standardError = FileHandle.nullDevice
+        tool.standardError = err
+        let errTail = PipeTail(err)
         dec.arguments = FFHarden.args("ffmpeg", dec.arguments ?? [])
         try dec.runWatched(); try tool.runWatched()
         try await Task.detached {
@@ -339,7 +351,7 @@ enum MetricSuite {
         }.value
         let text = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
         await dec.exited(); await tool.exited()
-        // Expected lines: "Frame 12: 87.12345" (VERIFY against your ssimulacra2_rs version).
+        // Lines look like "Frame 12: 87.12345678" (ssimulacra2_rs 0.5.2 with --verbose); skipped frames say "skip".
         var values: [(Int, Double)] = []
         for line in text.split(separator: "\n") where line.hasPrefix("Frame") {
             let parts = line.split(separator: ":")
@@ -350,6 +362,8 @@ enum MetricSuite {
         if !values.isEmpty {
             s.perFrame[.ssimulacra2] = values
             s.pooled[.ssimulacra2] = MetricScores.pool(values.map(\.1), higherIsBetter: true)
+        } else {
+            Log.warning(.quality, "SSIMULACRA 2 returned no scores (exit \(tool.terminationStatus)): \(errTail.text)")
         }
         return s
     }
@@ -370,12 +384,14 @@ enum MetricSuite {
         dec.standardError = FileHandle.nullDevice
         let py = Process()
         py.executableURL = ModelLab.lab.appendingPathComponent("venv/bin/python")
-        py.arguments = [script.path, "--ref", ref, "--dist", dist, "--hdr", ctx.hdr ? "1" : "0", "--total-frames", "\(ctx.frames)",
-                        "--metrics", set.map(\.rawValue).joined(separator: ","), "--windows", ctx.fast ? "3" : "6"]
-        py.environment = ["PYTORCH_ENABLE_MPS_FALLBACK": "1"]
-        let out = Pipe()
+        py.arguments = ["-I", script.path, "--ref", ref, "--dist", dist, "--hdr", ctx.hdr ? (ctx.hlg ? "hlg" : "pq") : "0",
+                        "--total-frames", "\(ctx.frames)", "--metrics", set.map(\.rawValue).sorted().joined(separator: ","),
+                        "--windows", ctx.fast ? "3" : "6", "--threads", "\(max(1, min(8, ctx.threads / 2)))"]
+        py.environment = ModelLab.pythonEnvironment
+        let out = Pipe(), err = Pipe()
         py.standardOutput = out
-        py.standardError = FileHandle.nullDevice
+        py.standardError = err
+        let errTail = PipeTail(err)
         dec.arguments = FFHarden.args("ffmpeg", dec.arguments ?? [])
         try dec.runWatched(); try py.runWatched()
         try await Task.detached {
@@ -386,8 +402,12 @@ enum MetricSuite {
         await dec.exited(); await py.exited()
         var s = MetricScores()
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            Log.warning(.quality, "Python metrics returned no result: \(String(decoding: data.prefix(300), as: UTF8.self))")
+            Log.warning(.quality, "Python metrics returned no result (exit \(py.terminationStatus)): \(String(decoding: data.prefix(300), as: UTF8.self)) \(errTail.text)")
             return s
+        }
+        if let display = obj["display"] as? String {
+            Log.debug(.quality, "ColorVideoVDP display model \(display) on \(obj["device"] as? String ?? "?"), "
+                      + "\(obj["windows"] as? Int ?? 0) window(s), seconds \(obj["seconds"] as? [String: Double] ?? [:])")
         }
         for m in set {
             if let d = obj[m.rawValue] as? [String: Any], let mean = d["mean"] as? Double {
@@ -396,5 +416,35 @@ enum MetricSuite {
             }
         }
         return s
+    }
+}
+
+/// Keeps the last few kilobytes a tool writes to stderr (read on a background thread so the tool never blocks on a
+/// full pipe), for the log when the tool fails.
+final class PipeTail: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data = Data()
+    private let limit: Int
+    private let finished = DispatchSemaphore(value: 0)
+
+    init(_ pipe: Pipe, limit: Int = 4096) {
+        self.limit = limit
+        let handle = pipe.fileHandleForReading
+        Thread.detachNewThread { [self] in
+            while let chunk = try? handle.read(upToCount: 16 << 10), !chunk.isEmpty {
+                lock.lock()
+                data.append(chunk)
+                if data.count > 2 * limit { data = data.suffix(limit) }
+                lock.unlock()
+            }
+            finished.signal()
+        }
+    }
+
+    /// What was captured; once the tool has exited, waits briefly for the reader to reach the end of the pipe.
+    var text: String {
+        if finished.wait(timeout: .now() + 1) == .success { finished.signal() }
+        lock.lock(); defer { lock.unlock() }
+        return String(decoding: data.suffix(limit), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

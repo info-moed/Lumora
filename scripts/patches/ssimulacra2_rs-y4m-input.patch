@@ -1,0 +1,96 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index 9175af8..65e3201 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -13,7 +13,6 @@ rust-version = "1.74"
+ [dependencies]
+ anyhow = "1.0.55"
+ av-metrics-decoders = { version = "0.3.1", features = [
+-    "vapoursynth",
+     "y4m",
+ ], optional = true }
+ clap = { version = "4.0.18", features = ["derive"] }
+diff --git a/src/video.rs b/src/video.rs
+index 0c77a0b..83d1dc9 100644
+--- a/src/video.rs
++++ b/src/video.rs
+@@ -8,7 +8,7 @@ use std::{
+     time::{SystemTime, UNIX_EPOCH},
+ };
+ 
+-use av_metrics_decoders::{y4m::new_decoder_from_stdin, Decoder, VapoursynthDecoder};
++use av_metrics_decoders::{y4m::new_decoder_from_file, y4m::new_decoder_from_stdin, Decoder, Y4MDecoder};
+ use crossterm::tty::IsTty;
+ use image::ColorType;
+ use indicatif::{HumanDuration, ProgressBar, ProgressDrawTarget, ProgressState, ProgressStyle};
+@@ -158,6 +158,12 @@ fn calc_score<S: Pixel, D: Pixel, E: Decoder, F: Decoder>(
+     ))
+ }
+ 
++/// Opens a Y4M file or named pipe directly. This build reads Y4M only (no VapourSynth source plugins).
++fn open_y4m(path: &str) -> Y4MDecoder<std::io::BufReader<std::fs::File>> {
++    new_decoder_from_file(Path::new(path))
++        .unwrap_or_else(|e| panic!("{}: {} (this build reads Y4M input only)", path, e))
++}
++
+ #[allow(clippy::too_many_arguments)]
+ pub fn compare_videos(
+     source: &str,
+@@ -185,11 +191,11 @@ pub fn compare_videos(
+             .map(|ext| ext.to_ascii_lowercase().to_string_lossy() == "vpy")
+             .unwrap_or(false)
+         {
+-            VapoursynthDecoder::new_from_script(Path::new(distorted)).unwrap()
++            open_y4m(distorted)
+         } else {
+-            VapoursynthDecoder::new_from_video(Path::new(distorted)).unwrap()
++            open_y4m(distorted)
+         };
+-        let distorted_frame_count = distorted.get_frame_count().ok();
++        let distorted_frame_count = None;
+         return compare_videos_inner(
+             new_decoder_from_stdin().unwrap(),
+             distorted,
+@@ -216,11 +222,11 @@ pub fn compare_videos(
+             .map(|ext| ext.to_ascii_lowercase().to_string_lossy() == "vpy")
+             .unwrap_or(false)
+         {
+-            VapoursynthDecoder::new_from_script(Path::new(source)).unwrap()
++            open_y4m(source)
+         } else {
+-            VapoursynthDecoder::new_from_video(Path::new(source)).unwrap()
++            open_y4m(source)
+         };
+-        let source_frame_count = source.get_frame_count().ok();
++        let source_frame_count = None;
+         return compare_videos_inner(
+             source,
+             new_decoder_from_stdin().unwrap(),
+@@ -246,21 +252,21 @@ pub fn compare_videos(
+         .map(|ext| ext.to_ascii_lowercase().to_string_lossy() == "vpy")
+         .unwrap_or(false)
+     {
+-        VapoursynthDecoder::new_from_script(Path::new(source)).unwrap()
++        open_y4m(source)
+     } else {
+-        VapoursynthDecoder::new_from_video(Path::new(source)).unwrap()
++        open_y4m(source)
+     };
+     let distorted = if Path::new(distorted)
+         .extension()
+         .map(|ext| ext.to_ascii_lowercase().to_string_lossy() == "vpy")
+         .unwrap_or(false)
+     {
+-        VapoursynthDecoder::new_from_script(Path::new(distorted)).unwrap()
++        open_y4m(distorted)
+     } else {
+-        VapoursynthDecoder::new_from_video(Path::new(distorted)).unwrap()
++        open_y4m(distorted)
+     };
+-    let source_frame_count = source.get_frame_count().ok();
+-    let distorted_frame_count = distorted.get_frame_count().ok();
++    let source_frame_count = None;
++    let distorted_frame_count = None;
+     compare_videos_inner(
+         source,
+         distorted,

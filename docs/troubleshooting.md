@@ -120,6 +120,7 @@ shows every tool, its version, whether it's up to date, and whether it **actuall
 | A required tool is missing | `scripts/deps.sh install` |
 | Updates available | `scripts/deps.sh update` (verifies Lumora afterwards) |
 | `(not brew)` | Lumora found a copy outside Homebrew. Fine, but `deps.sh` can't update it. |
+| `cargo install ssimulacra2_rs` fails with `library 'vapoursynth' not found` | That build reads video through VapourSynth. Use `scripts/install-ssimulacra2.sh` instead: it builds the same release to read Y4M directly, into `~/.local/bin` (needs `brew install rust`). |
 
 To use a specific build of a tool, see [Pointing Lumora at specific tools](command-line.md#pointing-lumora-at-specific-tools).
 
@@ -131,6 +132,9 @@ To use a specific build of a tool, see [Pointing Lumora at specific tools](comma
 |---|---|
 | Generated frames look like cross-fades | No model is installed, so Lumora blends. Install RIFE through Tools → **Model Lab**. |
 | Model Lab can't convert | Click **Set up converter** first (creates a Python environment with PyTorch and coremltools; needs internet and ~2 GB). |
+| **Install quality metrics** fails | It needs internet and installs prebuilt wheels only, so a package with no wheel for Model Lab's Python fails instead of compiling. pip's output is in `~/Library/Logs/Lumora`. ColorVideoVDP is marked installed only after both its SDR and HDR display models load. |
+| ColorVideoVDP, PU21-PSNR or SSIMULACRA 2 shows "isn't installed" in Deliver → Quality | ColorVideoVDP and PU21-PSNR: Model Lab → **Install quality metrics**. SSIMULACRA 2: `scripts/install-ssimulacra2.sh`. Without ColorVideoVDP, the Imperceptible standard searches on VMAF 95 instead of 93. |
+| Quality-target exports got much slower or bigger with the metrics installed | The perceptual gates run once per chunk (about 16–22 s for a 2-second 720p chunk) and raise quality when one fails. SSIMULACRA 2 ≥ 85 is usually the gate that raises SDR files; lower it or set it to **Report** in Deliver → Quality. |
 | Warping or ghosting on fast motion | Motion → **Intelligence** → *Route a model per scene* or *Exhaustive*; keep **Find and fix artifacts** on; use **Scan for interpolation problems** before exporting. |
 | Films look like a soap opera | That's what higher frame rates do to film. Keep the original rate, or use the comparison export (**Also export the original frame rate**). |
 

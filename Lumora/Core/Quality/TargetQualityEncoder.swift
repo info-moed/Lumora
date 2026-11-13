@@ -42,6 +42,8 @@ final class EncodeMonitor {
         var bytes: Int64 = 0
         var metrics: [String: Double] = [:]      // pooled score per metric for the accepted encode
         var failures: [String] = []              // gates that forced extra quality
+        var gateRaises = 0                       // times a perceptual gate forced a higher setting
+        var perceptualSeconds: Double = 0        // time spent in the slow perceptual checks
     }
 
     var target: QualityTarget?
@@ -112,7 +114,7 @@ final class TargetQualityEncoder {
     func encode(frames: [PlanarFrame], chunkID: Int, start: Int, sceneStats: SceneStats, interpolatedShare: Double,
                 kind: ContentKind, encodeOne: @escaping ([PlanarFrame], Double, URL) async throws -> Void,
                 target: QualityTarget, rate: (Int, Int), workDir: URL, threads: Int, codec: Codec, hdr: Bool = true,
-                referenceFrames: [PlanarFrame]? = nil, stripSyntheticGrain: Bool = false) async throws -> [Piece] {
+                hlg: Bool = false, referenceFrames: [PlanarFrame]? = nil, stripSyntheticGrain: Bool = false) async throws -> [Piece] {
         let range = Self.levelRange(codec)
         let key = codec.rawValue
         let (profile, _) = target.profile.effective()
@@ -127,6 +129,7 @@ final class TargetQualityEncoder {
         var mctx = MetricSuite.Context(width: w, height: h, rate: rate, hdr: hdr, frames: frames.count, threads: threads,
                                        fast: target.fastValidation, workDir: workDir)
         mctx.stripSyntheticGrain = stripSyntheticGrain
+        mctx.hlg = hdr && hlg
         // With grain synthesis, metrics compare against the de-grained master (what the encoder actually keeps).
         let reference = referenceFrames ?? frames
 
@@ -223,27 +226,35 @@ final class TargetQualityEncoder {
         }
 
         // --- 2. Prove it: perceptual gates (ColorVideoVDP, SSIMULACRA 2) on the chosen encode; step up if needed.
+        // Every encode accepted here is measured with the slow metrics, including the last one stepped up to.
         var chosenScores = chosen.scores
         if !slowSet.isEmpty {
             await MainActor.run { EncodeMonitor.shared.update(chunkID) { $0.state = .verifying } }
-            for attempt in 0..<4 {
+            let maxRaises = 4
+            for attempt in 0...maxRaises {
+                let t0 = Date()
                 let slow = try await measure(frames[...], chosen.url, slow: true)
+                let seconds = Date().timeIntervalSince(t0)
                 chosenScores = slow
                 await publish(slow)
+                await MainActor.run { EncodeMonitor.shared.update(chunkID) { $0.perceptualSeconds += seconds } }
                 let verdict = slow.passes(profile, includeSlow: true)
-                if verdict.ok || chosen.level >= range.high {
-                    if !verdict.ok { Log.warning(.quality, "Chunk \(chunkID): best possible setting still fails \(verdict.failures.joined(separator: ", "))") }
-                    break
-                }
-                Log.notice(.quality, "Chunk \(chunkID): perceptual check failed (\(verdict.failures.joined(separator: ", "))); raising quality (attempt \(attempt + 1))")
+                if verdict.ok { break }
                 let failures = verdict.failures
                 await MainActor.run { EncodeMonitor.shared.update(chunkID) { $0.failures = failures } }
+                if chosen.level >= range.high || attempt == maxRaises {
+                    Log.warning(.quality, "Chunk \(chunkID): \(Self.describe(codec, level: chosen.level)) still fails \(failures.joined(separator: ", ")); keeping it")
+                    break
+                }
+                Log.notice(.quality, "Chunk \(chunkID): perceptual check failed (\(failures.joined(separator: ", "))); raising quality (attempt \(attempt + 1))")
                 let lvl = min(range.high, chosen.level + range.step * (codec == .hevc ? 4 : 2))
                 let url = file("g\(attempt)")
                 try await encodeOne(frames, lvl, url)
                 try? FileManager.default.removeItem(at: chosen.url)
                 chosen = (lvl, 0, 0, true, MetricScores(), url)
-                await MainActor.run { EncodeMonitor.shared.update(chunkID) { $0.setting = Self.describe(codec, level: lvl); $0.trials += 1 } }
+                await MainActor.run {
+                    EncodeMonitor.shared.update(chunkID) { $0.setting = Self.describe(codec, level: lvl); $0.trials += 1; $0.gateRaises += 1 }
+                }
             }
         }
         QualityPredictor.shared.record(codecKey: key, x: x, level: chosen.level)
